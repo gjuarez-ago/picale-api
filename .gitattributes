@@ -1,0 +1,13 @@
+# Lo que corre en Linux se guarda y se extrae siempre con LF: un deploy-vps.sh
+# con finales CRLF muere en bash con "'\r': command not found", y en Windows
+# core.autocrlf=true se los pondria al hacer checkout. Lo mismo para los flujos
+# de GitHub Actions y para lo que lee el contenedor.
+*.sh          text eol=lf
+*.yml         text eol=lf
+*.yaml        text eol=lf
+Dockerfile    text eol=lf
+.env.*.example text eol=lf
+*.conf        text eol=lf
+
+# Lo demas, como lo tenga cada quien configurado.
+* text=auto
