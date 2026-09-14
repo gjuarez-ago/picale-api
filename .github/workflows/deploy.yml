@@ -1,0 +1,92 @@
+# Despliegue continuo a la VM api-videos-prod.
+#
+# Hace exactamente lo que hacía `deploy-vps.sh` desde la laptop —empaquetar,
+# copiar a la VM, construir la imagen allí y levantarla— con dos diferencias:
+# lo ejecuta GitHub con una cuenta de servicio en vez de una sesión personal de
+# gcloud, y antes vuelve a correr las pruebas. Un merge a main con las pruebas
+# en verde es un despliegue; sin verde, no hay despliegue.
+#
+# El `.env.vps` con las llaves del servidor NO pasa por aquí: vive solo en la
+# VM, igual que antes. GitHub solo necesita una credencial de GCP.
+#
+# ---------------------------------------------------------------------------
+# Cómo encenderlo (una sola vez, desde una terminal con gcloud autenticado):
+#
+#   PROY=cmrg-505321
+#   SA=github-deploy@$PROY.iam.gserviceaccount.com
+#   gcloud iam service-accounts create github-deploy --project=$PROY \
+#       --display-name="GitHub Actions: despliegue de picale-api"
+#   # Reservar la VM, copiar archivos y abrir SSH:
+#   gcloud projects add-iam-policy-binding $PROY \
+#       --member="serviceAccount:$SA" --role="roles/compute.instanceAdmin.v1"
+#   # Entrar por SSH a una VM que corre con su propia cuenta de servicio exige
+#   # poder "actuar como" esa cuenta (la de la VM, no la de GitHub):
+#   VM_SA=$(gcloud compute instances describe api-videos-prod --zone=us-central1-a \
+#       --project=$PROY --format="value(serviceAccounts[0].email)")
+#   gcloud iam service-accounts add-iam-policy-binding "$VM_SA" --project=$PROY \
+#       --member="serviceAccount:$SA" --role="roles/iam.serviceAccountUser"
+#   gcloud iam service-accounts keys create github-deploy.json --iam-account=$SA
+#
+#   En GitHub → Settings del repo:
+#     · Secrets → Actions → New secret:  GCP_SA_KEY  = contenido de github-deploy.json
+#     · Variables → Actions → New variable:  CD_ENABLED = true
+#   Después borra github-deploy.json de tu disco.
+#
+# Mientras CD_ENABLED no exista, este flujo se salta en silencio: el repo
+# puede vivir sin CD sin que cada push marque un fallo rojo.
+# ---------------------------------------------------------------------------
+name: Desplegar API
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+# Dos despliegues nunca a la vez: el segundo espera al primero. Cancelarlo a
+# medias dejaría la VM con la imagen a medio construir.
+concurrency:
+  group: deploy-api
+  cancel-in-progress: false
+
+jobs:
+  desplegar:
+    name: Probar, construir en la VM y levantar
+    if: ${{ vars.CD_ENABLED == 'true' }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    environment: produccion
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "17"
+          cache: maven
+
+      - name: ffmpeg
+        run: sudo apt-get update -qq && sudo apt-get install -y -qq ffmpeg
+
+      # Aquí y no solo en ci.yml: los dos flujos arrancan a la vez con el push,
+      # y este no debe depender de mirar si el otro terminó. Si falla, no se
+      # toca producción.
+      - name: Pruebas antes de tocar producción
+        run: mvn -B --no-transfer-progress test
+
+      - uses: google-github-actions/auth@v2
+        with:
+          credentials_json: ${{ secrets.GCP_SA_KEY }}
+
+      - uses: google-github-actions/setup-gcloud@v2
+
+      - name: Desplegar en la VM
+        env:
+          # Sin preguntas: gcloud genera la llave SSH del runner sin pedir
+          # frase, y todo lo demás asume "sí".
+          CLOUDSDK_CORE_DISABLE_PROMPTS: "1"
+          # La carpeta de la VM donde ya vive .env.vps. Desde GitHub el usuario
+          # SSH es la cuenta de servicio, no la persona, así que "~" apuntaría
+          # a otro home; el script la toma de aquí.
+          DESTINO: /home/contacto_rodtech_cloud/metricol.api
+        run: bash deploy-vps.sh

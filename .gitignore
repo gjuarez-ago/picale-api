@@ -15,3 +15,12 @@ target/
 
 *.log
 HELP.md
+
+# Plantilla del servidor: SI va al repo (el patron .env.* de arriba la tapaba).
+!.env.vps.example
+
+# Medios subidos en desarrollo local: contenido de usuarios, no codigo.
+uploads/
+
+# Copias de seguridad sueltas de scripts o configuraciones.
+*.bak

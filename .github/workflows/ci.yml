@@ -1,0 +1,52 @@
+# Integración continua: compilar y correr las pruebas en cada cambio.
+#
+# Corre en cada push a main y en cada pull request. Es lo que hasta ahora se
+# hacía a mano antes de desplegar —`mvn test`— y que ningún script exigía: un
+# despliegue podía salir con las pruebas rotas sin que nadie lo notara.
+#
+# No despliega nada. Eso es de deploy.yml, que además exige que esto pase.
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+# Si llegan dos pushes seguidos a la misma rama, el primero se cancela: lo que
+# importa es el estado del último.
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  pruebas:
+    name: Compilar y probar
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "17"
+          cache: maven
+
+      # Las pruebas de imagen hablan con ffmpeg de verdad, no con un doble, y
+      # se saltan solas si no está. Instalarlo aquí es lo que hace que corran.
+      - name: ffmpeg
+        run: sudo apt-get update -qq && sudo apt-get install -y -qq ffmpeg
+
+      - name: Pruebas
+        run: mvn -B --no-transfer-progress test
+
+      # Los reportes se guardan aunque falle, que es justo cuando hacen falta.
+      - name: Reportes de pruebas
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: surefire-reports
+          path: target/surefire-reports
+          if-no-files-found: ignore
+          retention-days: 7
