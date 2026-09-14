@@ -1,0 +1,17 @@
+target/
+!.mvn/wrapper/maven-wrapper.jar
+!**/src/main/**/target/
+!**/src/test/**/target/
+
+.idea/
+*.iws
+*.iml
+*.ipr
+.vscode/
+
+.env
+.env.*
+!.env.example
+
+*.log
+HELP.md

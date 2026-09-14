@@ -1,0 +1,57 @@
+# metricol.api conviviendo con direccion360 en el mismo VPS.
+#
+# Las reglas de esa convivencia, que son las que ya sigue direccion360:
+# cada API en su contenedor, expuesta SOLO en 127.0.0.1 y con su propio
+# puerto, y nginx publicando cada una en su subdominio. Nada de esto escucha
+# en la IP publica por su cuenta.
+#
+# El puerto interno es el 18085 porque el 18084 ya es de direccion360. Si se
+# repitiera, el segundo contenedor no levantaria y el error ("port is already
+# allocated") no dice cual de las dos APIs se quedo sin arrancar.
+services:
+  metricol-api:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: metricol-api
+    restart: unless-stopped
+    env_file:
+      - .env.vps
+    environment:
+      PORT: 8080
+      # La zona horaria del servidor, y por tanto la de LocalDateTime.now().
+      # La app manda la hora local sin zona: si esto queda en UTC, lo
+      # programado a las 14:00 sale seis horas antes. El Dockerfile la pasa
+      # ademas a la JVM con -Duser.timezone.
+      TZ: ${TZ:-America/Mexico_City}
+      SPRING_PROFILES_ACTIVE: ${SPRING_PROFILES_ACTIVE:-prod}
+      # La base viaja por el mismo proxy de Cloud SQL que usa direccion360,
+      # contra la MISMA instancia y una base distinta. La instancia ya esta
+      # pagada y dimensionada; levantar un Postgres aparte en el VPS seria un
+      # segundo sitio que respaldar y que se llena sin avisar.
+      SPRING_DATASOURCE_URL: jdbc:postgresql://cloud-sql-proxy:5432/${DB_NAME:-metricol}
+    ports:
+      - "127.0.0.1:${APP_PORT:-18085}:8080"
+    healthcheck:
+      # Contra el puerto y no contra /actuator/health: la seguridad de esta
+      # API pide sesion hasta para eso, asi que un health por HTTP contestaria
+      # 401 y docker lo leeria como caido. Esto comprueba lo unico que puede
+      # comprobar desde fuera sin abrir nada: que Tomcat acepta conexiones.
+      test: ["CMD-SHELL", "nc -z 127.0.0.1 8080 || exit 1"]
+      interval: 30s
+      timeout: 5s
+      retries: 5
+      start_period: 60s
+    depends_on:
+      - cloud-sql-proxy
+
+  cloud-sql-proxy:
+    # Propio y no compartido con direccion360: dos compose distintos no deben
+    # depender de un contenedor del otro, o reiniciar una API tumba la otra.
+    image: gcr.io/cloud-sql-connectors/cloud-sql-proxy:2.25.2
+    container_name: metricol-cloud-sql-proxy
+    restart: unless-stopped
+    command:
+      - --address=0.0.0.0
+      - --port=5432
+      - cmrg-505321:us-central1:cmrg

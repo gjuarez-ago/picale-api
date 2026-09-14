@@ -1,0 +1,71 @@
+spring:
+  config:
+    activate:
+      on-profile: qa
+
+  # Base de datos de QA, separada de produccion.
+  #
+  # Sin defaults a proposito: si falta una variable el arranque falla en el
+  # acto y con nombre propio, en vez de levantar contra la base equivocada.
+  # Ese es el peor escenario aqui — QA escribiendo en prod no se nota hasta
+  # que ya paso.
+  datasource:
+    url: ${SPRING_DATASOURCE_URL}
+    username: ${DB_USER}
+    password: ${DB_PASS}
+    driver-class-name: ${DB_DRIVER:org.postgresql.Driver}
+
+  # `update` para poder probar cambios de esquema sin migracion a mano.
+  jpa:
+    hibernate:
+      ddl-auto: update
+    show-sql: true
+    properties:
+      hibernate:
+        format_sql: true
+        dialect: ${DB_DIALECT:org.hibernate.dialect.PostgreSQLDialect}
+
+# Desde donde se puede llamar a esta API. El default de application.properties
+# abre localhost y los tuneles de ngrok, que en QA ya no aplica.
+app:
+  cors:
+    allowed-origins: ${CORS_ALLOWED_ORIGINS}
+  # A donde vuelve el navegador despues de conectar una red en upload-post.com.
+  base-url: ${APP_BASE_URL}
+
+# El secreto de QA es propio: compartirlo con prod haria que un token de aqui
+# valiera alla.
+jwt:
+  secret: ${JWT_SECRET}
+  expiration-days: ${JWT_EXPIRATION_DAYS:15}
+
+# Medios de las publicaciones. Obligatorio: sin bucket no se puede subir una
+# foto, y es lo primero que se prueba en QA.
+cloudflare:
+  r2:
+    endpoint: ${CLOUDFLARE_R2_ENDPOINT}
+    access-key: ${CLOUDFLARE_R2_ACCESS_KEY_ID}
+    secret-key: ${CLOUDFLARE_R2_SECRET_ACCESS_KEY}
+    bucket: ${CLOUDFLARE_R2_BUCKET_NAME}
+    public-url: ${CLOUDFLARE_R2_PUBLIC_URL}
+
+# Publicacion real en redes. Vacio de fabrica: sin llave, conectar una red
+# avisa que no esta configurado en vez de fallar con un 401 confuso
+# (UploadPostProperties.isConfigured lo cubre).
+uploadpost:
+  api-key: ${UPLOAD_POST_API_KEY:}
+  base-url: ${UPLOAD_POST_BASE_URL:https://api.upload-post.com/api}
+
+# Sugerencias de texto. Sin llave la aplicacion levanta igual y solo la IA
+# queda apagada (OpenAiProperties.isConfigured).
+openai:
+  api-key: ${OPENAI_API_KEY:}
+  model: ${OPENAI_API_MODEL:gpt-4o-mini}
+
+server:
+  port: ${PORT:8080}
+
+logging:
+  level:
+    root: INFO
+    com.metricol.api: DEBUG

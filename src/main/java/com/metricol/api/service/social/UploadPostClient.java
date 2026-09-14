@@ -1,0 +1,208 @@
+package com.metricol.api.service.social;
+
+import java.io.IOException;
+import java.net.URI;
+import java.net.http.HttpClient;
+import java.net.http.HttpRequest;
+import java.net.http.HttpResponse;
+import java.time.Duration;
+import java.util.List;
+import java.util.Map;
+
+import org.springframework.core.io.ByteArrayResource;
+import org.springframework.http.MediaType;
+import org.springframework.stereotype.Component;
+import org.springframework.util.LinkedMultiValueMap;
+import org.springframework.util.MultiValueMap;
+import org.springframework.web.client.RestClient;
+
+import com.metricol.api.config.UploadPostProperties;
+import com.metricol.api.enums.PostFormat;
+
+/**
+ * Cliente delgado sobre la API de upload-post.com (https://docs.upload-post.com).
+ * Solo sabe hablar HTTP con ellos; quién arma el request a partir de un Post
+ * de metricol es {@link UploadPostPublisher}.
+ *
+ * OJO: el formato exacto de la respuesta (éxito/error por plataforma) no
+ * está del todo documentado públicamente — este cliente devuelve el JSON
+ * crudo como Map para que el publisher lo interprete de forma tolerante.
+ * Conviene confirmar el shape real con una llamada de prueba en cuanto haya
+ * una API key válida.
+ */
+@Component
+public class UploadPostClient {
+
+    private final UploadPostProperties props;
+    private final RestClient restClient;
+    /**
+     * Sin timeout, un medio que no responde deja el worker colgado para
+     * siempre y ese hilo no vuelve a publicar nada: con ocho workers bastan
+     * ocho archivos lentos para parar la cola entera.
+     */
+    private final HttpClient downloader = HttpClient.newBuilder()
+            .connectTimeout(Duration.ofSeconds(15))
+            .build();
+
+    public UploadPostClient(UploadPostProperties props) {
+        this.props = props;
+        this.restClient = RestClient.builder()
+                .baseUrl(props.getBaseUrl())
+                .defaultHeader("Authorization", "Apikey " + props.getApiKey())
+                .build();
+    }
+
+    @SuppressWarnings("unchecked")
+    public Map<String, Object> publishText(String user, List<String> platforms, String title) {
+        MultiValueMap<String, Object> body = baseFields(user, platforms);
+        body.add("title", title);
+
+        return restClient.post()
+                .uri("/upload_text")
+                .contentType(MediaType.MULTIPART_FORM_DATA)
+                .body(body)
+                .retrieve()
+                .body(Map.class);
+    }
+
+    /**
+     * Publica de una a varias fotos como UNA sola publicación (carrusel).
+     *
+     * <p>Todas las imágenes van en el mismo request, repitiendo el campo
+     * {@code photos[]}. Mandarlas de a una habría creado varias publicaciones
+     * sueltas en la red en vez de un carrusel, que es justo lo contrario de
+     * lo que pide quien elige seis fotos.
+     */
+    @SuppressWarnings("unchecked")
+    public Map<String, Object> publishPhotos(
+            String user, List<String> platforms, String caption,
+            Map<String, String> captionsPorRed, List<String> photoUrls, PostFormat formato) {
+        MultiValueMap<String, Object> body = baseFields(user, platforms);
+        body.add("title", caption);
+        textosPorRed(body, captionsPorRed);
+        formatoPorRed(body, platforms, formato);
+        // El orden importa: es el que verá quien deslice el carrusel, y es el
+        // que la persona eligió en la pantalla de captura.
+        photoUrls.forEach(url -> body.add("photos[]", download(url)));
+
+        return restClient.post()
+                .uri("/upload_photos")
+                .contentType(MediaType.MULTIPART_FORM_DATA)
+                .body(body)
+                .retrieve()
+                .body(Map.class);
+    }
+
+    @SuppressWarnings("unchecked")
+    public Map<String, Object> publishVideo(String user, List<String> platforms, String title,
+            Map<String, String> captionsPorRed, String videoUrl, PostFormat formato) {
+        MultiValueMap<String, Object> body = baseFields(user, platforms);
+        body.add("title", title);
+        textosPorRed(body, captionsPorRed);
+        formatoPorRed(body, platforms, formato);
+        body.add("video", download(videoUrl));
+
+        return restClient.post()
+                .uri("/upload")
+                .contentType(MediaType.MULTIPART_FORM_DATA)
+                .body(body)
+                .retrieve()
+                .body(Map.class);
+    }
+
+    @SuppressWarnings("unchecked")
+    public Map<String, Object> status(String requestId) {
+        return restClient.get()
+                .uri(uriBuilder -> uriBuilder.path("/uploadposts/status").queryParam("request_id", requestId).build())
+                .retrieve()
+                .body(Map.class);
+    }
+
+    /**
+     * Añade el texto propio de cada red, cuando lo hay.
+     *
+     * <p>upload-post acepta {@code instagram_title}, {@code facebook_title},
+     * {@code tiktok_title}, {@code linkedin_title} y {@code x_title}, y cada
+     * uno pisa al {@code title} general. Es lo que permite mandar un texto
+     * distinto por red SIN partir la publicacion en cinco envios: sigue siendo
+     * una sola llamada, y el carrusel sigue siendo una sola publicacion.
+     *
+     * <p>Lo que no venga se queda sin su campo, y esa red usa el general. Es
+     * el comportamiento que habia antes de todo esto.
+     */
+    private void textosPorRed(MultiValueMap<String, Object> body, Map<String, String> captionsPorRed) {
+        if (captionsPorRed == null || captionsPorRed.isEmpty()) {
+            return;
+        }
+        captionsPorRed.forEach((platform, texto) -> {
+            if (texto != null && !texto.isBlank()) {
+                body.add(platform.toLowerCase() + "_title", texto);
+            }
+        });
+    }
+
+    /**
+     * Le dice al proveedor qué clase de publicación es, cuando hay algo que
+     * decirle.
+     *
+     * <p><b>Solo para historias.</b> upload-post trata un video como reel
+     * cuando no se le manda nada, que es justo lo que queremos para
+     * {@code REEL} — y no mandarlo deja intacto el camino que hoy funciona—.
+     * Una historia, en cambio, es invisible sin esto: se publicaría como reel,
+     * que era el comportamiento de toda la aplicación hasta ahora, porque el
+     * formato no existía y este campo no se mandaba nunca.
+     *
+     * <p>Ojo con los nombres, que no son simétricos: Facebook lo lee en
+     * {@code facebook_media_type} y <b>Instagram en {@code media_type} a
+     * secas</b>, no en {@code instagram_media_type}. Sale de la especificación
+     * OpenAPI del proveedor, y es de las cosas que no dan error: un campo con
+     * el nombre equivocado se ignora y la historia sale de reel sin que nadie
+     * se entere.
+     *
+     * <p>Las demás redes no tienen historias —TikTok y YouTube no las publican
+     * por API, LinkedIn no las tiene—, así que no hay más casos que atender.
+     * Si algún día el proveedor rechaza el valor, este es el único sitio donde
+     * tocarlo.
+     */
+    private void formatoPorRed(MultiValueMap<String, Object> body,
+            List<String> platforms, PostFormat formato) {
+
+        if (formato != PostFormat.STORY) {
+            return;
+        }
+        if (platforms.contains("facebook")) {
+            body.add("facebook_media_type", "STORIES");
+        }
+        if (platforms.contains("instagram")) {
+            body.add("media_type", "STORIES");
+        }
+    }
+
+    private MultiValueMap<String, Object> baseFields(String user, List<String> platforms) {
+        MultiValueMap<String, Object> body = new LinkedMultiValueMap<>();
+        body.add("user", user);
+        platforms.forEach(p -> body.add("platform[]", p));
+        return body;
+    }
+
+    private ByteArrayResource download(String url) {
+        try {
+            HttpResponse<byte[]> response = downloader.send(
+                    HttpRequest.newBuilder(URI.create(url))
+                            .timeout(Duration.ofMinutes(2))
+                            .GET()
+                            .build(),
+                    HttpResponse.BodyHandlers.ofByteArray());
+            String fileName = url.substring(url.lastIndexOf('/') + 1);
+            return new ByteArrayResource(response.body()) {
+                @Override
+                public String getFilename() {
+                    return fileName;
+                }
+            };
+        } catch (IOException | InterruptedException ex) {
+            Thread.currentThread().interrupt();
+            throw new IllegalStateException("No se pudo descargar el archivo para publicarlo: " + url, ex);
+        }
+    }
+}

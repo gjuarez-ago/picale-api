@@ -1,0 +1,161 @@
+<!doctype html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Manrope:wght@400;500;600;700;800&amp;family=JetBrains+Mono:wght@400;500&amp;display=swap">
+  <style>
+    body { margin: 0; background: #F3F4F6; font-family: 'Manrope', 'Segoe UI', system-ui, sans-serif; color: #111827; }
+    a { color: #0035D7; } a:hover { color: #0025B6; }
+    .mono { font-family: 'JetBrains Mono', ui-monospace, 'Cascadia Mono', Consolas, monospace; }
+    li { text-wrap: pretty; }
+  </style>
+</helmet>
+<div style="width: 1440px; min-height: 1300px; box-sizing: border-box; padding: 56px; display: flex; flex-direction: column; gap: 32px; background: #F3F4F6;">
+
+  <div style="display: flex; flex-direction: column; gap: 10px;">
+    <span style="font-size: 13px; font-weight: 700; letter-spacing: 0.08em; text-transform: uppercase; color: #246BFD;">Pícale · metricol.api · PostgreSQL</span>
+    <h1 style="margin: 0; font-size: 48px; line-height: 1.05; font-weight: 800; color: #102A56; letter-spacing: -0.02em;">Cómo escalar</h1>
+    <p style="margin: 0; font-size: 18px; line-height: 1.5; color: #4B5563; max-width: 760px; text-wrap: pretty;">Un esquema compartido con columna de tenant aguanta miles de clientes pequeños sin rediseño. Lo que frena primero son cosas puntuales, y se atacan por etapas.</p>
+  </div>
+
+  <div style="display: grid; grid-template-columns: repeat(6, minmax(0, 1fr)); gap: 8px;">
+    <div style="display: flex; flex-direction: column; gap: 8px;">
+      <div style="height: 6px; border-radius: 999px; background: #246BFD;"></div>
+      <span style="font-size: 13px; font-weight: 700; color: #0035D7;">01 · Ya</span>
+    </div>
+    <div style="display: flex; flex-direction: column; gap: 8px;">
+      <div style="height: 6px; border-radius: 999px; background: #246BFD;"></div>
+      <span style="font-size: 13px; font-weight: 700; color: #0035D7;">02 · Ya</span>
+    </div>
+    <div style="display: flex; flex-direction: column; gap: 8px;">
+      <div style="height: 6px; border-radius: 999px; background: #FFBF2F;"></div>
+      <span style="font-size: 13px; font-weight: 700; color: #B45309;">03 · Cientos de clientes</span>
+    </div>
+    <div style="display: flex; flex-direction: column; gap: 8px;">
+      <div style="height: 6px; border-radius: 999px; background: #FFBF2F;"></div>
+      <span style="font-size: 13px; font-weight: 700; color: #B45309;">04 · Miles de clientes</span>
+    </div>
+    <div style="display: flex; flex-direction: column; gap: 8px;">
+      <div style="height: 6px; border-radius: 999px; background: #D1D5DB;"></div>
+      <span style="font-size: 13px; font-weight: 700; color: #4B5563;">05 · Un cliente grande</span>
+    </div>
+    <div style="display: flex; flex-direction: column; gap: 8px;">
+      <div style="height: 6px; border-radius: 999px; background: #D1D5DB;"></div>
+      <span style="font-size: 13px; font-weight: 700; color: #4B5563;">06 · Mucho volumen</span>
+    </div>
+  </div>
+
+  <div style="display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 20px; align-items: stretch;">
+
+    <div style="background: #FFFFFF; border: 2px solid #246BFD; border-radius: 16px; padding: 24px; display: flex; flex-direction: column; gap: 14px;">
+      <div style="display: flex; justify-content: space-between; align-items: center;">
+        <span style="font-size: 40px; font-weight: 800; line-height: 1; color: #246BFD;">01</span>
+        <span style="font-size: 12px; font-weight: 700; color: #FFFFFF; background: #246BFD; border-radius: 999px; padding: 4px 12px;">Ahora</span>
+      </div>
+      <div style="display: flex; flex-direction: column; gap: 6px;">
+        <span style="font-size: 12px; font-weight: 700; color: #9CA3AF; text-transform: uppercase; letter-spacing: 0.06em;">Antes de crecer</span>
+        <h2 style="margin: 0; font-size: 22px; line-height: 1.25; font-weight: 800; color: #102A56;">Migraciones versionadas</h2>
+      </div>
+      <ul style="margin: 0; padding-left: 18px; display: flex; flex-direction: column; gap: 8px; font-size: 15px; line-height: 1.5; color: #4B5563;">
+        <li>Hoy el esquema se crea con <span class="mono" style="font-size: 13px; color: #111827;">ddl-auto: update</span>, que no borra columnas ni actualiza restricciones.</li>
+        <li>Flyway con migraciones versionadas. Los procesos de arranque que hoy parchan datos pasan a ser migraciones.</li>
+      </ul>
+    </div>
+
+    <div style="background: #FFFFFF; border: 2px solid #246BFD; border-radius: 16px; padding: 24px; display: flex; flex-direction: column; gap: 14px;">
+      <div style="display: flex; justify-content: space-between; align-items: center;">
+        <span style="font-size: 40px; font-weight: 800; line-height: 1; color: #246BFD;">02</span>
+        <span style="font-size: 12px; font-weight: 700; color: #FFFFFF; background: #246BFD; border-radius: 999px; padding: 4px 12px;">Ahora</span>
+      </div>
+      <div style="display: flex; flex-direction: column; gap: 6px;">
+        <span style="font-size: 12px; font-weight: 700; color: #9CA3AF; text-transform: uppercase; letter-spacing: 0.06em;">Antes de crecer</span>
+        <h2 style="margin: 0; font-size: 22px; line-height: 1.25; font-weight: 800; color: #102A56;">Índices por tenant</h2>
+      </div>
+      <p style="margin: 0; font-size: 15px; line-height: 1.5; color: #4B5563;">Postgres no los crea solos para las llaves foráneas, y la limpieza de archivos cruza post_media en cada pasada.</p>
+      <div style="display: flex; flex-direction: column; gap: 6px; background: #F3F4F6; border-radius: 12px; padding: 12px 14px;">
+        <span class="mono" style="font-size: 13px; color: #111827;">posts (tenant_id, status, scheduled_at)</span>
+        <span class="mono" style="font-size: 13px; color: #111827;">media_assets (tenant_id, status)</span>
+        <span class="mono" style="font-size: 13px; color: #111827;">post_targets (post_id)</span>
+        <span class="mono" style="font-size: 13px; color: #111827;">post_media (url)</span>
+      </div>
+    </div>
+
+    <div style="background: #FFFFFF; border: 1px solid #E5E7EB; border-radius: 16px; padding: 24px; display: flex; flex-direction: column; gap: 14px;">
+      <div style="display: flex; justify-content: space-between; align-items: center;">
+        <span style="font-size: 40px; font-weight: 800; line-height: 1; color: #102A56;">03</span>
+        <span style="font-size: 12px; font-weight: 700; color: #B45309; background: #FEF3C7; border-radius: 999px; padding: 4px 12px;">Al crecer</span>
+      </div>
+      <div style="display: flex; flex-direction: column; gap: 6px;">
+        <span style="font-size: 12px; font-weight: 700; color: #9CA3AF; text-transform: uppercase; letter-spacing: 0.06em;">Cientos de clientes</span>
+        <h2 style="margin: 0; font-size: 22px; line-height: 1.25; font-weight: 800; color: #102A56;">Limpiar y leer aparte</h2>
+      </div>
+      <ul style="margin: 0; padding-left: 18px; display: flex; flex-direction: column; gap: 8px; font-size: 15px; line-height: 1.5; color: #4B5563;">
+        <li>Archivar o borrar los publish_jobs terminados.</li>
+        <li>Particionar ai_usage por mes.</li>
+        <li>Réplica de lectura para el reporte de gasto y el calendario.</li>
+      </ul>
+    </div>
+
+    <div style="background: #FFFFFF; border: 1px solid #E5E7EB; border-radius: 16px; padding: 24px; display: flex; flex-direction: column; gap: 14px;">
+      <div style="display: flex; justify-content: space-between; align-items: center;">
+        <span style="font-size: 40px; font-weight: 800; line-height: 1; color: #102A56;">04</span>
+        <span style="font-size: 12px; font-weight: 700; color: #B45309; background: #FEF3C7; border-radius: 999px; padding: 4px 12px;">Al crecer</span>
+      </div>
+      <div style="display: flex; flex-direction: column; gap: 6px;">
+        <span style="font-size: 12px; font-weight: 700; color: #9CA3AF; text-transform: uppercase; letter-spacing: 0.06em;">Miles de clientes</span>
+        <h2 style="margin: 0; font-size: 22px; line-height: 1.25; font-weight: 800; color: #102A56;">Instancia propia</h2>
+      </div>
+      <ul style="margin: 0; padding-left: 18px; display: flex; flex-direction: column; gap: 8px; font-size: 15px; line-height: 1.5; color: #4B5563;">
+        <li>Separar la base de direccion360 en su propia instancia de Cloud SQL, para que un pico de uno no tumbe al otro.</li>
+        <li>Límite de conexiones por instancia de la API.</li>
+      </ul>
+    </div>
+
+    <div style="background: #FFFFFF; border: 1px solid #E5E7EB; border-radius: 16px; padding: 24px; display: flex; flex-direction: column; gap: 14px;">
+      <div style="display: flex; justify-content: space-between; align-items: center;">
+        <span style="font-size: 40px; font-weight: 800; line-height: 1; color: #102A56;">05</span>
+        <span style="font-size: 12px; font-weight: 700; color: #4B5563; background: #F3F4F6; border-radius: 999px; padding: 4px 12px;">Cuando lo pidan los números</span>
+      </div>
+      <div style="display: flex; flex-direction: column; gap: 6px;">
+        <span style="font-size: 12px; font-weight: 700; color: #9CA3AF; text-transform: uppercase; letter-spacing: 0.06em;">Una agencia pesa como cien</span>
+        <h2 style="margin: 0; font-size: 22px; line-height: 1.25; font-weight: 800; color: #102A56;">Base propia para el cliente grande</h2>
+      </div>
+      <ul style="margin: 0; padding-left: 18px; display: flex; flex-direction: column; gap: 8px; font-size: 15px; line-height: 1.5; color: #4B5563;">
+        <li>Mover solo a ese cliente a su propia base.</li>
+        <li>Todo pasa por TenantIdentifierResolver: se elige la conexión por tenant sin tocar los servicios.</li>
+      </ul>
+    </div>
+
+    <div style="background: #FFFFFF; border: 1px solid #E5E7EB; border-radius: 16px; padding: 24px; display: flex; flex-direction: column; gap: 14px;">
+      <div style="display: flex; justify-content: space-between; align-items: center;">
+        <span style="font-size: 40px; font-weight: 800; line-height: 1; color: #102A56;">06</span>
+        <span style="font-size: 12px; font-weight: 700; color: #4B5563; background: #F3F4F6; border-radius: 999px; padding: 4px 12px;">Cuando lo pidan los números</span>
+      </div>
+      <div style="display: flex; flex-direction: column; gap: 6px;">
+        <span style="font-size: 12px; font-weight: 700; color: #9CA3AF; text-transform: uppercase; letter-spacing: 0.06em;">Decenas de miles de publicaciones al día</span>
+        <h2 style="margin: 0; font-size: 22px; line-height: 1.25; font-weight: 800; color: #102A56;">Cola fuera de la base</h2>
+      </div>
+      <ul style="margin: 0; padding-left: 18px; display: flex; flex-direction: column; gap: 8px; font-size: 15px; line-height: 1.5; color: #4B5563;">
+        <li>Pub/Sub o RabbitMQ en lugar de consultar publish_jobs cada 2 s.</li>
+        <li>Hasta entonces, la cola en Postgres es correcta y resiste reinicios.</li>
+      </ul>
+    </div>
+
+  </div>
+
+  <div style="background: #E6F0FE; border-radius: 16px; padding: 24px 28px; display: flex; align-items: center; justify-content: space-between; gap: 32px;">
+    <div style="display: flex; flex-direction: column; gap: 6px;">
+      <span style="font-size: 20px; font-weight: 800; color: #0035D7;">Recomendación: etapas 1 y 2 ahora</span>
+      <span style="font-size: 16px; line-height: 1.5; color: #102A56; max-width: 900px;">Son baratas y evitan la mayoría de los problemas futuros. Para el resto, ai_usage y publish_jobs ya dan los números para saber cuándo toca.</span>
+    </div>
+  </div>
+
+</div>
+</x-dc>
+</body>
+</html>

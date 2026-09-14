@@ -1,0 +1,297 @@
+<!doctype html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Manrope:wght@400;500;600;700;800&amp;family=JetBrains+Mono:wght@400;500&amp;display=swap">
+  <style>
+    body { margin: 0; background: #F3F4F6; font-family: 'Manrope', 'Segoe UI', system-ui, sans-serif; color: #111827; }
+    a { color: #0035D7; } a:hover { color: #0025B6; }
+    .mono { font-family: 'JetBrains Mono', ui-monospace, 'Cascadia Mono', Consolas, monospace; }
+    .fila { display: flex; justify-content: space-between; align-items: baseline; gap: 8px; }
+    .col { font-family: 'JetBrains Mono', ui-monospace, 'Cascadia Mono', Consolas, monospace; font-size: 13px; color: #111827; }
+    .tipo { font-size: 12px; color: #9CA3AF; white-space: nowrap; }
+    .llave { color: #102A56; font-weight: 700; }
+  </style>
+</helmet>
+<div style="width: 1440px; min-height: 1860px; box-sizing: border-box; padding: 56px; display: flex; flex-direction: column; background: #F3F4F6;">
+
+  <div style="display: flex; justify-content: space-between; align-items: flex-end; gap: 40px; margin-bottom: 32px;">
+    <div style="display: flex; flex-direction: column; gap: 10px;">
+      <span style="font-size: 13px; font-weight: 700; letter-spacing: 0.08em; text-transform: uppercase; color: #246BFD;">Pícale · metricol.api · PostgreSQL</span>
+      <h1 style="margin: 0; font-size: 48px; line-height: 1.05; font-weight: 800; color: #102A56; letter-spacing: -0.02em;">Jerarquía de datos</h1>
+      <p style="margin: 0; font-size: 18px; line-height: 1.5; color: #4B5563; max-width: 680px; text-wrap: pretty;">Cada cliente es un workspace. Sus datos llevan su tenant_id y Hibernate los filtra solo; las tablas de sistema guardan el workspace como columna para poder ver a todos.</p>
+    </div>
+    <div style="display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px 28px; background: #FFFFFF; border: 1px solid #E5E7EB; border-radius: 12px; padding: 16px 20px;">
+      <div style="display: flex; align-items: center; gap: 10px;">
+        <div style="width: 28px; height: 0; border-top: 2px solid #102A56;"></div>
+        <span style="font-size: 13px; color: #4B5563;">Llave foránea</span>
+      </div>
+      <div style="display: flex; align-items: center; gap: 10px;">
+        <div style="width: 28px; height: 0; border-top: 2px dashed #9CA3AF;"></div>
+        <span style="font-size: 13px; color: #4B5563;">Vínculo lógico, sin FK</span>
+      </div>
+      <div style="display: flex; align-items: center; gap: 10px;">
+        <span style="font-size: 11px; font-weight: 700; color: #0035D7; background: #E6F0FE; border-radius: 999px; padding: 3px 8px;">tenant_id</span>
+        <span style="font-size: 13px; color: #4B5563;">Filtrado por cliente</span>
+      </div>
+      <div style="display: flex; align-items: center; gap: 10px;">
+        <span style="font-size: 11px; font-weight: 700; color: #4B5563; background: #F3F4F6; border: 1px solid #E5E7EB; border-radius: 999px; padding: 2px 8px;">workspace_id</span>
+        <span style="font-size: 13px; color: #4B5563;">Sin filtro, ve a todos</span>
+      </div>
+    </div>
+  </div>
+
+  <div style="background: #FFFFFF; border: 1px solid #E5E7EB; border-radius: 16px; padding: 24px; display: flex; flex-direction: column; gap: 20px;">
+    <div style="display: flex; align-items: center; gap: 12px;">
+      <span style="font-size: 12px; font-weight: 700; color: #FFFFFF; background: #102A56; border-radius: 999px; padding: 4px 12px;">Nivel 1</span>
+      <span style="font-size: 20px; font-weight: 800; color: #102A56;">Raíz</span>
+      <span style="font-size: 15px; color: #4B5563;">Quién entra y a qué clientes tiene acceso.</span>
+    </div>
+    <div style="display: grid; grid-template-columns: minmax(0, 1fr) auto minmax(0, 1.15fr) auto minmax(0, 1fr); align-items: center; gap: 16px;">
+
+      <div style="background: #FFFFFF; border: 1px solid #E5E7EB; border-radius: 12px; overflow: hidden; display: flex; flex-direction: column;">
+        <div style="display: flex; align-items: center; justify-content: space-between; gap: 8px; padding: 12px 14px; border-bottom: 1px solid #E5E7EB;">
+          <span class="mono" style="font-size: 15px; font-weight: 500; color: #111827;">users</span>
+        </div>
+        <div style="display: flex; flex-direction: column; gap: 7px; padding: 12px 14px;">
+          <div class="fila"><span class="col">id</span><span class="tipo">uuid · <span class="llave">PK</span></span></div>
+          <div class="fila"><span class="col">email</span><span class="tipo">text</span></div>
+          <div class="fila"><span class="col">workspace_id</span><span class="tipo">uuid · <span class="llave">FK</span></span></div>
+          <div class="fila"><span class="col">role</span><span class="tipo">enum</span></div>
+        </div>
+        <div style="padding: 10px 14px; background: #F9FAFB; border-top: 1px solid #E5E7EB; font-size: 12px; color: #4B5563;">workspace_id es el cliente activo</div>
+      </div>
+
+      <div style="display: flex; flex-direction: column; align-items: center; gap: 6px;">
+        <span style="font-size: 12px; font-weight: 600; color: #4B5563;">activo</span>
+        <div style="width: 64px; height: 0; border-top: 2px solid #102A56;"></div>
+      </div>
+
+      <div style="background: #FFFFFF; border: 2px solid #246BFD; border-radius: 12px; overflow: hidden; display: flex; flex-direction: column;">
+        <div style="display: flex; align-items: center; justify-content: space-between; gap: 8px; padding: 12px 14px; border-bottom: 1px solid #E5E7EB; background: #E6F0FE;">
+          <span class="mono" style="font-size: 16px; font-weight: 500; color: #0035D7;">workspaces</span>
+          <span style="font-size: 11px; font-weight: 700; color: #FFFFFF; background: #102A56; border-radius: 999px; padding: 3px 8px;">raíz</span>
+        </div>
+        <div style="display: flex; flex-direction: column; gap: 7px; padding: 12px 14px;">
+          <div class="fila"><span class="col">id</span><span class="tipo">uuid · <span class="llave">PK</span></span></div>
+          <div class="fila"><span class="col">name</span><span class="tipo">text</span></div>
+          <div class="fila"><span class="col">logo_url</span><span class="tipo">text</span></div>
+          <div class="fila"><span class="col">upload_post_profile</span><span class="tipo">text</span></div>
+        </div>
+        <div style="padding: 10px 14px; background: #F9FAFB; border-top: 1px solid #E5E7EB; font-size: 12px; color: #4B5563;">Un workspace es un cliente, con su propio perfil de upload-post</div>
+      </div>
+
+      <div style="display: flex; flex-direction: column; align-items: center; gap: 6px;">
+        <span style="font-size: 12px; font-weight: 600; color: #4B5563;">acceso</span>
+        <div style="width: 64px; height: 0; border-top: 2px solid #102A56;"></div>
+      </div>
+
+      <div style="background: #FFFFFF; border: 1px solid #E5E7EB; border-radius: 12px; overflow: hidden; display: flex; flex-direction: column;">
+        <div style="display: flex; align-items: center; justify-content: space-between; gap: 8px; padding: 12px 14px; border-bottom: 1px solid #E5E7EB;">
+          <span class="mono" style="font-size: 15px; font-weight: 500; color: #111827;">workspace_members</span>
+        </div>
+        <div style="display: flex; flex-direction: column; gap: 7px; padding: 12px 14px;">
+          <div class="fila"><span class="col">user_id</span><span class="tipo">uuid · <span class="llave">FK</span></span></div>
+          <div class="fila"><span class="col">workspace_id</span><span class="tipo">uuid · <span class="llave">FK</span></span></div>
+          <div class="fila"><span class="col">role</span><span class="tipo">enum</span></div>
+          <div class="fila"><span class="col">(user_id, workspace_id)</span><span class="tipo">único</span></div>
+        </div>
+        <div style="padding: 10px 14px; background: #F9FAFB; border-top: 1px solid #E5E7EB; font-size: 12px; color: #4B5563;">A qué clientes puede cambiar cada usuario</div>
+      </div>
+
+    </div>
+  </div>
+
+  <div style="display: flex; flex-direction: column; align-items: center; padding: 6px 0;">
+    <div style="width: 0; height: 18px; border-left: 2px dashed #9CA3AF;"></div>
+    <span class="mono" style="font-size: 12px; color: #4B5563; background: #FFFFFF; border: 1px solid #E5E7EB; border-radius: 999px; padding: 4px 12px;">tenant_id = workspaces.id</span>
+    <div style="width: 0; height: 18px; border-left: 2px dashed #9CA3AF;"></div>
+  </div>
+
+  <div style="background: #FFFFFF; border: 1px solid #E5E7EB; border-radius: 16px; padding: 24px; display: flex; flex-direction: column; gap: 20px;">
+    <div style="display: flex; align-items: center; gap: 12px;">
+      <span style="font-size: 12px; font-weight: 700; color: #FFFFFF; background: #246BFD; border-radius: 999px; padding: 4px 12px;">Nivel 2</span>
+      <span style="font-size: 20px; font-weight: 800; color: #102A56;">Datos del cliente</span>
+      <span style="font-size: 15px; color: #4B5563;">Esquema compartido: Hibernate agrega el tenant a cada consulta.</span>
+    </div>
+    <div style="display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); gap: 16px; align-items: start;">
+
+      <div style="background: #FFFFFF; border: 1px solid #E5E7EB; border-radius: 12px; overflow: hidden; display: flex; flex-direction: column;">
+        <div style="display: flex; align-items: center; justify-content: space-between; gap: 8px; padding: 12px 14px; border-bottom: 1px solid #E5E7EB;">
+          <span class="mono" style="font-size: 15px; font-weight: 500; color: #111827;">social_accounts</span>
+          <span style="font-size: 11px; font-weight: 700; color: #0035D7; background: #E6F0FE; border-radius: 999px; padding: 3px 8px;">tenant_id</span>
+        </div>
+        <div style="display: flex; flex-direction: column; gap: 7px; padding: 12px 14px;">
+          <div class="fila"><span class="col">id</span><span class="tipo">uuid · <span class="llave">PK</span></span></div>
+          <div class="fila"><span class="col">platform</span><span class="tipo">enum</span></div>
+          <div class="fila"><span class="col">account_name</span><span class="tipo">text</span></div>
+          <div class="fila"><span class="col">page_id</span><span class="tipo">text</span></div>
+          <div class="fila"><span class="col">status</span><span class="tipo">enum</span></div>
+        </div>
+        <div style="padding: 10px 14px; background: #F9FAFB; border-top: 1px solid #E5E7EB; font-size: 12px; color: #4B5563;">Las redes conectadas del cliente</div>
+      </div>
+
+      <div style="background: #FFFFFF; border: 1px solid #E5E7EB; border-radius: 12px; overflow: hidden; display: flex; flex-direction: column;">
+        <div style="display: flex; align-items: center; justify-content: space-between; gap: 8px; padding: 12px 14px; border-bottom: 1px solid #E5E7EB;">
+          <span class="mono" style="font-size: 15px; font-weight: 500; color: #111827;">social_connection_checks</span>
+        </div>
+        <div style="padding: 8px 14px 0;">
+          <span style="font-size: 11px; font-weight: 700; color: #0035D7; background: #E6F0FE; border-radius: 999px; padding: 3px 8px;">tenant_id</span>
+        </div>
+        <div style="display: flex; flex-direction: column; gap: 7px; padding: 12px 14px;">
+          <div class="fila"><span class="col">platform</span><span class="tipo">text</span></div>
+          <div class="fila"><span class="col">last_verified_at</span><span class="tipo">timestamp</span></div>
+          <div class="fila"><span class="col">expired_since</span><span class="tipo">timestamp</span></div>
+        </div>
+        <div style="padding: 10px 14px; background: #F9FAFB; border-top: 1px solid #E5E7EB; font-size: 12px; color: #4B5563;">La salud del permiso de cada red</div>
+      </div>
+
+      <div style="background: #FFFFFF; border: 1px solid #E5E7EB; border-radius: 12px; overflow: hidden; display: flex; flex-direction: column;">
+        <div style="display: flex; align-items: center; justify-content: space-between; gap: 8px; padding: 12px 14px; border-bottom: 1px solid #E5E7EB;">
+          <span class="mono" style="font-size: 15px; font-weight: 500; color: #111827;">media_assets</span>
+          <span style="font-size: 11px; font-weight: 700; color: #0035D7; background: #E6F0FE; border-radius: 999px; padding: 3px 8px;">tenant_id</span>
+        </div>
+        <div style="display: flex; flex-direction: column; gap: 7px; padding: 12px 14px;">
+          <div class="fila"><span class="col">id</span><span class="tipo">uuid · <span class="llave">PK</span></span></div>
+          <div class="fila"><span class="col">url</span><span class="tipo">text</span></div>
+          <div class="fila"><span class="col">storage_key</span><span class="tipo">text</span></div>
+          <div class="fila"><span class="col">size_bytes</span><span class="tipo">bigint</span></div>
+          <div class="fila"><span class="col">status</span><span class="tipo">enum</span></div>
+          <div class="fila"><span class="col">descripcion_ia</span><span class="tipo">text</span></div>
+        </div>
+        <div style="padding: 10px 14px; background: #F9FAFB; border-top: 1px solid #E5E7EB; font-size: 12px; color: #4B5563;">La suma de size_bytes es la cuota de espacio</div>
+      </div>
+
+      <div style="grid-column: span 2; background: #FFFFFF; border: 1px solid #E5E7EB; border-radius: 12px; overflow: hidden; display: flex; flex-direction: column;">
+        <div style="display: flex; align-items: center; justify-content: space-between; gap: 8px; padding: 12px 14px; border-bottom: 1px solid #E5E7EB;">
+          <span class="mono" style="font-size: 15px; font-weight: 500; color: #111827;">posts</span>
+          <span style="font-size: 11px; font-weight: 700; color: #0035D7; background: #E6F0FE; border-radius: 999px; padding: 3px 8px;">tenant_id</span>
+        </div>
+        <div style="display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 7px 24px; padding: 12px 14px;">
+          <div class="fila"><span class="col">id</span><span class="tipo">uuid · <span class="llave">PK</span></span></div>
+          <div class="fila"><span class="col">status</span><span class="tipo">enum</span></div>
+          <div class="fila"><span class="col">caption</span><span class="tipo">text</span></div>
+          <div class="fila"><span class="col">scheduled_at</span><span class="tipo">timestamp</span></div>
+          <div class="fila"><span class="col">media_type</span><span class="tipo">enum</span></div>
+          <div class="fila"><span class="col">published_at</span><span class="tipo">timestamp</span></div>
+        </div>
+        <div style="display: flex; flex-direction: column; gap: 10px; padding: 4px 14px 14px;">
+          <span style="font-size: 12px; font-weight: 700; color: #9CA3AF; text-transform: uppercase; letter-spacing: 0.06em;">Cuelgan de posts</span>
+          <div style="display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px;">
+
+            <div style="background: #F9FAFB; border: 1px solid #E5E7EB; border-radius: 12px; display: flex; flex-direction: column; gap: 7px; padding: 12px 14px;">
+              <span class="mono" style="font-size: 14px; font-weight: 500; color: #111827; margin-bottom: 2px;">post_media</span>
+              <div class="fila"><span class="col">post_id</span><span class="tipo">uuid · <span class="llave">FK</span></span></div>
+              <div class="fila"><span class="col">sort_order</span><span class="tipo">int</span></div>
+              <div class="fila"><span class="col">url</span><span class="tipo">text</span></div>
+              <span style="font-size: 12px; color: #4B5563; margin-top: 4px;">El carrusel en orden. La url apunta a media_assets sin FK.</span>
+            </div>
+
+            <div style="background: #F9FAFB; border: 1px solid #E5E7EB; border-radius: 12px; display: flex; flex-direction: column; gap: 7px; padding: 12px 14px;">
+              <span class="mono" style="font-size: 14px; font-weight: 500; color: #111827; margin-bottom: 2px;">post_targets</span>
+              <div class="fila"><span class="col">post_id</span><span class="tipo">uuid · <span class="llave">FK</span></span></div>
+              <div class="fila"><span class="col">social_account_id</span><span class="tipo">uuid · <span class="llave">FK</span></span></div>
+              <div class="fila"><span class="col">status</span><span class="tipo">enum</span></div>
+              <div class="fila"><span class="col">caption_enviado</span><span class="tipo">text</span></div>
+              <span style="font-size: 12px; color: #4B5563; margin-top: 4px;">Una fila por red, con su resultado y el texto que salió.</span>
+            </div>
+
+          </div>
+        </div>
+      </div>
+
+    </div>
+  </div>
+
+  <div style="display: flex; flex-direction: column; align-items: center; padding: 6px 0;">
+    <div style="width: 0; height: 18px; border-left: 2px dashed #9CA3AF;"></div>
+    <span class="mono" style="font-size: 12px; color: #4B5563; background: #FFFFFF; border: 1px solid #E5E7EB; border-radius: 999px; padding: 4px 12px;">workspace_id como columna normal</span>
+    <div style="width: 0; height: 18px; border-left: 2px dashed #9CA3AF;"></div>
+  </div>
+
+  <div style="background: #FFFFFF; border: 1px solid #E5E7EB; border-radius: 16px; padding: 24px; display: flex; flex-direction: column; gap: 20px;">
+    <div style="display: flex; align-items: center; gap: 12px;">
+      <span style="font-size: 12px; font-weight: 700; color: #FFFFFF; background: #4B5563; border-radius: 999px; padding: 4px 12px;">Nivel 3</span>
+      <span style="font-size: 20px; font-weight: 800; color: #102A56;">Sistema</span>
+      <span style="font-size: 15px; color: #4B5563;">Sin filtro de tenant: los procesos de fondo y los reportes ven a todos los clientes.</span>
+    </div>
+    <div style="display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 16px; align-items: start;">
+
+      <div style="background: #FFFFFF; border: 1px solid #E5E7EB; border-radius: 12px; overflow: hidden; display: flex; flex-direction: column;">
+        <div style="display: flex; align-items: center; justify-content: space-between; gap: 8px; padding: 12px 14px; border-bottom: 1px solid #E5E7EB;">
+          <span class="mono" style="font-size: 15px; font-weight: 500; color: #111827;">publish_jobs</span>
+          <span style="font-size: 11px; font-weight: 700; color: #4B5563; background: #F3F4F6; border: 1px solid #E5E7EB; border-radius: 999px; padding: 2px 8px;">workspace_id</span>
+        </div>
+        <div style="display: flex; flex-direction: column; gap: 7px; padding: 12px 14px;">
+          <div class="fila"><span class="col">post_id</span><span class="tipo">uuid</span></div>
+          <div class="fila"><span class="col">status</span><span class="tipo">enum</span></div>
+          <div class="fila"><span class="col">run_at</span><span class="tipo">timestamp</span></div>
+          <div class="fila"><span class="col">attempts</span><span class="tipo">int</span></div>
+          <div class="fila"><span class="col">(status, run_at)</span><span class="tipo">índice</span></div>
+        </div>
+        <div style="padding: 10px 14px; background: #F9FAFB; border-top: 1px solid #E5E7EB; font-size: 12px; color: #4B5563;">La cola de publicación. El despachador la consulta cada 2 s</div>
+      </div>
+
+      <div style="background: #FFFFFF; border: 1px solid #E5E7EB; border-radius: 12px; overflow: hidden; display: flex; flex-direction: column;">
+        <div style="display: flex; align-items: center; justify-content: space-between; gap: 8px; padding: 12px 14px; border-bottom: 1px solid #E5E7EB;">
+          <span class="mono" style="font-size: 15px; font-weight: 500; color: #111827;">daily_publish_usage</span>
+          <span style="font-size: 11px; font-weight: 700; color: #4B5563; background: #F3F4F6; border: 1px solid #E5E7EB; border-radius: 999px; padding: 2px 8px;">workspace_id</span>
+        </div>
+        <div style="display: flex; flex-direction: column; gap: 7px; padding: 12px 14px;">
+          <div class="fila"><span class="col">platform</span><span class="tipo">enum</span></div>
+          <div class="fila"><span class="col">usage_day</span><span class="tipo">date</span></div>
+          <div class="fila"><span class="col">used</span><span class="tipo">int</span></div>
+          <div class="fila"><span class="col">(workspace, red, día)</span><span class="tipo">único</span></div>
+        </div>
+        <div style="padding: 10px 14px; background: #F9FAFB; border-top: 1px solid #E5E7EB; font-size: 12px; color: #4B5563;">La cuota del día por red, sumada en la propia base</div>
+      </div>
+
+      <div style="background: #FFFFFF; border: 1px solid #E5E7EB; border-radius: 12px; overflow: hidden; display: flex; flex-direction: column;">
+        <div style="display: flex; align-items: center; justify-content: space-between; gap: 8px; padding: 12px 14px; border-bottom: 1px solid #E5E7EB;">
+          <span class="mono" style="font-size: 15px; font-weight: 500; color: #111827;">ai_usage</span>
+          <span style="font-size: 11px; font-weight: 700; color: #4B5563; background: #F3F4F6; border: 1px solid #E5E7EB; border-radius: 999px; padding: 2px 8px;">workspace_id</span>
+        </div>
+        <div style="display: flex; flex-direction: column; gap: 7px; padding: 12px 14px;">
+          <div class="fila"><span class="col">operacion</span><span class="tipo">enum</span></div>
+          <div class="fila"><span class="col">modelo</span><span class="tipo">text</span></div>
+          <div class="fila"><span class="col">tokens_entrada · salida</span><span class="tipo">int</span></div>
+          <div class="fila"><span class="col">costo_usd</span><span class="tipo">decimal</span></div>
+        </div>
+        <div style="padding: 10px 14px; background: #F9FAFB; border-top: 1px solid #E5E7EB; font-size: 12px; color: #4B5563;">El gasto de IA por cliente, con el precio del día</div>
+      </div>
+
+    </div>
+  </div>
+
+  <div style="display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 16px; margin-top: 32px;">
+    <div style="background: #FFFFFF; border: 1px solid #E5E7EB; border-radius: 12px; padding: 16px 18px; display: flex; flex-direction: column; gap: 6px;">
+      <span style="font-size: 12px; font-weight: 700; color: #9CA3AF; text-transform: uppercase; letter-spacing: 0.06em;">Fuera de la base</span>
+      <span style="font-size: 17px; font-weight: 800; color: #102A56;">Cloudflare R2</span>
+      <span style="font-size: 14px; line-height: 1.5; color: #4B5563;">Los archivos. En la base solo quedan la url y el storage_key.</span>
+    </div>
+    <div style="background: #FFFFFF; border: 1px solid #E5E7EB; border-radius: 12px; padding: 16px 18px; display: flex; flex-direction: column; gap: 6px;">
+      <span style="font-size: 12px; font-weight: 700; color: #9CA3AF; text-transform: uppercase; letter-spacing: 0.06em;">Fuera de la base</span>
+      <span style="font-size: 17px; font-weight: 800; color: #102A56;">upload-post</span>
+      <span style="font-size: 14px; line-height: 1.5; color: #4B5563;">Los tokens de las redes, en un perfil por workspace.</span>
+    </div>
+    <div style="background: #FFFFFF; border: 1px solid #E5E7EB; border-radius: 12px; padding: 16px 18px; display: flex; flex-direction: column; gap: 6px;">
+      <span style="font-size: 12px; font-weight: 700; color: #9CA3AF; text-transform: uppercase; letter-spacing: 0.06em;">Fuera de la base</span>
+      <span style="font-size: 17px; font-weight: 800; color: #102A56;">OpenAI</span>
+      <span style="font-size: 14px; line-height: 1.5; color: #4B5563;">Textos y descripciones de fotos. Cada llamada queda en ai_usage.</span>
+    </div>
+    <div style="background: #102A56; border-radius: 12px; padding: 16px 18px; display: flex; flex-direction: column; gap: 6px;">
+      <span style="font-size: 12px; font-weight: 700; color: #28C9FD; text-transform: uppercase; letter-spacing: 0.06em;">Dónde vive</span>
+      <span style="font-size: 17px; font-weight: 800; color: #FFFFFF;">PostgreSQL en Cloud SQL</span>
+      <span style="font-size: 14px; line-height: 1.5; color: #E6F0FE;">Instancia compartida con direccion360. El esquema se crea con ddl-auto: update.</span>
+    </div>
+  </div>
+
+</div>
+</x-dc>
+</body>
+</html>

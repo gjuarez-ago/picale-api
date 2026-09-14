@@ -1,0 +1,81 @@
+spring:
+  config:
+    activate:
+      on-profile: prod
+
+  # Base de datos gestionada. Sin defaults: en produccion una variable que
+  # falta tiene que impedir el arranque, no arrastrar un valor de desarrollo.
+  datasource:
+    url: ${SPRING_DATASOURCE_URL}
+    username: ${DB_USER}
+    password: ${DB_PASS}
+    driver-class-name: ${DB_DRIVER:org.postgresql.Driver}
+    # Pool chico a proposito: la base gestionada tiene un tope de conexiones
+    # que se reparte entre todas las instancias, y el API escala por replicas.
+    hikari:
+      maximum-pool-size: 5
+      minimum-idle: 2
+      max-lifetime: 1800000      # 30 min, recicla conexiones obsoletas
+      connection-timeout: 30000  # 30 s esperando una conexion libre
+      idle-timeout: 600000       # 10 min para soltar las inactivas
+      keepalive-time: 300000     # 5 min, mantiene vivo el socket
+
+  # `update` y no `validate`: conserva los datos entre despliegues y solo
+  # aplica los cambios incrementales de esquema.
+  jpa:
+    hibernate:
+      ddl-auto: update
+    show-sql: false
+    properties:
+      hibernate:
+        format_sql: false
+        dialect: ${DB_DIALECT:org.hibernate.dialect.PostgreSQLDialect}
+
+app:
+  # Obligatorio: el default de application.properties abre localhost y los
+  # tuneles de ngrok, que en produccion seria dejar la puerta abierta.
+  cors:
+    allowed-origins: ${CORS_ALLOWED_ORIGINS}
+  # A donde vuelve el navegador despues de conectar una red en upload-post.com.
+  # Sin default: si apunta a localhost, el usuario acaba en una pagina muerta.
+  base-url: ${APP_BASE_URL}
+
+# Cadena larga y aleatoria, propia de este entorno. Cambiarla invalida todas
+# las sesiones abiertas.
+jwt:
+  secret: ${JWT_SECRET}
+  expiration-days: ${JWT_EXPIRATION_DAYS:15}
+
+# Medios de las publicaciones. Aqui no hay secretos en el repositorio: las
+# cinco llegan por variable de entorno y sin ellas el arranque falla.
+cloudflare:
+  r2:
+    endpoint: ${CLOUDFLARE_R2_ENDPOINT}
+    access-key: ${CLOUDFLARE_R2_ACCESS_KEY_ID}
+    secret-key: ${CLOUDFLARE_R2_SECRET_ACCESS_KEY}
+    bucket: ${CLOUDFLARE_R2_BUCKET_NAME}
+    public-url: ${CLOUDFLARE_R2_PUBLIC_URL}
+
+# Publicacion real en redes. Vacio de fabrica y no obligatorio: sin llave,
+# conectar una red avisa que no esta configurado (isConfigured lo cubre) y el
+# resto de la plataforma sigue en pie. Se puede desplegar una version que
+# todavia no publica sin inventar una llave para que el servidor levante.
+uploadpost:
+  api-key: ${UPLOAD_POST_API_KEY:}
+  base-url: ${UPLOAD_POST_BASE_URL:https://api.upload-post.com/api}
+
+# Sugerencias de texto. Sin llave solo la IA queda apagada.
+openai:
+  api-key: ${OPENAI_API_KEY:}
+  model: ${OPENAI_API_MODEL:gpt-4o-mini}
+
+server:
+  # `PORT` porque es lo que inyecta Cloud Run; 8080 si se despliega a mano.
+  port: ${PORT:8080}
+
+logging:
+  level:
+    root: INFO
+    org.hibernate.SQL: WARN
+    org.springframework: INFO
+    com.metricol.api: INFO

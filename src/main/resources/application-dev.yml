@@ -1,0 +1,82 @@
+spring:
+  config:
+    activate:
+      on-profile: dev
+
+  # Base de datos de desarrollo: H2 en memoria.
+  #
+  # Todo por variable de entorno aunque hoy el default sea H2, igual que en
+  # qa y prod: asi cambiar este entorno a un Postgres local es cuestion de
+  # poner cuatro variables en el .env, sin tocar este archivo ni descubrir
+  # que alla las variables se llaman distinto.
+  #
+  # H2 en memoria se borra en cada arranque: usuarios, workspace y redes
+  # conectadas se vuelven a sembrar. Eso es intencional en dev, pero es la
+  # razon por la que conviene poder apuntar a un Postgres cuando hay que
+  # probar algo que sobreviva al reinicio.
+  datasource:
+    url: ${SPRING_DATASOURCE_URL:jdbc:h2:mem:metricol;DB_CLOSE_DELAY=-1}
+    username: ${DB_USER:sa}
+    password: ${DB_PASS:}
+    driver-class-name: ${DB_DRIVER:org.h2.Driver}
+
+  h2:
+    console:
+      enabled: true
+      path: /h2-console
+
+  # `update` y no `create-drop`: con H2 en memoria da igual, pero si alguien
+  # apunta DB_* a un Postgres local, `create-drop` le borraria el esquema al
+  # apagar la aplicacion.
+  jpa:
+    hibernate:
+      ddl-auto: update
+    # Apagado: el despachador de la cola consulta cada dos segundos, asi que
+    # con esto en true la consola se llena de la misma consulta a
+    # publish_jobs y entierra las lineas que sirven para diagnosticar algo.
+    # Para ver el SQL de un rato, ponerlo en true y reiniciar.
+    show-sql: false
+    properties:
+      hibernate:
+        format_sql: true
+        # Va por perfil, no en application.properties: el dialecto tiene que
+        # seguir al driver de arriba. Si se cambia DB_DRIVER a Postgres hay
+        # que cambiar tambien DB_DIALECT.
+        dialect: ${DB_DIALECT:org.hibernate.dialect.H2Dialect}
+
+# Las llaves (JWT, R2, OpenAI, upload-post) llegan del .env de la raiz, que
+# application.properties importa como `optional:file:./.env[.properties]`.
+# Ahi tienen defaults vacios y cada integracion se apaga sola si le falta la
+# suya, en vez de tumbar el arranque.
+
+app:
+  # La cuenta con la que entrar en desarrollo, sembrada al arrancar por
+  # DevDataSeeder si no existe. Se escribe aqui —y no solo como default en el
+  # codigo— para que se encuentre leyendo la configuracion, que es donde se
+  # busca. Solo existe en este perfil: ver el @Profile("dev") del sembrador.
+  dev-seed:
+    # El correo real de Google, no uno inventado, y esa es la clave de todo.
+    #
+    # `loginWithGoogle` vincula por correo: si ya hay cuenta con ese correo,
+    # entra en ESA en vez de crear una nueva. Con `demo@pulso.test` aqui,
+    # entrar con Google creaba un workspace aparte cada vez —con su propio
+    # perfil de upload-post, vacio— y habia que reconectar todas las redes
+    # desde cero sin entender por que.
+    email: bicosind@gmail.com
+    password: "123456"
+    name: Gabriel Juarez de la Cruz
+    workspace-name: Picale
+    # Nombre del perfil en upload-post. FIJO: si se dejara al UUID del
+    # workspace —que es nuevo en cada arranque, porque H2 vive en memoria—
+    # las redes conectadas se perderian de vista en el siguiente reinicio.
+    upload-post-profile: pulso-dev
+
+server:
+  port: 8087
+
+logging:
+  level:
+    root: INFO
+    com.metricol.api: DEBUG
+  pattern:
+    console: "%d{HH:mm:ss} %-5level [%thread] %logger{36} - %msg%n"

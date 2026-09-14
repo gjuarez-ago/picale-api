@@ -1,0 +1,85 @@
+package com.metricol.api.service.ai;
+
+import static org.assertj.core.api.Assertions.assertThat;
+
+import java.util.List;
+
+import org.junit.jupiter.api.DisplayName;
+import org.junit.jupiter.api.Test;
+
+import com.metricol.api.enums.Platform;
+
+/**
+ * Los topes de texto de cada red, y el del campo que va una sola vez.
+ *
+ * <p>Esto se prueba porque pasarse no se nota a medias: la red no recorta el
+ * sobrante, tira la publicación entera con un 400 que no dice qué pasó hasta
+ * que se le lee el cuerpo a la respuesta. Ya ocurrió dos veces —TikTok con 115
+ * caracteres, Facebook con 359— y las dos se descubrieron en producción.
+ */
+class EspecTextoTest {
+
+    /** El texto que tiró la publicación del 11 de septiembre. */
+    private static String largo(int caracteres) {
+        return "palabra ".repeat(caracteres / 8 + 1).substring(0, caracteres);
+    }
+
+    @Test
+    @DisplayName("Facebook admite 255 en el título, no los 2000 de un post")
+    void facebookSonDoscientosCincuentaYCinco() {
+        // 359 es el largo exacto del que rechazó upload-post. Con el tope
+        // viejo de 2000 pasaba entero y se perdía la publicación.
+        String recortado = EspecTexto.de(Platform.FACEBOOK).recortar(largo(359));
+
+        assertThat(recortado).hasSizeLessThanOrEqualTo(255);
+    }
+
+    @Test
+    @DisplayName("La más estricta de varias redes es la que menos admite")
+    void laMasEstrictaEsLaQueMenosAdmite() {
+        // LinkedIn admite 3000 y TikTok 90: manda TikTok, porque el `title`
+        // común lo valida el proveedor contra todas las elegidas.
+        EspecTexto estricta = EspecTexto.masEstricta(
+                List.of(Platform.LINKEDIN, Platform.TIKTOK, Platform.INSTAGRAM));
+
+        assertThat(estricta.maxCaracteres()).isEqualTo(90);
+    }
+
+    @Test
+    @DisplayName("Con Facebook entre las elegidas, el común cabe en 255")
+    void conFacebookElComunCabeEnDoscientosCincuentaYCinco() {
+        // El caso real: video a Facebook e Instagram con un texto de 359.
+        EspecTexto estricta =
+                EspecTexto.masEstricta(List.of(Platform.FACEBOOK, Platform.INSTAGRAM));
+
+        assertThat(estricta.recortar(largo(359))).hasSizeLessThanOrEqualTo(255);
+    }
+
+    @Test
+    @DisplayName("Una sola red se ajusta a la suya, sin recortar de más")
+    void unaSolaRedUsaSuPropioTope() {
+        assertThat(EspecTexto.masEstricta(List.of(Platform.LINKEDIN)).maxCaracteres())
+                .isEqualTo(3000);
+    }
+
+    @Test
+    @DisplayName("Un texto que ya cabe no se toca")
+    void loQueCabeNoSeToca() {
+        String corto = "Tres palabras justas.";
+
+        assertThat(EspecTexto.de(Platform.FACEBOOK).recortar(corto)).isEqualTo(corto);
+    }
+
+    @Test
+    @DisplayName("Ninguna red se pasa de lo que admite upload-post")
+    void ningunaRedSePasaDeSuTope() {
+        // Barre las cinco: el fallo de Facebook estuvo meses ahí porque nadie
+        // volvió a mirar los topes después de arreglar el de TikTok.
+        for (Platform red : Platform.values()) {
+            EspecTexto espec = EspecTexto.de(red);
+            assertThat(espec.recortar(largo(4000)))
+                    .as("texto recortado para %s", red)
+                    .hasSizeLessThanOrEqualTo(espec.maxCaracteres());
+        }
+    }
+}
