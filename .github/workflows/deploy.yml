@@ -7,32 +7,40 @@
 # en verde es un despliegue; sin verde, no hay despliegue.
 #
 # El `.env.vps` con las llaves del servidor NO pasa por aquí: vive solo en la
-# VM, igual que antes. GitHub solo necesita una credencial de GCP.
+# VM, igual que antes. Y GitHub tampoco guarda ninguna llave de GCP: se
+# identifica con su propio token OIDC (Workload Identity Federation), que GCP
+# acepta solo si viene de ESTE repositorio. La organización prohíbe crear
+# llaves de cuenta de servicio, y aquí no hace falta ninguna.
 #
 # ---------------------------------------------------------------------------
-# Cómo encenderlo (una sola vez, desde una terminal con gcloud autenticado):
+# Lo que ya está hecho en GCP (14 sep 2026), por si hay que rehacerlo:
 #
-#   PROY=cmrg-505321
+#   PROY=cmrg-505321  NUM=116567239332  REPO=gjuarez-ago/picale-api
 #   SA=github-deploy@$PROY.iam.gserviceaccount.com
-#   gcloud iam service-accounts create github-deploy --project=$PROY \
-#       --display-name="GitHub Actions: despliegue de picale-api"
-#   # Reservar la VM, copiar archivos y abrir SSH:
-#   gcloud projects add-iam-policy-binding $PROY \
-#       --member="serviceAccount:$SA" --role="roles/compute.instanceAdmin.v1"
-#   # Entrar por SSH a una VM que corre con su propia cuenta de servicio exige
-#   # poder "actuar como" esa cuenta (la de la VM, no la de GitHub):
-#   VM_SA=$(gcloud compute instances describe api-videos-prod --zone=us-central1-a \
-#       --project=$PROY --format="value(serviceAccounts[0].email)")
-#   gcloud iam service-accounts add-iam-policy-binding "$VM_SA" --project=$PROY \
+#   gcloud iam service-accounts create github-deploy --project=$PROY
+#   gcloud projects add-iam-policy-binding $PROY --member="serviceAccount:$SA" \
+#       --role="roles/compute.instanceAdmin.v1"        # scp, ssh, metadata
+#   gcloud projects add-iam-policy-binding $PROY --member="serviceAccount:$SA" \
+#       --role="roles/compute.osAdminLogin"            # la VM usa OS Login; sudo
+#   gcloud iam service-accounts add-iam-policy-binding \
+#       api-videos-vm@$PROY.iam.gserviceaccount.com --project=$PROY \
 #       --member="serviceAccount:$SA" --role="roles/iam.serviceAccountUser"
-#   gcloud iam service-accounts keys create github-deploy.json --iam-account=$SA
+#   gcloud iam workload-identity-pools create github --location=global --project=$PROY
+#   gcloud iam workload-identity-pools providers create-oidc github-oidc \
+#       --location=global --workload-identity-pool=github --project=$PROY \
+#       --issuer-uri="https://token.actions.githubusercontent.com" \
+#       --attribute-mapping="google.subject=assertion.sub,attribute.repository=assertion.repository" \
+#       --attribute-condition="assertion.repository == '$REPO'"
+#   gcloud iam service-accounts add-iam-policy-binding $SA --project=$PROY \
+#       --role="roles/iam.workloadIdentityUser" \
+#       --member="principalSet://iam.googleapis.com/projects/$NUM/locations/global/workloadIdentityPools/github/attribute.repository/$REPO"
 #
-#   En GitHub → Settings del repo:
-#     · Secrets → Actions → New secret:  GCP_SA_KEY  = contenido de github-deploy.json
-#     · Variables → Actions → New variable:  CD_ENABLED = true
-#   Después borra github-deploy.json de tu disco.
+# Lo único que falta para encenderlo, en GitHub → Settings del repo →
+# Secrets and variables → Actions → Variables → New repository variable:
 #
-# Mientras CD_ENABLED no exista, este flujo se salta en silencio: el repo
+#     CD_ENABLED = true
+#
+# Mientras esa variable no exista, este flujo se salta en silencio: el repo
 # puede vivir sin CD sin que cada push marque un fallo rojo.
 # ---------------------------------------------------------------------------
 name: Desplegar API
@@ -56,6 +64,12 @@ jobs:
     timeout-minutes: 30
     environment: produccion
 
+    # id-token: write es lo que le permite al job pedir su token OIDC, que es
+    # con lo que GCP lo reconoce. Sin esto, auth@v2 falla sin llave que usar.
+    permissions:
+      contents: read
+      id-token: write
+
     steps:
       - uses: actions/checkout@v4
 
@@ -74,9 +88,13 @@ jobs:
       - name: Pruebas antes de tocar producción
         run: mvn -B --no-transfer-progress test
 
+      # Sin llave: el job presenta su token OIDC y GCP lo deja actuar como
+      # github-deploy solo si el token viene de este repositorio. El proveedor
+      # no es un secreto —es un nombre de recurso— y por eso va aquí en claro.
       - uses: google-github-actions/auth@v2
         with:
-          credentials_json: ${{ secrets.GCP_SA_KEY }}
+          workload_identity_provider: projects/116567239332/locations/global/workloadIdentityPools/github/providers/github-oidc
+          service_account: github-deploy@cmrg-505321.iam.gserviceaccount.com
 
       - uses: google-github-actions/setup-gcloud@v2
 
