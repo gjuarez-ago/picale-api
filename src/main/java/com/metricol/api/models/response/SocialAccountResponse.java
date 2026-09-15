@@ -27,4 +27,14 @@ public class SocialAccountResponse {
 
     private SocialAccountStatus status;
     private LocalDateTime connectedAt;
+
+    /** La Página de Facebook u organización de LinkedIn donde sale. Nulo en las demás redes. */
+    private String pageId;
+
+    /**
+     * Conectada pero sin página elegida. La app la enseña bloqueada al
+     * publicar y la manda a Redes a elegir una; el servidor la rechaza igual
+     * si llega, así que esto es para decirlo antes, no para decidirlo.
+     */
+    private boolean needsPage;
 }

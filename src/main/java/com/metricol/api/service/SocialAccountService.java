@@ -110,6 +110,8 @@ public class SocialAccountService {
                 .avatarUrl(account.getAvatarUrl())
                 .status(account.getStatus())
                 .connectedAt(account.getConnectedAt())
+                .pageId(account.getPageId())
+                .needsPage(account.sinPagina())
                 .build();
     }
 }

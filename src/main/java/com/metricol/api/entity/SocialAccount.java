@@ -108,4 +108,25 @@ public class SocialAccount {
     public boolean apagadaPorLaPersona() {
         return Boolean.TRUE.equals(desactivadaPorUsuario);
     }
+
+    /**
+     * ¿Esta red publica en una Página y no en el perfil? Facebook y LinkedIn.
+     * Ahí conectar la cuenta no basta: hay que decir en cuál de sus páginas
+     * sale la publicación, y sin eso upload-post publica en la primera que
+     * encuentre —o en ninguna—.
+     */
+    public boolean exigePagina() {
+        return platform == Platform.FACEBOOK || platform == Platform.LINKEDIN;
+    }
+
+    /**
+     * Conectada pero sin página elegida: no puede recibir publicaciones.
+     *
+     * <p>Es la comprobación que faltaba. La pantalla de redes avisaba
+     * «elige la página», pero ni la captura ni el guardado la miraban, así
+     * que un reel se iba a Facebook sin que nadie supiera a qué página.
+     */
+    public boolean sinPagina() {
+        return exigePagina() && (pageId == null || pageId.isBlank());
+    }
 }

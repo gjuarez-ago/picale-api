@@ -257,6 +257,12 @@ public class PostService {
 
         boolean encolada = request.isPublishNow() || request.getScheduledAt() != null;
 
+        // Solo si va a salir: un borrador puede apuntar a una red sin página
+        // mientras la persona la elige; lo que no puede es publicarse así.
+        if (encolada) {
+            exigirPaginas(accounts);
+        }
+
         java.util.Map<String, String> porRed = request.getCaptionsPorRed() == null
                 ? java.util.Map.of()
                 : request.getCaptionsPorRed();
@@ -442,6 +448,25 @@ public class PostService {
         comprobarRedes(request, accounts, medios, hayVideo);
 
         return new Medios(medios, hayVideo ? MediaType.VIDEO : MediaType.IMAGE);
+    }
+
+    /**
+     * Facebook y LinkedIn publican en una Página, y hay que haber elegido cuál.
+     *
+     * <p>Se dice aquí, al guardar, porque es cuando todavía se puede arreglar
+     * en un toque: ir a Redes y elegirla. Al publicar ya no hay nadie
+     * mirando, y lo que pasaba era peor que un rechazo: upload-post recibía la
+     * publicación sin página y salía donde él decidiera, o no salía, con un
+     * error que no apuntaba a esto.
+     */
+    private void exigirPaginas(List<SocialAccount> accounts) {
+        for (SocialAccount account : accounts) {
+            if (account.sinPagina()) {
+                throw new IllegalArgumentException(account.getPlatform().getLabel()
+                        + " está conectada pero no tiene una página elegida. En Redes, elige en"
+                        + " qué página publicar, o quita esa red de esta publicación.");
+            }
+        }
     }
 
     /**

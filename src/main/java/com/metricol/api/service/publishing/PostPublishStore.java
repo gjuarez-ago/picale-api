@@ -115,6 +115,15 @@ public class PostPublishStore {
 
             Platform platform = target.getSocialAccount().getPlatform();
 
+            // Sin página elegida no se manda: upload-post publicaría en la que
+            // él decidiera, o en ninguna. Se cubre aquí además de al guardar
+            // por las programadas que se guardaron antes de esta comprobación.
+            if (target.getSocialAccount().sinPagina()) {
+                marcar(target, PostTargetStatus.FAILED, platform.getLabel()
+                        + " no tiene una página elegida. Elígela en Redes y vuelve a intentar.");
+                continue;
+            }
+
             if (videoLimits.excede(platform, post.getVideoDurationSeconds())) {
                 Integer tope = videoLimits.maxSecondsFor(platform);
                 marcar(target, PostTargetStatus.FAILED, "El video dura "
