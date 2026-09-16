@@ -19,6 +19,7 @@ import org.springframework.web.client.HttpServerErrorException;
 import org.springframework.web.client.ResourceAccessException;
 
 import com.metricol.api.config.UploadPostProperties;
+import com.metricol.api.enums.Platform;
 import com.metricol.api.service.ai.EspecTexto;
 import com.metricol.api.service.media.AdaptadorDeImagenes;
 import com.metricol.api.service.publishing.PostPublishStore;
@@ -192,9 +193,19 @@ public class UploadPostPublisher {
         //
         // Nadie pierde texto por esto: cada red recibe ademas el suyo en
         // `facebook_title` y companía, con todo lo que le quepa.
-        String tituloComun = EspecTexto
-                .masEstricta(plan.destinos().stream().map(PublishPlan.Destino::platform).toList())
-                .recortar(plan.caption());
+        //
+        // Y sale del texto POR RED cuando lo hay, no del caption crudo de la
+        // publicacion. El caption crudo es lo que la persona dicto o escribio;
+        // el texto por red es lo que la IA redacto y ella aprobo en la vista
+        // previa. Como el proveedor enseña el comun en varias redes aunque
+        // reciba el propio, mandar el crudo aqui publicaba lo dictado.
+        List<Platform> redesDelEnvio = plan.destinos().stream().map(PublishPlan.Destino::platform).toList();
+        EspecTexto masEstricta = EspecTexto.masEstricta(redesDelEnvio);
+        String baseComun = porRed.values().stream()
+                .filter(t -> t != null && !t.isBlank())
+                .findFirst()
+                .orElse(plan.caption());
+        String tituloComun = masEstricta.recortar(baseComun);
 
         List<String> medios = plan.mediaUrls();
         if (medios.isEmpty()) {

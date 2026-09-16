@@ -79,7 +79,8 @@ public class UploadPostClient {
             Map<String, String> captionsPorRed, List<String> photoUrls, PostFormat formato) {
         MultiValueMap<String, Object> body = baseFields(user, platforms);
         body.add("title", caption);
-        textosPorRed(body, captionsPorRed);
+        body.add("description", caption);
+        textosPorRed(body, captionsPorRed, false);
         formatoPorRed(body, platforms, formato);
         // El orden importa: es el que verá quien deslice el carrusel, y es el
         // que la persona eligió en la pantalla de captura.
@@ -98,7 +99,8 @@ public class UploadPostClient {
             Map<String, String> captionsPorRed, String videoUrl, PostFormat formato) {
         MultiValueMap<String, Object> body = baseFields(user, platforms);
         body.add("title", title);
-        textosPorRed(body, captionsPorRed);
+        body.add("description", title);
+        textosPorRed(body, captionsPorRed, true);
         formatoPorRed(body, platforms, formato);
         body.add("video", download(videoUrl));
 
@@ -127,16 +129,35 @@ public class UploadPostClient {
      * distinto por red SIN partir la publicacion en cinco envios: sigue siendo
      * una sola llamada, y el carrusel sigue siendo una sola publicacion.
      *
+     * <p>Ademas del {@code *_title} se manda el {@code *_description} de las
+     * redes que lo tienen, con el mismo texto. Segun el OpenAPI del proveedor,
+     * en LinkedIn el cuerpo visible de la publicacion es el "commentary"
+     * ({@code linkedin_description}), no el title; TikTok lo tiene para fotos y
+     * Facebook y YouTube para video. Sin estos campos esas redes enseñaban el
+     * texto comun —que era lo dictado— y no el que la persona aprobo por red.
+     *
      * <p>Lo que no venga se queda sin su campo, y esa red usa el general. Es
      * el comportamiento que habia antes de todo esto.
      */
-    private void textosPorRed(MultiValueMap<String, Object> body, Map<String, String> captionsPorRed) {
+    private void textosPorRed(MultiValueMap<String, Object> body, Map<String, String> captionsPorRed, boolean video) {
         if (captionsPorRed == null || captionsPorRed.isEmpty()) {
             return;
         }
         captionsPorRed.forEach((platform, texto) -> {
-            if (texto != null && !texto.isBlank()) {
-                body.add(platform.toLowerCase() + "_title", texto);
+            if (texto == null || texto.isBlank()) {
+                return;
+            }
+            String red = platform.toLowerCase();
+            body.add(red + "_title", texto);
+
+            boolean conDescripcion = switch (red) {
+                case "linkedin" -> true;
+                case "tiktok" -> !video;
+                case "facebook", "youtube" -> video;
+                default -> false;
+            };
+            if (conDescripcion) {
+                body.add(red + "_description", texto);
             }
         });
     }

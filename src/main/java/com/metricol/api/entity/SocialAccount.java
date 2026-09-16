@@ -110,13 +110,16 @@ public class SocialAccount {
     }
 
     /**
-     * ¿Esta red publica en una Página y no en el perfil? Facebook y LinkedIn.
-     * Ahí conectar la cuenta no basta: hay que decir en cuál de sus páginas
-     * sale la publicación, y sin eso upload-post publica en la primera que
-     * encuentre —o en ninguna—.
+     * ¿Esta red exige elegir una Página? Solo Facebook.
+     *
+     * <p>En Facebook no se publica en el perfil personal sino en una Página, y
+     * una cuenta puede administrar varias: sin decir cuál, upload-post publica
+     * en la primera que encuentre —o en ninguna—. LinkedIn es distinto: sin
+     * organización elegida publica en el perfil personal, que es un destino
+     * válido y el más común. Ahí la organización es opcional y no se exige.
      */
     public boolean exigePagina() {
-        return platform == Platform.FACEBOOK || platform == Platform.LINKEDIN;
+        return platform == Platform.FACEBOOK;
     }
 
     /**
