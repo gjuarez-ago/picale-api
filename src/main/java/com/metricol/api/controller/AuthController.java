@@ -8,6 +8,7 @@ import org.springframework.web.bind.annotation.RestController;
 
 import com.metricol.api.models.request.ForgotPasswordRequest;
 import com.metricol.api.models.request.GoogleLoginRequest;
+import com.metricol.api.models.request.GoogleRegisterRequest;
 import com.metricol.api.models.request.LoginRequest;
 import com.metricol.api.models.request.RegisterRequest;
 import com.metricol.api.models.request.ResetPasswordRequest;
@@ -39,19 +40,37 @@ public class AuthController {
     }
 
     /**
-     * Entrar con Google.
+     * ENTRAR con Google. No crea nada.
      *
      * <p>Devuelve exactamente lo mismo que {@code /login}: el JWT de esta
      * aplicación. El token de Google se usa una vez, para saber quién es, y
      * se tira — la sesión que la app guarda sigue siendo la de siempre, así
      * que ni la app ni el resto del backend tienen que enterarse de que
      * existe Google.
+     *
+     * <p>Si ese correo no tiene cuenta contesta 404 con
+     * {@code GOOGLE_SIN_CUENTA}, y la app lleva al registro. Antes la creaba
+     * aquí mismo, que es como alguien entraba sin haberse registrado nunca.
      */
     @PostMapping("/google")
     public ResponseEntity<ApiResponse<AuthResponse>> google(
             @Valid @RequestBody GoogleLoginRequest request) {
         return ResponseEntity.ok(
                 ApiResponse.success(authService.loginWithGoogle(request.getIdToken())));
+    }
+
+    /**
+     * REGISTRARSE con Google. Es el único camino por el que Google crea una
+     * cuenta, y solo se llega desde la pantalla de registro.
+     *
+     * <p>Si la cuenta ya existía, entra: es la misma identidad verificada por
+     * Google, y contarle que "ya estaba registrada" sería un error de más en
+     * un camino que puede terminar bien.
+     */
+    @PostMapping("/google/register")
+    public ResponseEntity<ApiResponse<AuthResponse>> googleRegister(
+            @Valid @RequestBody GoogleRegisterRequest request) {
+        return ResponseEntity.ok(ApiResponse.success(authService.registerWithGoogle(request)));
     }
 
     /**

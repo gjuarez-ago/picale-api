@@ -81,6 +81,20 @@ public class GlobalExceptionHandler {
                 .body(ApiResponse.error("FORBIDDEN", "No tienes permisos para realizar esta acción."));
     }
 
+    /**
+     * Entró con Google alguien que no tiene cuenta aquí.
+     *
+     * <p>404 y con código propio a propósito: no es un fallo que arreglar sino
+     * una bifurcación del camino, y la app lo usa para llevar al registro con
+     * los datos que Google ya dio. Con un 400 genérico saldría un mensaje de
+     * error y ahí terminaría todo.
+     */
+    @ExceptionHandler(GoogleSinCuentaException.class)
+    public ResponseEntity<ApiResponse<Void>> handleGoogleSinCuenta(GoogleSinCuentaException ex) {
+        return ResponseEntity.status(HttpStatus.NOT_FOUND)
+                .body(ApiResponse.error("GOOGLE_SIN_CUENTA", ex.getMessage()));
+    }
+
     @ExceptionHandler(AuthenticationException.class)
     public ResponseEntity<ApiResponse<Void>> handleAuthentication(AuthenticationException ex) {
         log.warn(ex.getMessage());

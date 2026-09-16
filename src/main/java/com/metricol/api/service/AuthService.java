@@ -19,6 +19,8 @@ import com.metricol.api.entity.WorkspaceMember;
 import com.metricol.api.enums.Role;
 import com.metricol.api.enums.VerificationPurpose;
 import com.metricol.api.exception.CodeCooldownException;
+import com.metricol.api.exception.GoogleSinCuentaException;
+import com.metricol.api.models.request.GoogleRegisterRequest;
 import com.metricol.api.models.request.LoginRequest;
 import com.metricol.api.models.request.RegisterRequest;
 import com.metricol.api.models.response.AuthResponse;
@@ -122,13 +124,19 @@ public class AuthService {
     }
 
     /**
-     * Entra con Google. Si el correo ya tiene cuenta, entra en ESA cuenta;
-     * si no, crea una nueva con su workspace, igual que registrarse.
+     * ENTRA con Google. Si no hay cuenta con ese correo, no la crea.
      *
-     * <p>Vincular por correo es lo que evita el problema de las cuentas
-     * dobles: quien se registró con contraseña y luego toca "Entrar con
-     * Google" tiene que caer en sus publicaciones, no en un workspace vacío
-     * que parece que se perdió todo.
+     * <p>Antes la creaba, y eso borraba la diferencia entre entrar y
+     * registrarse: cualquiera con una cuenta de Google entraba a una
+     * plataforma donde nunca se dio de alta, saltándose el registro entero
+     * —nombre del negocio, giro, objetivo— que es justo lo que la IA necesita
+     * para escribir. Ahora se contesta {@link GoogleSinCuentaException} y la
+     * app lleva al registro con el nombre y el correo ya puestos.
+     *
+     * <p>Vincular por correo sigue igual y es lo que evita las cuentas dobles:
+     * quien se registró con contraseña y luego toca "Entrar con Google" cae en
+     * sus publicaciones, no en un workspace vacío que parece que se perdió
+     * todo.
      *
      * <p><b>Y por eso se exige que Google haya verificado el correo.</b> Sin
      * esa comprobación, cualquiera podría crear una cuenta de Google con el
@@ -137,25 +145,46 @@ public class AuthService {
      */
     @Transactional
     public AuthResponse loginWithGoogle(String idToken) {
-        GoogleTokenVerifier.Identidad identidad = googleVerifier.verificar(idToken);
+        String email = correoVerificadoDe(idToken);
 
-        if (!identidad.emailVerificado()) {
-            throw new IllegalArgumentException(
-                    "Google no ha verificado ese correo. Verifícalo en tu cuenta de Google e intenta de nuevo.");
-        }
+        return userRepository.findByEmail(email)
+                .map(this::sesionPara)
+                .orElseThrow(() -> new GoogleSinCuentaException(
+                        "No hay una cuenta de Pícale con ese correo. Crea tu cuenta para empezar."));
+    }
+
+    /**
+     * REGISTRA con Google, o entra si ya existe.
+     *
+     * <p>Lo segundo no es una puerta trasera al registro: en esta pantalla la
+     * persona está pidiendo darse de alta, y descubrir que ya tenía cuenta no
+     * es un error que valga la pena contarle — es la misma identidad, ya
+     * verificada por Google, así que entra.
+     *
+     * <p>Sin contraseña que elegir: la cuenta nace con una aleatoria que nadie
+     * conoce. Para entrar con correo y contraseña hay que pasar por «olvidé mi
+     * contraseña», que es exactamente el camino correcto — lo pide quien lee
+     * ese correo.
+     */
+    @Transactional
+    public AuthResponse registerWithGoogle(GoogleRegisterRequest request) {
+        GoogleTokenVerifier.Identidad identidad = googleVerifier.verificar(request.getIdToken());
+        exigirCorreoVerificado(identidad);
 
         String email = Correos.normalizar(identidad.email());
-        User user = userRepository.findByEmail(email).orElse(null);
-        if (user != null) {
-            return sesionPara(user);
+        User existente = userRepository.findByEmail(email).orElse(null);
+        if (existente != null) {
+            return sesionPara(existente);
         }
 
-        String nombre = identidad.nombre() == null || identidad.nombre().isBlank()
-                ? email.split("@")[0]
-                : identidad.nombre();
+        String nombre = primeroNoVacio(
+                request.getName(),
+                identidad.nombre(),
+                email.split("@")[0]);
+        String negocio = primeroNoVacio(request.getWorkspaceName(), nombre);
 
         Workspace workspace = workspaceRepository.save(
-                Workspace.builder().name(nombre).build());
+                Workspace.builder().name(negocio).build());
 
         User nuevo = User.builder()
                 .name(nombre)
@@ -169,6 +198,29 @@ public class AuthService {
 
         log.info("Cuenta creada desde Google: {}", email);
         return sesionPara(nuevo);
+    }
+
+    /** El correo del token, comprobado y normalizado. */
+    private String correoVerificadoDe(String idToken) {
+        GoogleTokenVerifier.Identidad identidad = googleVerifier.verificar(idToken);
+        exigirCorreoVerificado(identidad);
+        return Correos.normalizar(identidad.email());
+    }
+
+    private void exigirCorreoVerificado(GoogleTokenVerifier.Identidad identidad) {
+        if (!identidad.emailVerificado()) {
+            throw new IllegalArgumentException(
+                    "Google no ha verificado ese correo. Verifícalo en tu cuenta de Google e intenta de nuevo.");
+        }
+    }
+
+    private static String primeroNoVacio(String... candidatos) {
+        for (String candidato : candidatos) {
+            if (candidato != null && !candidato.isBlank()) {
+                return candidato.strip();
+            }
+        }
+        return "";
     }
 
     public AuthResponse login(LoginRequest request) {
