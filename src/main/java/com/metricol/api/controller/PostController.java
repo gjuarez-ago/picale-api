@@ -133,11 +133,19 @@ public class PostController {
         return ResponseEntity.ok(ApiResponse.success(service.archive(id, false)));
     }
 
+    /**
+     * Ya no borra: archiva.
+     *
+     * <p>En Pícale nada se elimina físicamente, todo es lógico. La ruta se deja
+     * —una versión vieja de la web o de la app puede seguir llamándola— pero hace
+     * lo mismo que {@code POST /{id}/archive}: la publicación deja de salir en
+     * las listas y se puede devolver. No cancela lo que esté programado.
+     */
     @DeleteMapping("/{id}")
     public ResponseEntity<ApiResponse<Void>> delete(
             @AuthenticationPrincipal User currentUser, @PathVariable UUID id) {
         permisos.exigir(currentUser, Permission.POST_DELETE);
-        service.delete(id);
+        service.archive(id, true);
         return ResponseEntity.ok(ApiResponse.success(null));
     }
 }
