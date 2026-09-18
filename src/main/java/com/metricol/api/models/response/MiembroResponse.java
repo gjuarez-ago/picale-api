@@ -10,11 +10,12 @@ import com.metricol.api.enums.OrgRole;
  *
  * @param orgRole    su papel en la organización
  * @param eresTu     para que la pantalla no te deje quitarte a ti mismo
+ * @param orgPermissions invitar gente o crear espacios, ya resueltos por su papel
  * @param espacios   a qué entra y con qué permisos; vacío si administra la
  *                   organización, porque entonces entra a todos
  */
 public record MiembroResponse(UUID userId, String name, String email, OrgRole orgRole, boolean eresTu,
-        List<AccesoResponse> espacios) {
+        List<String> orgPermissions, List<AccesoResponse> espacios) {
 
     /**
      * El acceso a un espacio concreto.

@@ -24,16 +24,16 @@ public enum Role {
 
     /**
      * Trabaja el contenido: crea, publica, programa y borra sus publicaciones,
-     * y usa la IA. No toca las redes ni al equipo, que es lo que distingue a
-     * quien hace el trabajo de quien administra la cuenta del cliente.
+     * y redacta con la IA. No toca las redes ni al equipo, que es lo que
+     * distingue a quien hace el trabajo de quien administra la cuenta del
+     * cliente.
      */
     EDITOR(EnumSet.of(
             Permission.POST_CREATE,
             Permission.POST_PUBLISH,
             Permission.POST_SCHEDULE,
             Permission.POST_DELETE,
-            Permission.MEDIA_DELETE,
-            Permission.AI_USE)),
+            Permission.MEDIA_DELETE)),
 
     /**
      * Mira y ya: el calendario, lo publicado y cómo va todo. Para el cliente

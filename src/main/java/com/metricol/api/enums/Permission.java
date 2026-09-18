@@ -42,12 +42,5 @@ public enum Permission {
     MEMBER_MANAGE,
 
     /** Cambiar los datos del workspace: nombre, giro, ciudad, descripción. */
-    WORKSPACE_EDIT,
-
-    /**
-     * Usar el redactor de IA. Aparte de los demás porque cuesta dinero por
-     * uso: un workspace puede querer que escriban todos pero que solo algunos
-     * gasten.
-     */
-    AI_USE
+    WORKSPACE_EDIT
 }

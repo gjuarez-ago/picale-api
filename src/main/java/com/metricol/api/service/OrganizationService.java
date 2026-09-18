@@ -11,6 +11,7 @@ import com.metricol.api.entity.Organization;
 import com.metricol.api.entity.OrganizationMember;
 import com.metricol.api.entity.User;
 import com.metricol.api.entity.Workspace;
+import com.metricol.api.enums.OrgPermission;
 import com.metricol.api.enums.OrgRole;
 import com.metricol.api.exception.ForbiddenException;
 import com.metricol.api.exception.ResourceNotFoundException;
@@ -142,6 +143,37 @@ public class OrganizationService {
             throw new ForbiddenException("Solo quien administra la organización puede hacer esto.");
         }
         return miembro;
+    }
+
+    /**
+     * Corta si no puede hacer esto en la organización: ni la administra, ni
+     * se lo dieron como permiso suelto.
+     */
+    public OrganizationMember exigirPermiso(User user, UUID organizationId, OrgPermission permiso) {
+        OrganizationMember miembro = miembros.findByUserIdAndOrganizationId(user.getId(), organizationId)
+                .orElseThrow(() -> new ResourceNotFoundException("Organización no encontrada."));
+
+        if (!miembro.puede(permiso)) {
+            throw new ForbiddenException(permiso == OrgPermission.INVITE_MEMBERS
+                    ? "No tienes permiso para invitar personas."
+                    : "No tienes permiso para crear espacios de trabajo.");
+        }
+        return miembro;
+    }
+
+    /** Los permisos de organización de alguien, ya resueltos por su papel. */
+    public java.util.Set<OrgPermission> permisosDe(UUID userId, UUID organizationId) {
+        return miembros.findByUserIdAndOrganizationId(userId, organizationId)
+                .map(m -> {
+                    java.util.Set<OrgPermission> todos = java.util.EnumSet.noneOf(OrgPermission.class);
+                    for (OrgPermission p : OrgPermission.values()) {
+                        if (m.puede(p)) {
+                            todos.add(p);
+                        }
+                    }
+                    return todos;
+                })
+                .orElseGet(() -> java.util.EnumSet.noneOf(OrgPermission.class));
     }
 
     /**

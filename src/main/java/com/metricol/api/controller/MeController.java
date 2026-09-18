@@ -55,6 +55,8 @@ public class MeController {
                 organizacion.getName(),
                 papel,
                 papel != null && papel.administraLaOrganizacion(),
+                organizaciones.permisosDe(currentUser.getId(), organizacion.getId()).stream()
+                        .map(Enum::name).sorted().toList(),
                 currentUser.getWorkspace().getId(),
                 currentUser.getWorkspace().getName(),
                 permisos.rolDe(currentUser).name(),

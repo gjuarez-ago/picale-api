@@ -14,6 +14,7 @@ import com.metricol.api.entity.OrganizationMember;
 import com.metricol.api.entity.User;
 import com.metricol.api.entity.Workspace;
 import com.metricol.api.entity.WorkspaceMember;
+import com.metricol.api.enums.OrgPermission;
 import com.metricol.api.enums.OrgRole;
 import com.metricol.api.enums.Permission;
 import com.metricol.api.enums.Role;
@@ -136,12 +137,45 @@ public class TeamService {
         OrganizationMember miembro = orgMiembros.findByUserIdAndOrganizationId(userId, organizacion.getId())
                 .orElseThrow(() -> new ResourceNotFoundException("Esa persona no está en tu organización."));
 
+        // Lo de dueño lo toca solo un dueño. Sin esto, un administrador podía
+        // nombrarse dueño a sí mismo —o bajar al dueño— mandando la petición
+        // a mano, y quedarse con una organización que no es suya.
+        if (papel == OrgRole.OWNER || miembro.getRole() == OrgRole.OWNER) {
+            exigirDueño(actual, organizacion.getId());
+        }
+
         if (miembro.getRole() == OrgRole.OWNER && papel != OrgRole.OWNER
                 && orgMiembros.countByOrganizationIdAndRole(organizacion.getId(), OrgRole.OWNER) <= 1) {
             throw new IllegalStateException("Es el único dueño de la organización. Nombra a otro antes de cambiarle el papel.");
         }
 
         miembro.setRole(papel == null ? OrgRole.MEMBER : papel);
+        orgMiembros.save(miembro);
+
+        return respuestaDe(miembro, workspaces.findDeLaOrganizacion(organizacion.getId()), actual);
+    }
+
+    /**
+     * Le da o le quita a un miembro lo que puede hacer en la organización:
+     * invitar gente y crear espacios.
+     *
+     * <p>Solo quien administra. Y no tiene sentido para un administrador,
+     * que ya lo tiene todo por su papel: tocarlo ahí no cambiaría nada, así que
+     * se rechaza en vez de guardar algo que no significa nada.
+     */
+    @Transactional
+    public MiembroResponse cambiarPermisosDeOrganizacion(User actual, UUID userId, Set<OrgPermission> permisos) {
+        Organization organizacion = organizaciones.deLaSesion(actual);
+        organizaciones.exigirAdministrador(actual, organizacion.getId());
+
+        OrganizationMember miembro = orgMiembros.findByUserIdAndOrganizationId(userId, organizacion.getId())
+                .orElseThrow(() -> new ResourceNotFoundException("Esa persona no está en tu organización."));
+
+        if (miembro.getRole().administraLaOrganizacion()) {
+            throw new IllegalStateException("Quien administra la organización ya puede todo esto por su papel.");
+        }
+
+        miembro.setPermissions(permisos == null ? EnumSet.noneOf(OrgPermission.class) : EnumSet.copyOf(permisos));
         orgMiembros.save(miembro);
 
         return respuestaDe(miembro, workspaces.findDeLaOrganizacion(organizacion.getId()), actual);
@@ -165,6 +199,11 @@ public class TeamService {
         OrganizationMember miembro = orgMiembros.findByUserIdAndOrganizationId(userId, organizacion.getId())
                 .orElseThrow(() -> new ResourceNotFoundException("Esa persona no está en tu organización."));
 
+        // A un dueño solo lo saca otro dueño, por lo mismo que en cambiarPapel.
+        if (miembro.getRole() == OrgRole.OWNER) {
+            exigirDueño(actual, organizacion.getId());
+        }
+
         if (miembro.getRole() == OrgRole.OWNER
                 && orgMiembros.countByOrganizationIdAndRole(organizacion.getId(), OrgRole.OWNER) <= 1) {
             throw new IllegalStateException("Es el único dueño de la organización. Nombra a otro antes de quitarlo.");
@@ -174,6 +213,16 @@ public class TeamService {
             miembros.findByUserIdAndWorkspaceId(userId, espacio.getId()).ifPresent(miembros::delete);
         }
         orgMiembros.delete(miembro);
+    }
+
+    private void exigirDueño(User actual, UUID organizationId) {
+        boolean soyDueño = orgMiembros.findByUserIdAndOrganizationId(actual.getId(), organizationId)
+                .map(m -> m.getRole() == OrgRole.OWNER)
+                .orElse(false);
+        if (!soyDueño) {
+            throw new com.metricol.api.exception.ForbiddenException(
+                    "Solo el dueño de la organización puede cambiar quién es dueño.");
+        }
     }
 
     private MiembroResponse respuestaDe(OrganizationMember miembro, List<Workspace> espacios, User actual) {
@@ -194,8 +243,13 @@ public class TeamService {
                         .filter(java.util.Objects::nonNull)
                         .toList();
 
+        List<String> deOrganizacion = java.util.Arrays.stream(OrgPermission.values())
+                .filter(miembro::puede)
+                .map(Enum::name)
+                .toList();
+
         return new MiembroResponse(persona.getId(), persona.getName(), persona.getEmail(), miembro.getRole(),
-                persona.getId().equals(actual.getId()), accesos);
+                persona.getId().equals(actual.getId()), deOrganizacion, accesos);
     }
 
     private static List<String> nombres(Set<Permission> permisos) {

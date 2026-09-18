@@ -23,7 +23,7 @@ class WorkspaceMemberPermisosTest {
     @DisplayName("El rol trae sus permisos: un editor publica, un lector no")
     void elRolTraeLoSuyo() {
         assertThat(miembro(Role.EDITOR).permisosEfectivos())
-                .contains(Permission.POST_PUBLISH, Permission.POST_CREATE, Permission.AI_USE);
+                .contains(Permission.POST_PUBLISH, Permission.POST_CREATE);
 
         assertThat(miembro(Role.VIEWER).permisosEfectivos()).isEmpty();
     }

@@ -1,11 +1,16 @@
 package com.metricol.api.entity;
 
 import java.time.LocalDateTime;
+import java.util.EnumSet;
+import java.util.Set;
 import java.util.UUID;
 
+import com.metricol.api.entity.converter.OrgPermissionSetConverter;
+import com.metricol.api.enums.OrgPermission;
 import com.metricol.api.enums.OrgRole;
 
 import jakarta.persistence.Column;
+import jakarta.persistence.Convert;
 import jakarta.persistence.Entity;
 import jakarta.persistence.EnumType;
 import jakarta.persistence.Enumerated;
@@ -57,9 +62,27 @@ public class OrganizationMember {
     @Column(nullable = false, length = 20)
     private OrgRole role;
 
+    /**
+     * Lo que puede hacer en la organización sin administrarla: invitar gente
+     * o crear espacios. Dueño y administradores lo tienen todo por su papel,
+     * así que para ellos esto no se mira.
+     */
+    @Builder.Default
+    @Convert(converter = OrgPermissionSetConverter.class)
+    @Column(length = 200)
+    private Set<OrgPermission> permissions = EnumSet.noneOf(OrgPermission.class);
+
     @Builder.Default
     @Column(nullable = false, updatable = false)
     private LocalDateTime createdAt = LocalDateTime.now();
+
+    /** ¿Puede hacer esto en la organización? Por su papel, o porque se lo dieron. */
+    public boolean puede(OrgPermission permiso) {
+        if (role != null && role.administraLaOrganizacion()) {
+            return true;
+        }
+        return permissions != null && permissions.contains(permiso);
+    }
 
     public static OrganizationMember de(User user, Organization organization, OrgRole role) {
         return OrganizationMember.builder()

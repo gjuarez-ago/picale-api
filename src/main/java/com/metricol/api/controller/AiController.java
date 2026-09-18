@@ -56,7 +56,7 @@ public class AiController {
     public ResponseEntity<ApiResponse<CaptionSuggestionResponse>> suggestCaption(
             @AuthenticationPrincipal User currentUser,
             @Valid @RequestBody CaptionSuggestionRequest request) {
-        permisos.exigir(currentUser, Permission.AI_USE);
+        permisos.exigir(currentUser, Permission.POST_CREATE);
         cupo.exigirCupo();
         String caption = copywriter.suggest(request.getBrief());
         return ResponseEntity.ok(ApiResponse.success(CaptionSuggestionResponse.builder().caption(caption).build()));
@@ -75,7 +75,7 @@ public class AiController {
     @PostMapping("/analyze-media")
     public ResponseEntity<ApiResponse<Void>> analyzeMedia(
             @AuthenticationPrincipal User currentUser, @RequestBody AnalyzeMediaRequest request) {
-        permisos.exigir(currentUser, Permission.AI_USE);
+        permisos.exigir(currentUser, Permission.POST_CREATE);
         cupo.exigirCupo();
         visor.describir(request.getMediaUrls());
         return ResponseEntity.ok(ApiResponse.success(null));
@@ -89,7 +89,7 @@ public class AiController {
             @AuthenticationPrincipal User currentUser,
             @Valid @RequestBody ComposeRequest request) {
 
-        permisos.exigir(currentUser, Permission.AI_USE);
+        permisos.exigir(currentUser, Permission.POST_CREATE);
         cupo.exigirCupo();
         List<String> queSeVe = visor.describir(request.getMediaUrls());
         Redactor.Borrador borrador = redactor.redactar(
@@ -116,7 +116,7 @@ public class AiController {
             @AuthenticationPrincipal User currentUser,
             @Valid @RequestBody AjusteRequest request) {
 
-        permisos.exigir(currentUser, Permission.AI_USE);
+        permisos.exigir(currentUser, Permission.POST_CREATE);
         cupo.exigirCupo();
         Platform red = Platform.valueOf(request.getPlatform().trim().toUpperCase());
         Ajuste ajuste = Ajuste.valueOf(request.getAjuste().trim().toUpperCase());

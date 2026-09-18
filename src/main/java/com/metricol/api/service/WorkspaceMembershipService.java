@@ -11,6 +11,7 @@ import com.metricol.api.entity.Organization;
 import com.metricol.api.entity.User;
 import com.metricol.api.entity.Workspace;
 import com.metricol.api.entity.WorkspaceMember;
+import com.metricol.api.enums.OrgPermission;
 import com.metricol.api.enums.Role;
 import com.metricol.api.exception.ResourceNotFoundException;
 import com.metricol.api.models.request.EspacioUpdateRequest;
@@ -110,9 +111,10 @@ public class WorkspaceMembershipService {
     /**
      * Da de alta un cliente en la organización de quien lo pide.
      *
-     * <p>Solo quien la administra: un cliente nuevo cuesta —cada espacio crea
-     * su perfil en upload-post, y el día que se cobre por espacio, cuesta
-     * dinero— así que no es una decisión de cualquiera que trabaje dentro.
+     * <p>Quien la administra, o alguien a quien se le dio "crear espacios": un
+     * cliente nuevo cuesta —cada espacio crea su perfil en upload-post, y el
+     * día que se cobre por espacio, cuesta dinero— así que no es una decisión
+     * de cualquiera que trabaje dentro.
      *
      * <p>No lo activa: dar de alta un cliente y seguir trabajando en el actual
      * es tan normal como pasar a él, y eso lo decide quien llama con
@@ -127,7 +129,9 @@ public class WorkspaceMembershipService {
                 .orElseThrow(() -> new ResourceNotFoundException("Usuario no encontrado."));
 
         Organization organizacion = organizaciones.deLaSesion(user);
-        organizaciones.exigirAdministrador(user, organizacion.getId());
+        // Quien administra la organización, o un miembro a quien se le dio
+        // "crear espacios". Ese miembro queda como ADMIN del que crea: es suyo.
+        organizaciones.exigirPermiso(user, organizacion.getId(), OrgPermission.CREATE_WORKSPACES);
 
         long activos = workspaces.countByOrganizationIdAndArchivedAtIsNull(organizacion.getId());
         if (activos >= organizacion.getMaxWorkspaces()) {

@@ -10,10 +10,12 @@ import com.metricol.api.enums.OrgRole;
  *
  * @param administraLaOrganizacion si puede crear espacios e invitar gente; es
  *                                 lo que decide si se enseña el menú de Equipo
+ * @param orgPermissions           invitar gente o crear espacios, ya resueltos
  * @param role                     su rol en ESTE espacio
  * @param permisos                 lo que puede hacer aquí, ya resuelto
  */
 public record MeResponse(UUID userId, String name, String email,
         UUID organizationId, String organizationName, OrgRole orgRole, boolean administraLaOrganizacion,
+        List<String> orgPermissions,
         UUID workspaceId, String workspaceName, String role, List<String> permisos) {
 }

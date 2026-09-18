@@ -72,6 +72,16 @@ public class TeamController {
         return ResponseEntity.ok(ApiResponse.success(equipo.cambiarPapel(currentUser, userId, peticion.getOrgRole())));
     }
 
+    /** Invitar gente y crear espacios, para un miembro que no administra. */
+    @PutMapping("/{userId}/organizacion")
+    public ResponseEntity<ApiResponse<MiembroResponse>> permisosDeOrganizacion(
+            @AuthenticationPrincipal User currentUser,
+            @PathVariable UUID userId,
+            @RequestBody java.util.Set<com.metricol.api.enums.OrgPermission> permisos) {
+        return ResponseEntity.ok(ApiResponse.success(
+                equipo.cambiarPermisosDeOrganizacion(currentUser, userId, permisos)));
+    }
+
     /** Lo saca de la organización y de todos sus espacios. */
     @DeleteMapping("/{userId}")
     public ResponseEntity<ApiResponse<Void>> quitar(
