@@ -85,6 +85,36 @@ class AuthServiceGoogleTest {
     }
 
     @Test
+    void sinNombreDeNegocioElEspacioNaceSinNombre() {
+        // No con el de la persona, que es lo que hacía antes. El nombre del
+        // negocio se pregunta en el paso siguiente del registro, así que en
+        // este momento no se sabe; ponerle el de quien abre la cuenta dejaba
+        // el perfil enseñando el mismo nombre dos veces, y para siempre si se
+        // omitía ese paso.
+        GoogleRegisterRequest peticion = new GoogleRegisterRequest();
+        peticion.setIdToken("token");
+        peticion.setName("Ana Pérez");
+
+        AuthResponse sesion = authService.registerWithGoogle(peticion);
+
+        assertThat(sesion.getName()).isEqualTo("Ana Pérez");
+        assertThat(sesion.getWorkspaceName()).isNull();
+    }
+
+    @Test
+    void unNombreDeNegocioEnBlancoCuentaComoNoDarlo() {
+        // Guardar la cadena vacía se vería igual que un nombre puesto, y
+        // después no habría forma de saber que falta.
+        GoogleRegisterRequest peticion = new GoogleRegisterRequest();
+        peticion.setIdToken("token");
+        peticion.setName("Ana Pérez");
+        peticion.setWorkspaceName("   ");
+
+        assertThat(authService.registerWithGoogle(peticion).getWorkspaceName())
+                .isNull();
+    }
+
+    @Test
     void despuesDeRegistrarse_entrarConGoogleYaFunciona() {
         GoogleRegisterRequest peticion = new GoogleRegisterRequest();
         peticion.setIdToken("token");

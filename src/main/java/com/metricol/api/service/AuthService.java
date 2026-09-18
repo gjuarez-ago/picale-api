@@ -49,6 +49,7 @@ public class AuthService {
     private final WorkspaceMemberRepository workspaceMembers;
     private final EmailVerificationService codigos;
     private final EmailService correo;
+    private final OrganizationService organizaciones;
 
     public AuthService(
             UserRepository userRepository,
@@ -59,7 +60,8 @@ public class AuthService {
             GoogleTokenVerifier googleVerifier,
             WorkspaceMemberRepository workspaceMembers,
             EmailVerificationService codigos,
-            EmailService correo) {
+            EmailService correo,
+            OrganizationService organizaciones) {
         this.userRepository = userRepository;
         this.workspaceRepository = workspaceRepository;
         this.workspaceMembers = workspaceMembers;
@@ -69,6 +71,7 @@ public class AuthService {
         this.googleVerifier = googleVerifier;
         this.codigos = codigos;
         this.correo = correo;
+        this.organizaciones = organizaciones;
     }
 
     @Transactional
@@ -100,6 +103,11 @@ public class AuthService {
         // Quien crea el workspace tiene acceso a él: sin esta fila no podría
         // volver a él después de cambiar a otro cliente.
         workspaceMembers.save(WorkspaceMember.de(user, workspace, Role.ADMIN));
+        // Su organización nace con él y con su primer espacio dentro. No se le
+        // pregunta por ella —a quien abre una taquería, "crea tu agencia" no le
+        // dice nada—, pero existe desde el minuto uno: el día que tome un
+        // segundo cliente, la capa ya está y no hay nada que migrar.
+        organizaciones.crearPara(user, workspace, workspace.getName());
 
         return sesionPara(user);
     }
@@ -181,10 +189,16 @@ public class AuthService {
                 request.getName(),
                 identidad.nombre(),
                 email.split("@")[0]);
-        String negocio = primeroNoVacio(request.getWorkspaceName(), nombre);
-
+        // El negocio se queda SIN nombre si no lo dieron, y no con el de la
+        // persona.
+        //
+        // Ponerle el nombre de quien se registra parecía un valor por defecto
+        // inofensivo y no lo era: el perfil enseña la persona arriba y su
+        // negocio debajo, así que la pantalla mostraba el mismo nombre dos
+        // veces, y no había forma de distinguir "se llama así" de "nunca lo
+        // llenó". Sin nombre, el hueco se ve y se llena.
         Workspace workspace = workspaceRepository.save(
-                Workspace.builder().name(negocio).build());
+                Workspace.builder().name(nombreDeNegocio(request)).build());
 
         User nuevo = User.builder()
                 .name(nombre)
@@ -195,9 +209,21 @@ public class AuthService {
                 .build();
         guardarNuevo(nuevo);
         workspaceMembers.save(WorkspaceMember.de(nuevo, workspace, Role.ADMIN));
+        organizaciones.crearPara(nuevo, workspace, workspace.getName());
 
         log.info("Cuenta creada desde Google: {}", email);
         return sesionPara(nuevo);
+    }
+
+    /**
+     * El nombre del negocio, o null si no lo dieron.
+     *
+     * <p>Se normaliza el vacío a null a propósito: una cadena en blanco se
+     * guardaría igual que un nombre, y después no hay forma de saber si falta.
+     */
+    private String nombreDeNegocio(GoogleRegisterRequest request) {
+        String negocio = request.getWorkspaceName();
+        return negocio == null || negocio.isBlank() ? null : negocio.trim();
     }
 
     /** El correo del token, comprobado y normalizado. */

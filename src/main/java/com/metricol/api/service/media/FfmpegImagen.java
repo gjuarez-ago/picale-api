@@ -196,7 +196,79 @@ public class FfmpegImagen {
 
     /** ¿Está ffmpeg donde dice la configuración? */
     public boolean disponible() {
-        return ejecutar(List.of(props.getFfmpeg(), "-version"), "ffmpeg") != null;
+        Boolean sabido = hayFfmpeg;
+        if (sabido == null) {
+            // Se comprueba una vez por proceso: lanzar `ffmpeg -version` en
+            // cada subida confirmada es un proceso de mas por foto.
+            sabido = ejecutar(List.of(props.getFfmpeg(), "-version"), "ffmpeg") != null;
+            hayFfmpeg = sabido;
+        }
+        return sabido;
+    }
+
+    private volatile Boolean hayFfmpeg;
+
+    /**
+     * Decodifica la imagen completa y devuelve lo que ffmpeg se quejó por el
+     * camino: cadena vacía si decodificó limpia, el texto de los errores si
+     * no, y {@code null} si ni siquiera pudo abrirla o no se pudo ejecutar.
+     *
+     * <p>Es la única forma de saber si una imagen está entera. Medirla no
+     * sirve: las medidas están en la cabecera, y la cabecera de un archivo
+     * truncado es perfecta. Una foto de 44 KB con cabecera válida y sin marca
+     * de cierre pasó por aquí, por el adaptador y por la IA sin que nadie lo
+     * notara, y la rechazaron las cuatro redes.
+     *
+     * <p>Con {@code -f null} no se escribe nada: solo se decodifica.
+     */
+    public String verificar(Path archivo) {
+        List<String> comando = List.of(
+                props.getFfmpeg(),
+                "-hide_banner",
+                "-loglevel", "error",
+                "-i", archivo.toString(),
+                "-f", "null",
+                "-");
+        String salida = ejecutar(comando, "ffmpeg");
+        return salida == null ? null : salida.strip();
+    }
+
+    /**
+     * Reescribe la imagen como un JPEG limpio, con sus mismas medidas.
+     *
+     * <p>Es la reparación: ffmpeg decodifica lo que hay —recuperándose de un
+     * bloque dañado o de una marca de cierre que falta— y vuelve a escribirlo
+     * bien formado. Sin filtros ni reescalado: no se cambia la foto, se
+     * cambia el envoltorio. Sin metadatos, igual que en {@link #encajar}.
+     *
+     * @return los bytes del JPEG, o {@code null} si no se pudo
+     */
+    public byte[] sanear(Path origen) {
+        Path destino = null;
+        try {
+            destino = Files.createTempFile("picale-sano-", ".jpg");
+            List<String> comando = List.of(
+                    props.getFfmpeg(),
+                    "-hide_banner",
+                    "-loglevel", "error",
+                    "-y",
+                    "-i", origen.toString(),
+                    "-frames:v", "1",
+                    "-pix_fmt", "yuvj420p",
+                    "-q:v", "2",
+                    "-map_metadata", "-1",
+                    destino.toString());
+            if (ejecutar(comando, "ffmpeg") == null) {
+                return null;
+            }
+            byte[] bytes = Files.readAllBytes(destino);
+            return bytes.length == 0 ? null : bytes;
+        } catch (IOException ex) {
+            log.warn("No se pudo escribir el temporal de la imagen saneada: {}", ex.getMessage());
+            return null;
+        } finally {
+            borrar(destino);
+        }
     }
 
     /**

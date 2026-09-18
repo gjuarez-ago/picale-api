@@ -1,5 +1,6 @@
 package com.metricol.api.controller;
 
+import com.metricol.api.service.PermissionService;
 import com.metricol.api.service.ai.AiQuotaGuard;
 
 import java.util.ArrayList;
@@ -15,6 +16,7 @@ import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
 
 import com.metricol.api.entity.User;
+import com.metricol.api.enums.Permission;
 import com.metricol.api.entity.Workspace;
 import com.metricol.api.enums.Platform;
 import com.metricol.api.models.request.AjusteRequest;
@@ -39,18 +41,22 @@ public class AiController {
     private final VisorDeMedios visor;
     private final Redactor redactor;
     private final AiQuotaGuard cupo;
+    private final PermissionService permisos;
 
     public AiController(CaptionCopywriter copywriter, VisorDeMedios visor, Redactor redactor,
-            AiQuotaGuard cupo) {
+            AiQuotaGuard cupo, PermissionService permisos) {
         this.copywriter = copywriter;
         this.visor = visor;
         this.redactor = redactor;
         this.cupo = cupo;
+        this.permisos = permisos;
     }
 
     @PostMapping("/suggest-caption")
     public ResponseEntity<ApiResponse<CaptionSuggestionResponse>> suggestCaption(
+            @AuthenticationPrincipal User currentUser,
             @Valid @RequestBody CaptionSuggestionRequest request) {
+        permisos.exigir(currentUser, Permission.AI_USE);
         cupo.exigirCupo();
         String caption = copywriter.suggest(request.getBrief());
         return ResponseEntity.ok(ApiResponse.success(CaptionSuggestionResponse.builder().caption(caption).build()));
@@ -67,7 +73,9 @@ public class AiController {
      * persona termina de dictar, lo lento ya ocurrió.
      */
     @PostMapping("/analyze-media")
-    public ResponseEntity<ApiResponse<Void>> analyzeMedia(@RequestBody AnalyzeMediaRequest request) {
+    public ResponseEntity<ApiResponse<Void>> analyzeMedia(
+            @AuthenticationPrincipal User currentUser, @RequestBody AnalyzeMediaRequest request) {
+        permisos.exigir(currentUser, Permission.AI_USE);
         cupo.exigirCupo();
         visor.describir(request.getMediaUrls());
         return ResponseEntity.ok(ApiResponse.success(null));
@@ -81,6 +89,7 @@ public class AiController {
             @AuthenticationPrincipal User currentUser,
             @Valid @RequestBody ComposeRequest request) {
 
+        permisos.exigir(currentUser, Permission.AI_USE);
         cupo.exigirCupo();
         List<String> queSeVe = visor.describir(request.getMediaUrls());
         Redactor.Borrador borrador = redactor.redactar(
@@ -104,8 +113,10 @@ public class AiController {
      */
     @PostMapping("/ajustar")
     public ResponseEntity<ApiResponse<CaptionSuggestionResponse>> ajustar(
+            @AuthenticationPrincipal User currentUser,
             @Valid @RequestBody AjusteRequest request) {
 
+        permisos.exigir(currentUser, Permission.AI_USE);
         cupo.exigirCupo();
         Platform red = Platform.valueOf(request.getPlatform().trim().toUpperCase());
         Ajuste ajuste = Ajuste.valueOf(request.getAjuste().trim().toUpperCase());

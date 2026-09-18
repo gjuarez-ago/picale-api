@@ -54,6 +54,19 @@ public class Post {
     private String caption;
 
     /**
+     * Lo que la persona dictó o escribió al crear la publicación: la idea,
+     * antes de que la IA la convirtiera en textos por red.
+     *
+     * <p>{@code caption} no lo conserva: ahí viaja el texto ya aprobado de la
+     * primera red, que es lo que el proveedor usa como texto común. Sin este
+     * campo, al corregir una publicación el campo de la idea aparecía con el
+     * texto de la IA —con sus hashtags— y no con lo que la persona dijo, que
+     * es de donde quiere volver a partir.
+     */
+    @Column(length = 2000)
+    private String brief;
+
+    /**
      * Las fotos —o el video— de la publicación, en el orden en que se verán.
      *
      * <p>Una lista y no un solo campo porque un carrusel es UNA publicación
@@ -152,6 +165,31 @@ public class Post {
     private LocalDateTime scheduledAt;
 
     private LocalDateTime publishedAt;
+
+    /**
+     * El identificador que upload-post devolvió al aceptar el envío.
+     *
+     * <p>Existe porque el proveedor publica en diferido: {@code /upload} no
+     * espera a que las redes terminen, contesta en cuanto acepta el encargo y
+     * el resultado de cada red se consulta después con este identificador. Sin
+     * guardarlo no había forma de preguntar cómo acabó, y por eso todo se daba
+     * por publicado con solo haberlo mandado.
+     *
+     * <p>También es lo que impide publicar dos veces: mientras esté puesto y
+     * queden destinos sin cerrar, el worker consulta en vez de volver a subir.
+     */
+    @Column(length = 100)
+    private String uploadRequestId;
+
+    /**
+     * Cuándo se le entregó el envío al proveedor.
+     *
+     * <p>Es el plan B para confirmar: si la respuesta no trajera identificador,
+     * el historial del proveedor se puede leer igual, quedándose con lo que
+     * publicó este mismo perfil a partir de este momento. Y marca desde cuándo
+     * contar la espera antes de rendirse.
+     */
+    private LocalDateTime uploadStartedAt;
 
     @CreationTimestamp
     private LocalDateTime createdAt;

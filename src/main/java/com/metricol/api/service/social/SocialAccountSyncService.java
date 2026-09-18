@@ -1,9 +1,11 @@
 package com.metricol.api.service.social;
 
 import java.time.LocalDateTime;
+import java.util.EnumSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
+import java.util.Set;
 
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -47,10 +49,17 @@ public class SocialAccountSyncService {
      *                       devuelve upload-post: una llave por red, con
      *                       {@code null} si no está conectada. Un mapa vacío
      *                       significa "ninguna conectada" y desconecta todo.
+     * @return las redes que la persona apagó desde Pícale. Quien llama tiene
+     *         que quitarlas de lo que conteste, o la pantalla las seguirá
+     *         enseñando conectadas: upload-post no sabe nada de ese apagado
+     *         —el token sigue vivo en su lado— y aquí solo se respeta hacia
+     *         la base. Era lo que hacía que el botón "Desconectar" no
+     *         pareciera hacer nada.
      */
     @Transactional
-    public void sync(Map<String, Object> socialAccounts) {
+    public Set<Platform> sync(Map<String, Object> socialAccounts) {
         List<SocialAccount> existentes = repository.findAllByOrderByConnectedAtDesc();
+        Set<Platform> apagadas = EnumSet.noneOf(Platform.class);
 
         for (Platform platform : Platform.values()) {
             Object cuenta = buscarCuenta(socialAccounts, platform);
@@ -104,6 +113,7 @@ public class SocialAccountSyncService {
             // la fila volvía a ponerse en verde en la siguiente consulta de
             // estado y el botón no servía para nada.
             if (filaExistente.isPresent() && filaExistente.get().apagadaPorLaPersona()) {
+                apagadas.add(platform);
                 continue;
             }
 
@@ -131,6 +141,8 @@ public class SocialAccountSyncService {
             fila.setPageId(textoDe(datos.get("page_id")));
             repository.save(fila);
         }
+
+        return apagadas;
     }
 
     /**

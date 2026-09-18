@@ -15,10 +15,12 @@ import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
 
 import com.metricol.api.entity.User;
+import com.metricol.api.enums.Permission;
 import com.metricol.api.models.request.PostSaveRequest;
 import com.metricol.api.models.response.ApiResponse;
 import com.metricol.api.models.response.PostResponse;
 import com.metricol.api.models.response.PostStatusResponse;
+import com.metricol.api.service.PermissionService;
 import com.metricol.api.service.PostService;
 
 import jakarta.validation.Valid;
@@ -28,9 +30,11 @@ import jakarta.validation.Valid;
 public class PostController {
 
     private final PostService service;
+    private final PermissionService permisos;
 
-    public PostController(PostService service) {
+    public PostController(PostService service, PermissionService permisos) {
         this.service = service;
+        this.permisos = permisos;
     }
 
     @GetMapping
@@ -63,6 +67,7 @@ public class PostController {
     @PostMapping
     public ResponseEntity<ApiResponse<PostResponse>> create(
             @AuthenticationPrincipal User currentUser, @Valid @RequestBody PostSaveRequest request) {
+        exigirPermisosDeGuardado(currentUser, request);
         return ResponseEntity.ok(ApiResponse.success(service.create(request, currentUser)));
     }
 
@@ -71,7 +76,25 @@ public class PostController {
             @AuthenticationPrincipal User currentUser,
             @PathVariable UUID id,
             @Valid @RequestBody PostSaveRequest request) {
+        exigirPermisosDeGuardado(currentUser, request);
         return ResponseEntity.ok(ApiResponse.success(service.update(id, request, currentUser)));
+    }
+
+    /**
+     * Crear y publicar son dos permisos, no uno.
+     *
+     * <p>Se puede querer a alguien que redacte y deje todo listo sin que su
+     * contenido salga a la cuenta del cliente hasta que otro lo apruebe. Por
+     * eso se mira lo que la publicación va a hacer —salir ya, o quedar
+     * programada— y no solo que se esté guardando.
+     */
+    private void exigirPermisosDeGuardado(User currentUser, PostSaveRequest request) {
+        permisos.exigir(currentUser, Permission.POST_CREATE);
+        if (request.getScheduledAt() != null) {
+            permisos.exigir(currentUser, Permission.POST_SCHEDULE);
+        } else {
+            permisos.exigir(currentUser, Permission.POST_PUBLISH);
+        }
     }
 
     /**
@@ -85,6 +108,7 @@ public class PostController {
     @PostMapping("/{id}/retry")
     public ResponseEntity<ApiResponse<PostResponse>> retry(
             @AuthenticationPrincipal User currentUser, @PathVariable UUID id) {
+        permisos.exigir(currentUser, Permission.POST_PUBLISH);
         return ResponseEntity.ok(ApiResponse.success(service.retry(id, currentUser)));
     }
 
@@ -95,18 +119,24 @@ public class PostController {
      * quedara en la cola. Aqui no se pierde nada y se puede deshacer.
      */
     @PostMapping("/{id}/archive")
-    public ResponseEntity<ApiResponse<PostResponse>> archive(@PathVariable UUID id) {
+    public ResponseEntity<ApiResponse<PostResponse>> archive(
+            @AuthenticationPrincipal User currentUser, @PathVariable UUID id) {
+        permisos.exigir(currentUser, Permission.POST_DELETE);
         return ResponseEntity.ok(ApiResponse.success(service.archive(id, true)));
     }
 
     /** Devolverla a la vista. Es el "deshacer" del gesto de archivar. */
     @DeleteMapping("/{id}/archive")
-    public ResponseEntity<ApiResponse<PostResponse>> unarchive(@PathVariable UUID id) {
+    public ResponseEntity<ApiResponse<PostResponse>> unarchive(
+            @AuthenticationPrincipal User currentUser, @PathVariable UUID id) {
+        permisos.exigir(currentUser, Permission.POST_DELETE);
         return ResponseEntity.ok(ApiResponse.success(service.archive(id, false)));
     }
 
     @DeleteMapping("/{id}")
-    public ResponseEntity<ApiResponse<Void>> delete(@PathVariable UUID id) {
+    public ResponseEntity<ApiResponse<Void>> delete(
+            @AuthenticationPrincipal User currentUser, @PathVariable UUID id) {
+        permisos.exigir(currentUser, Permission.POST_DELETE);
         service.delete(id);
         return ResponseEntity.ok(ApiResponse.success(null));
     }

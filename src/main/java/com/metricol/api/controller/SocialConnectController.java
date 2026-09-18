@@ -14,12 +14,14 @@ import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
 
 import com.metricol.api.entity.User;
+import com.metricol.api.enums.Permission;
 import com.metricol.api.entity.Workspace;
 import com.metricol.api.enums.Platform;
 import com.metricol.api.exception.ResourceNotFoundException;
 import com.metricol.api.models.response.ApiResponse;
 import com.metricol.api.repository.WorkspaceRepository;
 import com.metricol.api.service.SocialAccountService;
+import com.metricol.api.service.PermissionService;
 import com.metricol.api.service.social.UploadPostConnectService;
 
 /**
@@ -38,15 +40,18 @@ public class SocialConnectController {
     private final UploadPostConnectService connectService;
     private final SocialAccountService accountService;
     private final WorkspaceRepository workspaceRepository;
+    private final PermissionService permisos;
 
     public SocialConnectController(
             UploadPostConnectService connectService,
             SocialAccountService accountService,
-            WorkspaceRepository workspaceRepository) {
+            WorkspaceRepository workspaceRepository,
+            PermissionService permisos) {
 
         this.connectService = connectService;
         this.accountService = accountService;
         this.workspaceRepository = workspaceRepository;
+        this.permisos = permisos;
     }
 
     /**
@@ -57,6 +62,7 @@ public class SocialConnectController {
     public ResponseEntity<ApiResponse<Map<String, String>>> connectLink(
             @AuthenticationPrincipal User currentUser) {
 
+        permisos.exigir(currentUser, Permission.NETWORK_MANAGE);
         String url = connectService.connectLink(workspaceOf(currentUser));
         return ResponseEntity.ok(ApiResponse.success(Map.of("accessUrl", url)));
     }
@@ -97,6 +103,8 @@ public class SocialConnectController {
             @PathVariable String platform,
             @AuthenticationPrincipal User currentUser) {
 
+        permisos.exigir(currentUser, Permission.NETWORK_MANAGE);
+
         // Volver a conectarla levanta el apagado manual, si lo había: tocar
         // "Conectar" en una red que se apagó es la señal de que se cambió de
         // opinión. Sin esto quedaría apagada para siempre — el sync la
@@ -122,7 +130,9 @@ public class SocialConnectController {
      * {@code SocialAccountService.disconnectPlatform}.
      */
     @DeleteMapping("/{platform}")
-    public ResponseEntity<ApiResponse<Void>> disconnect(@PathVariable String platform) {
+    public ResponseEntity<ApiResponse<Void>> disconnect(
+            @AuthenticationPrincipal User currentUser, @PathVariable String platform) {
+        permisos.exigir(currentUser, Permission.NETWORK_MANAGE);
         accountService.disconnectPlatform(plataformaDe(platform));
         return ResponseEntity.ok(ApiResponse.success(null));
     }
@@ -162,6 +172,7 @@ public class SocialConnectController {
             @PathVariable String pageId,
             @AuthenticationPrincipal User currentUser) {
 
+        permisos.exigir(currentUser, Permission.NETWORK_MANAGE);
         connectService.pinFacebookPage(workspaceOf(currentUser), pageId);
         return ResponseEntity.ok(ApiResponse.success(null));
     }
@@ -180,6 +191,7 @@ public class SocialConnectController {
             @PathVariable String pageId,
             @AuthenticationPrincipal User currentUser) {
 
+        permisos.exigir(currentUser, Permission.NETWORK_MANAGE);
         connectService.pinLinkedinPage(workspaceOf(currentUser), pageId);
         return ResponseEntity.ok(ApiResponse.success(null));
     }

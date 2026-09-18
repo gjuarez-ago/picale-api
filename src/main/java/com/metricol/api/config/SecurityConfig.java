@@ -50,6 +50,11 @@ public class SecurityConfig {
                 .sessionManagement(session -> session.sessionCreationPolicy(SessionCreationPolicy.STATELESS))
                 .authorizeHttpRequests(auth -> auth
                         .requestMatchers("/api/v1/auth/**").permitAll()
+                        // Aceptar una invitación es de quien todavía no tiene
+                        // cuenta, así que no puede exigir sesión. Lo que la
+                        // protege es el token del enlace MÁS la contraseña:
+                        // ver InvitationAcceptanceService.
+                        .requestMatchers("/api/v1/invitaciones/**").permitAll()
                         .requestMatchers("/h2-console/**").permitAll()
                         .requestMatchers("/media/files/**").permitAll()
                         // Sin sesión a propósito: los protege su propia llave

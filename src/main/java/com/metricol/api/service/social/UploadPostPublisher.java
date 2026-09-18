@@ -2,6 +2,7 @@ package com.metricol.api.service.social;
 
 import java.time.Duration;
 import java.time.LocalDateTime;
+import java.time.ZoneOffset;
 import java.util.Optional;
 import com.metricol.api.service.limits.LimitesConfigurables;
 import com.metricol.api.service.publishing.ProviderCircuitBreaker;
@@ -22,6 +23,7 @@ import com.metricol.api.config.UploadPostProperties;
 import com.metricol.api.enums.Platform;
 import com.metricol.api.service.ai.EspecTexto;
 import com.metricol.api.service.media.AdaptadorDeImagenes;
+import com.metricol.api.service.publishing.ConfirmacionDelProveedor;
 import com.metricol.api.service.publishing.PostPublishStore;
 import com.metricol.api.service.publishing.PublishOutcome;
 import com.metricol.api.service.publishing.PublishPlan;
@@ -51,19 +53,28 @@ public class UploadPostPublisher {
     private final ProviderCircuitBreaker breaker;
     private final LimitesConfigurables limites;
 
+    /**
+     * Quien le pregunta al proveedor como acabo de verdad cada envio. Es la
+     * misma cadena que usa la reconciliacion manual, a proposito: las dos
+     * tienen que llegar a la misma conclusion con los mismos datos.
+     */
+    private final ConsultaDeEnvio consulta;
+
     public UploadPostPublisher(
             UploadPostClient client,
             UploadPostProperties props,
             PostPublishStore store,
             AdaptadorDeImagenes adaptador,
             ProviderCircuitBreaker breaker,
-            LimitesConfigurables limites) {
+            LimitesConfigurables limites,
+            ConsultaDeEnvio consulta) {
         this.client = client;
         this.props = props;
         this.store = store;
         this.adaptador = adaptador;
         this.breaker = breaker;
         this.limites = limites;
+        this.consulta = consulta;
     }
 
     /**
@@ -77,6 +88,14 @@ public class UploadPostPublisher {
             String motivo = "Falta configurar la llave de upload-post.com en el servidor.";
             store.marcarFallidaDefinitiva(postId, motivo);
             return PublishOutcome.permanent(motivo);
+        }
+
+        // ¿Hay un envío ya entregado del que falte saber cómo acabó? Entonces
+        // no se sube nada: se pregunta. Volver a subir aquí es lo que sacaría
+        // el mismo video dos veces, porque el proveedor ya lo tiene.
+        PostPublishStore.EnvioEnCurso enCurso = store.envioEnCurso(postId);
+        if (enCurso != null) {
+            return store.confirmar(postId, preguntar(enCurso));
         }
 
         PublishPlan plan = store.preparar(postId, workspaceId);
@@ -94,6 +113,7 @@ public class UploadPostPublisher {
         Map<String, String> porRed = textosPorRed(plan);
 
         Map<String, Object> respuesta;
+        LocalDateTime entregadoEn = LocalDateTime.now(ZoneOffset.UTC);
         try {
             respuesta = enviar(plan, porRed);
         } catch (Exception ex) {
@@ -135,7 +155,51 @@ public class UploadPostPublisher {
             return recuperable ? PublishOutcome.retryable(motivo) : PublishOutcome.permanent(motivo);
         }
 
-        return store.aplicar(plan, respuesta, porRed);
+        // Lo que contesta el proveedor a la subida es un acuse, no un
+        // resultado: dice que acepta el encargo. Se guarda ANTES de preguntar
+        // nada, porque a partir de aquí el video ya está en sus manos y un
+        // reintento no debe volver a subirlo.
+        String envio = identificadorDelEnvio(respuesta);
+        store.guardarEnvio(postId, envio, entregadoEn);
+        log.info("upload-post acepto la publicacion {} (envio {}). Respuesta: {}",
+                postId, envio, resumen(respuesta));
+
+        return store.aplicar(plan,
+                preguntar(new PostPublishStore.EnvioEnCurso(envio, entregadoEn, plan.profile())),
+                porRed);
+    }
+
+    /** La cadena de preguntas al proveedor vive en {@link ConsultaDeEnvio}; ver ahí el orden y el porqué. */
+    private ConfirmacionDelProveedor preguntar(PostPublishStore.EnvioEnCurso envio) {
+        return consulta.preguntar(envio);
+    }
+
+    /**
+     * El identificador del envío dentro del acuse.
+     *
+     * <p>Se prueban varios nombres porque el proveedor no publica el esquema
+     * de esta respuesta —{@code /openapi.json} y {@code /swagger.json} dan
+     * 404— y los suyos propios usan los tres: en el historial y en el estado
+     * conviven {@code request_id} y {@code job_id}. Si ninguno aparece, el
+     * registro de arriba deja la respuesta entera escrita para verlo.
+     */
+    private String identificadorDelEnvio(Map<String, Object> respuesta) {
+        if (respuesta == null) {
+            return null;
+        }
+        for (String clave : List.of("request_id", "requestId", "job_id", "jobId")) {
+            Object valor = respuesta.get(clave);
+            if (valor != null && !valor.toString().isBlank()) {
+                return valor.toString();
+            }
+        }
+        return null;
+    }
+
+    /** La respuesta en el log, sin llenarlo si el proveedor se explaya. */
+    private String resumen(Map<String, Object> respuesta) {
+        String texto = String.valueOf(respuesta);
+        return texto.length() <= 600 ? texto : texto.substring(0, 597) + "...";
     }
 
     /**

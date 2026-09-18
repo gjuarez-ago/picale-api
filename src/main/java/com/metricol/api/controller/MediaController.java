@@ -16,12 +16,14 @@ import org.springframework.web.bind.annotation.RestController;
 import org.springframework.web.multipart.MultipartFile;
 
 import com.metricol.api.entity.User;
+import com.metricol.api.enums.Permission;
 import com.metricol.api.models.request.MediaPresignRequest;
 import com.metricol.api.models.response.ApiResponse;
 import com.metricol.api.models.response.MediaAssetResponse;
 import com.metricol.api.models.response.MediaPresignResponse;
 import com.metricol.api.models.response.StorageUsageResponse;
 import com.metricol.api.service.MediaService;
+import com.metricol.api.service.PermissionService;
 
 import jakarta.validation.Valid;
 
@@ -30,9 +32,11 @@ import jakarta.validation.Valid;
 public class MediaController {
 
     private final MediaService service;
+    private final PermissionService permisos;
 
-    public MediaController(MediaService service) {
+    public MediaController(MediaService service, PermissionService permisos) {
         this.service = service;
+        this.permisos = permisos;
     }
 
     @GetMapping
@@ -65,6 +69,9 @@ public class MediaController {
     public ResponseEntity<ApiResponse<MediaPresignResponse>> presign(
             @AuthenticationPrincipal User currentUser,
             @Valid @RequestBody MediaPresignRequest request) {
+        // Subir es parte de crear: quien no puede crear publicaciones tampoco
+        // llena el espacio del cliente con archivos.
+        permisos.exigir(currentUser, Permission.POST_CREATE);
         return ResponseEntity.ok(ApiResponse.success(
                 service.presign(request, currentUser.getWorkspace().getId())));
     }
@@ -78,7 +85,9 @@ public class MediaController {
      * que exista.
      */
     @PostMapping("/{id}/confirm")
-    public ResponseEntity<ApiResponse<MediaAssetResponse>> confirm(@PathVariable UUID id) {
+    public ResponseEntity<ApiResponse<MediaAssetResponse>> confirm(
+            @AuthenticationPrincipal User currentUser, @PathVariable UUID id) {
+        permisos.exigir(currentUser, Permission.POST_CREATE);
         return ResponseEntity.ok(ApiResponse.success(service.confirm(id)));
     }
 
@@ -93,12 +102,15 @@ public class MediaController {
     public ResponseEntity<ApiResponse<MediaAssetResponse>> upload(
             @AuthenticationPrincipal User currentUser,
             @RequestParam("file") MultipartFile file) {
+        permisos.exigir(currentUser, Permission.POST_CREATE);
         return ResponseEntity.ok(ApiResponse.success(
                 service.upload(file, currentUser.getWorkspace().getId())));
     }
 
     @DeleteMapping("/{id}")
-    public ResponseEntity<ApiResponse<Void>> delete(@PathVariable UUID id) {
+    public ResponseEntity<ApiResponse<Void>> delete(
+            @AuthenticationPrincipal User currentUser, @PathVariable UUID id) {
+        permisos.exigir(currentUser, Permission.MEDIA_DELETE);
         service.delete(id);
         return ResponseEntity.ok(ApiResponse.success(null));
     }

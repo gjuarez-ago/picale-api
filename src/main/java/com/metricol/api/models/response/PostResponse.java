@@ -19,6 +19,9 @@ public class PostResponse {
     private UUID id;
     private String caption;
 
+    /** La idea tal como la dicto la persona; ver {@code Post.brief}. Puede venir nula. */
+    private String brief;
+
     /** Todas las fotos, en orden. El video, cuando lo es, va solo aquí. */
     private List<String> mediaUrls;
 
@@ -44,6 +47,16 @@ public class PostResponse {
     private String thumbnailUrl;
 
     private Integer videoDurationSeconds;
+
+    /**
+     * Que clase de publicacion es: PHOTO, REEL o STORY. Puede venir nulo en
+     * publicaciones anteriores a los formatos.
+     *
+     * <p>La app lo necesita para corregir: abre el mismo flujo de crear con
+     * el formato ya fijado, y sin este dato tendria que adivinarlo del
+     * archivo, que es justo lo que no se puede con una historia.
+     */
+    private String format;
     private PostStatus status;
     private LocalDateTime scheduledAt;
     private LocalDateTime publishedAt;

@@ -109,6 +109,70 @@ public class EmailService {
                 """.formatted(codigo, saludo, escapar(correo), minutos);
     }
 
+
+    /**
+     * El correo que invita a entrar a una organización.
+     *
+     * <p>Dice quién invita y a qué: quien lo recibe tiene que reconocer el
+     * nombre de su jefe o de la agencia antes de tocar un enlace, o con razón
+     * lo tomará por un intento de estafa.
+     */
+    @Async
+    public void enviarInvitacion(String para, String quienInvita, String organizacion, String enlace, int dias) {
+        if (!configurado) {
+            log.info("INVITACION para {} a {}: {} (correo sin configurar, no se envio)", para, organizacion, enlace);
+            return;
+        }
+
+        try {
+            MimeMessage mensaje = mailSender.createMimeMessage();
+            MimeMessageHelper helper = new MimeMessageHelper(mensaje, "UTF-8");
+            helper.setFrom(remitente, "Pícale");
+            helper.setTo(para);
+            helper.setSubject(quienInvita + " te invitó a " + organizacion + " en Pícale");
+            helper.setText(cuerpoDeInvitacion(quienInvita, organizacion, enlace, dias), true);
+            mailSender.send(mensaje);
+        } catch (MessagingException | MailException | UnsupportedEncodingException ex) {
+            log.error("No se pudo enviar la invitacion a {}: {}", para, ex.getMessage());
+        }
+    }
+
+    static String cuerpoDeInvitacion(String quienInvita, String organizacion, String enlace, int dias) {
+        String invita = quienInvita == null || quienInvita.isBlank() ? "Alguien" : escapar(quienInvita.strip());
+        return """
+                <!doctype html>
+                <html lang="es">
+                <body style="margin:0;padding:0;background:#F3F4F6;font-family:-apple-system,'Segoe UI',Roboto,Helvetica,Arial,sans-serif;color:#111827;">
+                <div style="display:none;max-height:0;overflow:hidden;">%1 te invitó a %2 en Pícale</div>
+                <table role="presentation" width="100%%" cellpadding="0" cellspacing="0" border="0">
+                  <tr><td align="center" style="padding:32px 16px;">
+                    <table role="presentation" width="100%%" cellpadding="0" cellspacing="0" border="0" style="max-width:480px;background:#FFFFFF;border-radius:16px;border:1px solid #E5E7EB;">
+                      <tr><td style="padding:28px 28px 6px;">
+                        <div style="width:44px;height:44px;border-radius:12px;background:#246BFD;background:linear-gradient(135deg,#28C9FD 0%%,#129CFD 35%%,#246BFD 65%%,#0035D7 100%%);color:#FFFFFF;font-weight:700;font-size:20px;line-height:44px;text-align:center;">P</div>
+                      </td></tr>
+                      <tr><td style="padding:14px 28px 0;font-size:20px;font-weight:700;line-height:28px;">Te invitaron a %2</td></tr>
+                      <tr><td style="padding:10px 28px 0;font-size:15px;line-height:24px;color:#4B5563;">
+                        %1 te invitó a trabajar en <strong style="color:#111827;">%2</strong> con Pícale:
+                        crear publicaciones y sacarlas en las redes de sus clientes.
+                      </td></tr>
+                      <tr><td align="center" style="padding:24px 28px 8px;">
+                        <a href="%3" style="display:inline-block;padding:14px 26px;border-radius:12px;background:#246BFD;color:#FFFFFF;font-size:15px;font-weight:700;text-decoration:none;">Aceptar la invitación</a>
+                      </td></tr>
+                      <tr><td align="center" style="padding:4px 28px 0;font-size:13px;line-height:20px;color:#6B7280;">
+                        El enlace vence en %4 días.
+                      </td></tr>
+                      <tr><td style="padding:24px 28px 0;"><div style="border-top:1px solid #E5E7EB;"></div></td></tr>
+                      <tr><td style="padding:18px 28px 28px;font-size:13px;line-height:20px;color:#6B7280;">
+                        Si no esperabas esto, ignora el correo: sin abrir el enlace no pasa nada.
+                      </td></tr>
+                    </table>
+                  </td></tr>
+                </table>
+                </body>
+                </html>
+                """.formatted(invita, escapar(organizacion), escapar(enlace), dias);
+    }
+
     /** Lo mínimo para que un nombre con «&lt;» no rompa el HTML ni inyecte nada. */
     private static String escapar(String texto) {
         return texto

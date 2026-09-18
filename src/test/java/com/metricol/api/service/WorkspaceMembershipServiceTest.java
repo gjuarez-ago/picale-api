@@ -23,6 +23,8 @@ import com.metricol.api.exception.ResourceNotFoundException;
 import com.metricol.api.models.response.AuthResponse;
 import com.metricol.api.models.response.MiWorkspaceResponse;
 import com.metricol.api.repository.UserRepository;
+import com.metricol.api.repository.OrganizationMemberRepository;
+import com.metricol.api.repository.OrganizationRepository;
 import com.metricol.api.repository.WorkspaceMemberRepository;
 import com.metricol.api.repository.WorkspaceRepository;
 
@@ -60,17 +62,33 @@ class WorkspaceMembershipServiceTest {
     @Autowired
     private WorkspaceMemberRepository miembros;
 
+    @Autowired
+    private OrganizationMemberRepository orgMiembros;
+
+    @Autowired
+    private OrganizationRepository organizaciones;
+
     private final List<UUID> usuariosCreados = new ArrayList<>();
     private final List<UUID> workspacesCreados = new ArrayList<>();
 
-    /** En orden inverso a las llaves: membresías, luego usuarios, luego workspaces. */
+    /**
+     * En orden inverso a las llaves: primero lo que apunta a un usuario o a un
+     * workspace, luego ellos. Las organizaciones van al final porque los
+     * workspaces las referencian.
+     */
     @AfterEach
     void limpiar() {
+        List<UUID> organizacionesCreadas = new ArrayList<>();
         for (UUID userId : usuariosCreados) {
             miembros.deleteAllById(miembros.findDelUsuario(userId).stream().map(WorkspaceMember::getId).toList());
+            orgMiembros.findDelUsuario(userId).forEach(m -> {
+                organizacionesCreadas.add(m.getOrganization().getId());
+                orgMiembros.deleteById(m.getId());
+            });
         }
         users.deleteAllById(usuariosCreados);
         workspaces.deleteAllById(workspacesCreados);
+        organizaciones.deleteAllById(organizacionesCreadas);
         usuariosCreados.clear();
         workspacesCreados.clear();
     }

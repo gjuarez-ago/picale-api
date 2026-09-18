@@ -1,5 +1,8 @@
 package com.metricol.api.service;
 
+import java.io.IOException;
+import java.nio.file.Files;
+import java.nio.file.Path;
 import java.util.List;
 import java.util.UUID;
 
@@ -7,6 +10,7 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+import org.springframework.transaction.support.TransactionTemplate;
 import org.springframework.web.multipart.MultipartFile;
 
 import com.metricol.api.config.MediaLimitsProperties;
@@ -21,6 +25,7 @@ import com.metricol.api.models.response.MediaPresignResponse;
 import com.metricol.api.models.response.StorageUsageResponse;
 import com.metricol.api.repository.MediaAssetRepository;
 import com.metricol.api.service.media.AdaptadorDeImagenes;
+import com.metricol.api.service.media.FfmpegImagen;
 import com.metricol.api.service.media.MiniaturasEnSegundoPlano;
 import com.metricol.api.service.storage.R2StorageService;
 import com.metricol.api.service.storage.StorageQuotaService;
@@ -44,6 +49,8 @@ public class MediaService {
     private final MediaLimitsProperties limites;
     private final MiniaturasEnSegundoPlano miniaturas;
     private final com.metricol.api.repository.PostRepository postRepository;
+    private final FfmpegImagen ffmpeg;
+    private final TransactionTemplate transaccion;
 
     public MediaService(
             MediaAssetRepository repository,
@@ -51,13 +58,17 @@ public class MediaService {
             StorageQuotaService cuota,
             MediaLimitsProperties limites,
             MiniaturasEnSegundoPlano miniaturas,
-            com.metricol.api.repository.PostRepository postRepository) {
+            com.metricol.api.repository.PostRepository postRepository,
+            FfmpegImagen ffmpeg,
+            TransactionTemplate transaccion) {
         this.repository = repository;
         this.storage = storage;
         this.cuota = cuota;
         this.limites = limites;
         this.miniaturas = miniaturas;
         this.postRepository = postRepository;
+        this.ffmpeg = ffmpeg;
+        this.transaccion = transaccion;
     }
 
     /** La galería: solo lo confirmado. Ver el comentario del repositorio. */
@@ -115,7 +126,6 @@ public class MediaService {
      * y la fila también: dejar pasar un archivo que rompe la cuota sería
      * ponerle un techo al gasto y luego no aplicarlo.
      */
-    @Transactional
     public MediaAssetResponse confirm(UUID assetId) {
         MediaAsset asset = repository.findById(assetId)
                 .orElseThrow(() -> new ResourceNotFoundException("Esa subida no existe."));
@@ -132,6 +142,90 @@ public class MediaService {
             throw new IllegalStateException(
                     "El archivo no llegó a subirse. Intenta de nuevo.");
         }
+
+        // Antes de dar la subida por buena, y FUERA de la transacción: bajar
+        // el archivo y pasarlo por ffmpeg tarda, y hacerlo con una conexión de
+        // la base en la mano es lo que congela la aplicación bajo carga. Lo
+        // que escribe en la base va después, en `cerrarConfirmacion`.
+        enR2 = sanearSiHaceFalta(asset, enR2);
+
+        R2StorageService.Consulta real = enR2;
+        return transaccion.execute(estado -> cerrarConfirmacion(assetId, real));
+    }
+
+    /**
+     * Repara una imagen dañada antes de aceptarla, con ffmpeg.
+     *
+     * <p>El tamaño dice si el archivo llegó entero desde el teléfono; no dice
+     * si el archivo estaba entero en el teléfono. Una foto guardada a medias
+     * —una imagen bajada de un chat, por ejemplo— tiene cabecera válida,
+     * medidas válidas y sube sin un solo byte de menos, y la rechazan todas
+     * las redes al publicar. Ese fue el caso que trajo esto: 44 KB, cuatro
+     * redes fallidas, y la persona sin saber por qué.
+     *
+     * <p>Se decodifica completa. Si ffmpeg se queja, se reencoda como JPEG
+     * limpio y se SUSTITUYE en R2 bajo la misma clave: la foto se ve igual y
+     * el archivo queda bien formado. Solo si ni eso se puede, se rechaza. Y
+     * sin ffmpeg en la máquina no se comprueba nada: la subida sigue como
+     * siempre, igual que el adaptador publica sin él.
+     *
+     * @return lo que hay en R2 al terminar, que puede ser el archivo saneado
+     */
+    private R2StorageService.Consulta sanearSiHaceFalta(MediaAsset asset, R2StorageService.Consulta enR2) {
+        if (asset.getType() != MediaType.IMAGE || !ffmpeg.disponible()) {
+            return enR2;
+        }
+
+        Path temporal = null;
+        try {
+            temporal = Files.createTempFile("picale-confirm-", ".img");
+            if (!storage.descargar(asset.getStorageKey(), temporal)) {
+                return enR2;
+            }
+
+            String errores = ffmpeg.verificar(temporal);
+            if (errores != null && errores.isBlank()) {
+                return enR2;
+            }
+
+            byte[] sana = ffmpeg.sanear(temporal);
+            if (sana == null) {
+                // Ni se pudo leer. Fuera: dejarla pasar es fallar cuatro redes
+                // después, cuando la persona ya escribió todo.
+                log.warn("Imagen {} irrecuperable ({} bytes): {}", asset.getStorageKey(), enR2.sizeBytes(),
+                        errores == null ? "ffmpeg no pudo abrirla" : recortar(errores));
+                storage.deleteByKey(asset.getStorageKey());
+                transaccion.executeWithoutResult(estado -> repository.deleteById(asset.getId()));
+                throw new IllegalArgumentException(
+                        "La imagen esta danada o incompleta y no se pudo reparar. Elige otra o vuelve a guardarla.");
+            }
+
+            storage.subirBytes(asset.getStorageKey(), sana, "image/jpeg");
+            log.info("Imagen {} reparada con ffmpeg: {} -> {} bytes ({})", asset.getStorageKey(),
+                    enR2.sizeBytes(), sana.length, errores == null ? "no se podia abrir" : recortar(errores));
+            return new R2StorageService.Consulta(sana.length, "image/jpeg");
+        } catch (IOException ex) {
+            log.warn("No se pudo revisar la imagen {}: {}", asset.getStorageKey(), ex.getMessage());
+            return enR2;
+        } finally {
+            if (temporal != null) {
+                try {
+                    Files.deleteIfExists(temporal);
+                } catch (IOException ignorada) {
+                    // Un temporal que se queda no es motivo para fallar la subida.
+                }
+            }
+        }
+    }
+
+    private static String recortar(String texto) {
+        return texto.length() <= 160 ? texto : texto.substring(0, 160) + "...";
+    }
+
+    /** La parte de {@link #confirm} que escribe en la base, corta y con transacción propia. */
+    private MediaAssetResponse cerrarConfirmacion(UUID assetId, R2StorageService.Consulta enR2) {
+        MediaAsset asset = repository.findById(assetId)
+                .orElseThrow(() -> new ResourceNotFoundException("Esa subida no existe."));
 
         long declarado = asset.getSizeBytes() == null ? 0 : asset.getSizeBytes();
         if (enR2.sizeBytes() > declarado) {

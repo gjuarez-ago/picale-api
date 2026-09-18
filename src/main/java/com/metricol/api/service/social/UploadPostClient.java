@@ -112,10 +112,45 @@ public class UploadPostClient {
                 .body(Map.class);
     }
 
+    /**
+     * Cómo acabó un envío, red por red.
+     *
+     * <p>Esta llamada es la que dice la verdad. {@code /upload} solo acepta el
+     * encargo —{@code is_async: true} en todo lo que devuelve el proveedor— y
+     * contesta antes de que ninguna red haya terminado; medido en producción,
+     * un reel de 13 MB tardó 85 segundos en salir en las tres redes mientras
+     * que la subida contestó a los 20.
+     *
+     * <p>Devuelve {@code status} ("completed" cuando ya no falta ninguna),
+     * {@code completed}/{@code total}, y {@code results}: una LISTA con una
+     * fila por red, no un mapa indexado por red.
+     */
     @SuppressWarnings("unchecked")
     public Map<String, Object> status(String requestId) {
         return restClient.get()
                 .uri(uriBuilder -> uriBuilder.path("/uploadposts/status").queryParam("request_id", requestId).build())
+                .retrieve()
+                .body(Map.class);
+    }
+
+    /**
+     * Las últimas subidas de la cuenta, en {@code history}.
+     *
+     * <p>Es el plan B de {@link #status(String)}: sirve cuando no se guardó el
+     * identificador del envío. Sus filas traen los mismos campos que las de
+     * status —{@code platform}, {@code success}, {@code platform_post_id},
+     * {@code post_url}, {@code error_message}— así que las lee el mismo código.
+     *
+     * <p>Trae solo las diez últimas de TODA la llave, que es de todos los
+     * negocios, y no admite filtro ni paginado por perfil (se probaron
+     * {@code profile}, {@code profile_username} y {@code limit}: los dos
+     * primeros se ignoran y el tercero da 400). Por eso solo vale recién
+     * mandado el envío, cuando lo nuestro todavía está arriba.
+     */
+    @SuppressWarnings("unchecked")
+    public Map<String, Object> historial() {
+        return restClient.get()
+                .uri("/uploadposts/history")
                 .retrieve()
                 .body(Map.class);
     }

@@ -5,6 +5,7 @@ import org.slf4j.LoggerFactory;
 import org.springframework.boot.ApplicationRunner;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
+import org.springframework.core.annotation.Order;
 
 import com.metricol.api.service.WorkspaceMembershipService;
 
@@ -24,6 +25,7 @@ public class WorkspaceMemberBackfill {
     private static final Logger log = LoggerFactory.getLogger(WorkspaceMemberBackfill.class);
 
     @Bean
+    @Order(10)
     public ApplicationRunner completarMembresias(WorkspaceMembershipService membresias) {
         return args -> {
             try {

@@ -6,6 +6,7 @@ import java.util.UUID;
 
 import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.data.jpa.repository.Query;
+import org.springframework.data.repository.query.Param;
 
 import com.metricol.api.entity.User;
 
@@ -40,4 +41,17 @@ public interface UserRepository extends JpaRepository<User, UUID> {
                 where m.user = u and m.workspace = u.workspace)
             """)
     List<User> findSinMembresiaEnSuWorkspace();
+
+    /**
+     * Quién es el dueño de un espacio que viene de antes de las
+     * organizaciones: el miembro más antiguo. No es una regla de negocio, es
+     * la mejor pista que hay en los datos viejos — el primero en entrar es
+     * quien lo creó. Solo lo usa el arranque que completa organizaciones.
+     */
+    @Query("""
+            select m.user from WorkspaceMember m
+            where m.workspace.id = :workspaceId
+            order by m.createdAt
+            """)
+    List<User> findDueñoDe(@Param("workspaceId") java.util.UUID workspaceId);
 }

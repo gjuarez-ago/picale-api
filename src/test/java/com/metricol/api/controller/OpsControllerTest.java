@@ -19,6 +19,7 @@ import org.junit.jupiter.api.Test;
 import com.metricol.api.exception.ResourceNotFoundException;
 import com.metricol.api.models.response.AiUsageReportResponse;
 import com.metricol.api.service.ai.AiUsageReportService;
+import com.metricol.api.service.social.ReconciliacionUploadPost;
 
 /**
  * La llave del reporte de gasto. Es lo único que separa los datos de todos los
@@ -40,7 +41,7 @@ class OpsControllerTest {
     void sinLlaveConfiguradaNoExiste() {
         // Una llave vacia en el servidor no puede significar "cualquiera
         // pasa": que alguien olvide la variable no debe abrir el reporte.
-        OpsController controller = new OpsController(reporte, "");
+        OpsController controller = new OpsController(reporte, mock(ReconciliacionUploadPost.class), "");
 
         assertThatThrownBy(() -> controller.aiUsage("", null, null))
                 .isInstanceOf(ResourceNotFoundException.class);
@@ -50,7 +51,7 @@ class OpsControllerTest {
     @Test
     @DisplayName("con la llave equivocada, o sin ella, tampoco")
     void llaveEquivocada() {
-        OpsController controller = new OpsController(reporte, "la-buena");
+        OpsController controller = new OpsController(reporte, mock(ReconciliacionUploadPost.class), "la-buena");
 
         assertThatThrownBy(() -> controller.aiUsage("la-mala", null, null))
                 .isInstanceOf(ResourceNotFoundException.class);
@@ -62,7 +63,7 @@ class OpsControllerTest {
     @Test
     @DisplayName("con la llave buena y sin fechas, reporta el mes en curso")
     void llaveBuenaMesEnCurso() {
-        OpsController controller = new OpsController(reporte, "la-buena");
+        OpsController controller = new OpsController(reporte, mock(ReconciliacionUploadPost.class), "la-buena");
 
         assertThat(controller.aiUsage("la-buena", null, null).getStatusCode().is2xxSuccessful()).isTrue();
 
@@ -73,7 +74,7 @@ class OpsControllerTest {
     @Test
     @DisplayName("un periodo al reves se rechaza")
     void periodoAlReves() {
-        OpsController controller = new OpsController(reporte, "la-buena");
+        OpsController controller = new OpsController(reporte, mock(ReconciliacionUploadPost.class), "la-buena");
 
         assertThatThrownBy(() -> controller.aiUsage("la-buena",
                 LocalDate.of(2026, 9, 10), LocalDate.of(2026, 9, 1)))

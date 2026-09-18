@@ -1,11 +1,16 @@
 package com.metricol.api.entity;
 
 import java.time.LocalDateTime;
+import java.util.EnumSet;
+import java.util.Set;
 import java.util.UUID;
 
+import com.metricol.api.entity.converter.PermissionSetConverter;
+import com.metricol.api.enums.Permission;
 import com.metricol.api.enums.Role;
 
 import jakarta.persistence.Column;
+import jakarta.persistence.Convert;
 import jakarta.persistence.Entity;
 import jakarta.persistence.EnumType;
 import jakarta.persistence.Enumerated;
@@ -61,17 +66,65 @@ public class WorkspaceMember {
     private Workspace workspace;
 
     /**
-     * El rol de esta persona EN este workspace. Hoy todos son ADMIN, igual que
-     * {@link User#getRole()}; va aquí para cuando se invite a alguien con menos
-     * permisos a un solo cliente sin dárselos en todos.
+     * El rol de esta persona EN este workspace: es lo que le da sus permisos
+     * de partida. El mismo usuario puede ser ADMIN en un cliente y VIEWER en
+     * otro, que es justo lo que hace falta en una agencia.
      */
     @Enumerated(EnumType.STRING)
     @Column(nullable = false, length = 20)
     private Role role;
 
+    /**
+     * Permisos dados a ESTA persona por encima de su rol.
+     *
+     * <p>Para el caso que el rol no prevé: "un editor que además conecta las
+     * redes de este cliente". Sin esto habría que inventar un rol nuevo por
+     * cada excepción.
+     */
+    @Builder.Default
+    @Convert(converter = PermissionSetConverter.class)
+    @Column(name = "extra_permissions", length = 500)
+    private Set<Permission> extraPermissions = EnumSet.noneOf(Permission.class);
+
+    /**
+     * Permisos quitados a ESTA persona aunque su rol los traiga.
+     *
+     * <p>Gana sobre todo lo demás: si un permiso está aquí, no lo tiene, venga
+     * de donde venga. Quitar es más delicado que dar —se usa para cerrar algo
+     * ya concedido— así que la regla es que negar siempre gane.
+     */
+    @Builder.Default
+    @Convert(converter = PermissionSetConverter.class)
+    @Column(name = "denied_permissions", length = 500)
+    private Set<Permission> deniedPermissions = EnumSet.noneOf(Permission.class);
+
     @Builder.Default
     @Column(nullable = false, updatable = false)
     private LocalDateTime createdAt = LocalDateTime.now();
+
+    /**
+     * Lo que esta persona puede hacer de verdad: lo del rol, más lo suyo,
+     * menos lo negado.
+     *
+     * <p>Es la única fuente de la respuesta. Todo lo que pregunte "¿puede
+     * publicar?" —el servidor al recibir la petición y las dos interfaces al
+     * pintar— termina aquí, para que no haya dos reglas distintas.
+     */
+    public Set<Permission> permisosEfectivos() {
+        Set<Permission> efectivos = EnumSet.noneOf(Permission.class);
+        efectivos.addAll(role == null ? Role.VIEWER.permisosPorDefecto() : role.permisosPorDefecto());
+        if (extraPermissions != null) {
+            efectivos.addAll(extraPermissions);
+        }
+        if (deniedPermissions != null) {
+            efectivos.removeAll(deniedPermissions);
+        }
+        return efectivos;
+    }
+
+    public boolean puede(Permission permiso) {
+        return permisosEfectivos().contains(permiso);
+    }
 
     public static WorkspaceMember de(User user, Workspace workspace, Role role) {
         return WorkspaceMember.builder()

@@ -9,9 +9,11 @@ import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
 
 import com.metricol.api.entity.User;
+import com.metricol.api.enums.Permission;
 import com.metricol.api.models.request.WorkspaceUpdateRequest;
 import com.metricol.api.models.response.ApiResponse;
 import com.metricol.api.models.response.WorkspaceResponse;
+import com.metricol.api.service.PermissionService;
 import com.metricol.api.service.WorkspaceService;
 
 import jakarta.validation.Valid;
@@ -21,9 +23,11 @@ import jakarta.validation.Valid;
 public class WorkspaceController {
 
     private final WorkspaceService service;
+    private final PermissionService permisos;
 
-    public WorkspaceController(WorkspaceService service) {
+    public WorkspaceController(WorkspaceService service, PermissionService permisos) {
         this.service = service;
+        this.permisos = permisos;
     }
 
     @GetMapping
@@ -34,6 +38,7 @@ public class WorkspaceController {
     @PutMapping
     public ResponseEntity<ApiResponse<WorkspaceResponse>> update(
             @AuthenticationPrincipal User currentUser, @Valid @RequestBody WorkspaceUpdateRequest request) {
+        permisos.exigir(currentUser, Permission.WORKSPACE_EDIT);
         return ResponseEntity.ok(ApiResponse.success(service.update(currentUser, request)));
     }
 }

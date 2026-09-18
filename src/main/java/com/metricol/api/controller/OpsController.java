@@ -3,11 +3,14 @@ package com.metricol.api.controller;
 import java.nio.charset.StandardCharsets;
 import java.security.MessageDigest;
 import java.time.LocalDate;
+import java.util.UUID;
 
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.format.annotation.DateTimeFormat;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.GetMapping;
+import org.springframework.web.bind.annotation.PathVariable;
+import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestHeader;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
@@ -17,6 +20,8 @@ import com.metricol.api.exception.ResourceNotFoundException;
 import com.metricol.api.models.response.AiUsageReportResponse;
 import com.metricol.api.models.response.ApiResponse;
 import com.metricol.api.service.ai.AiUsageReportService;
+import com.metricol.api.service.publishing.PostPublishStore;
+import com.metricol.api.service.social.ReconciliacionUploadPost;
 
 /**
  * Endpoints de operación: lo que mira quien opera la plataforma, no un cliente.
@@ -30,10 +35,15 @@ import com.metricol.api.service.ai.AiUsageReportService;
 public class OpsController {
 
     private final AiUsageReportService reporte;
+    private final ReconciliacionUploadPost reconciliacion;
     private final String llaveConfigurada;
 
-    public OpsController(AiUsageReportService reporte, @Value("${app.ops.api-key:}") String llaveConfigurada) {
+    public OpsController(
+            AiUsageReportService reporte,
+            ReconciliacionUploadPost reconciliacion,
+            @Value("${app.ops.api-key:}") String llaveConfigurada) {
         this.reporte = reporte;
+        this.reconciliacion = reconciliacion;
         this.llaveConfigurada = llaveConfigurada;
     }
 
@@ -59,6 +69,33 @@ public class OpsController {
         }
 
         return ResponseEntity.ok(ApiResponse.success(reporte.generar(inicio, fin)));
+    }
+
+    /**
+     * Vuelve a poner una publicación de acuerdo con lo que upload-post dice
+     * hoy de ella, red por red.
+     *
+     * <p>Para publicaciones que quedaron guardadas al revés de la realidad: un
+     * TikTok publicado que la app enseña como fallido, redes publicadas sin su
+     * enlace. Pregunta con la misma cadena que usa el worker y sobrescribe lo
+     * guardado con la respuesta. Lo que el proveedor no menciona no se toca.
+     *
+     * @param workspaceId el negocio dueño de la publicación; sin sesión no hay
+     *                    otra forma de saber en qué tenant buscarla
+     * @param requestId   el identificador del envío, solo si la publicación no
+     *                    lo tiene guardado. Sale del registro del servidor:
+     *                    "upload-post acepto la publicacion ... (envio X)".
+     */
+    @PostMapping("/publicaciones/{postId}/reconciliar")
+    public ResponseEntity<ApiResponse<PostPublishStore.Reconciliacion>> reconciliar(
+            @RequestHeader(value = "X-Ops-Key", required = false) String llave,
+            @PathVariable UUID postId,
+            @RequestParam UUID workspaceId,
+            @RequestParam(required = false) String requestId) {
+
+        exigirLlave(llave);
+        return ResponseEntity.ok(ApiResponse.success(
+                reconciliacion.reconciliar(workspaceId, postId, requestId)));
     }
 
     /**

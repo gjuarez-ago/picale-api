@@ -122,7 +122,13 @@ public class PostService {
         // después de que alguien lo corrigiera.
         cola.cancelarDePost(post.getId());
 
-        post.getTargets().clear();
+        // Lo que YA salio se conserva tal cual; solo se rehacen los destinos
+        // que no. Antes se borraban todos y se creaban de nuevo, y corregir
+        // una publicacion que habia salido en tres redes y fallado en una la
+        // volvia a publicar en las cuatro. Publicar dos veces no se deshace.
+        // Las redes que ya recibieron la version anterior se quedan con ella:
+        // la correccion es para las que no la recibieron.
+        post.getTargets().removeIf(target -> target.getStatus() != PostTargetStatus.PUBLISHED);
         applyRequest(post, request);
         // La version anterior de esta misma publicacion no cuenta contra ella.
         cupo.exigirCupo(post, currentUser.getWorkspace().getId(), post.getId());
@@ -240,6 +246,11 @@ public class PostService {
         Medios medios = validarMedios(request, accounts, formato);
 
         post.setCaption(request.getCaption());
+        // La idea dictada, aparte del texto que sale. Puede venir vacia desde
+        // clientes que aun no la mandan; ahi se conserva la que hubiera.
+        if (request.getBrief() != null && !request.getBrief().isBlank()) {
+            post.setBrief(request.getBrief().strip());
+        }
         post.getMediaUrls().clear();
         post.getMediaUrls().addAll(medios.urls());
         post.setMediaType(medios.tipo());
@@ -268,6 +279,16 @@ public class PostService {
                 : request.getCaptionsPorRed();
 
         for (SocialAccount account : accounts) {
+            // Una red que ya tiene destino —porque ya salio en ella y la
+            // correccion lo conservo— no se vuelve a anadir: seria un segundo
+            // envio a la misma red.
+            boolean yaTiene = post.getTargets().stream()
+                    .anyMatch(t -> t.getSocialAccount() != null
+                            && account.getId().equals(t.getSocialAccount().getId()));
+            if (yaTiene) {
+                continue;
+            }
+
             // Nulo = usa el de la publicacion. No se rellena con el caption
             // general aqui a proposito: guardarlo copiado en las cinco filas
             // haria que editar el texto de la publicacion dejara de tener
@@ -627,12 +648,14 @@ public class PostService {
         return PostResponse.builder()
                 .id(post.getId())
                 .caption(post.getCaption())
+                .brief(post.getBrief())
                 // Se manda la lista Y el primero como mediaUrl: una app que
                 // solo conoce el campo viejo sigue enseñando su miniatura.
                 .mediaUrls(List.copyOf(post.getMediaUrls()))
                 .mediaUrl(post.primerMedio())
                 .thumbnailUrl(miniaturaDe(post))
                 .videoDurationSeconds(post.getVideoDurationSeconds())
+                .format(post.getFormat() == null ? null : post.getFormat().name())
                 .status(post.getStatus())
                 .scheduledAt(post.getScheduledAt())
                 .publishedAt(post.getPublishedAt())

@@ -16,6 +16,14 @@ public class PostSaveRequest {
     private String caption;
 
     /**
+     * La idea tal como la dicto o escribio la persona, antes de que la IA la
+     * convirtiera en textos por red. Opcional: los clientes que aun no la
+     * mandan siguen funcionando, solo que al corregir partiran del texto que
+     * salio en vez de lo dictado.
+     */
+    private String brief;
+
+    /**
      * Las fotos de la publicación, en el orden en que se verán, o un solo
      * video. El tope de fotos lo pone {@code app.media.max-images-per-post} y
      * lo comprueba el servidor: la app también lo respeta, pero una app vieja

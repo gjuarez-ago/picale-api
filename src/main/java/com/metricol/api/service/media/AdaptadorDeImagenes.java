@@ -157,7 +157,28 @@ public class AdaptadorDeImagenes {
             if (medidas == null) {
                 return null;
             }
-            if (esJpeg(clave) && espec.cumple(medidas.ancho(), medidas.alto(), original.sizeBytes())) {
+
+            // Medir no basta: las medidas viven en la cabecera y la cabecera
+            // de un archivo truncado es perfecta. Se decodifica entera. Si
+            // ffmpeg se queja, la imagen NO pasa tal cual aunque cumpla la
+            // especificacion: se reencoda, que es lo que la deja bien formada.
+            // Una foto asi paso por aqui sin tocarse y la rechazaron las
+            // cuatro redes.
+            String errores = ffmpeg.verificar(temporal);
+            if (errores == null) {
+                // Ni se pudo decodificar. Se publica la original: que la red
+                // la rechace es un motivo para avisar, no para perder el post.
+                log.warn("La imagen {} no se pudo decodificar; se publica tal cual", clave);
+                return null;
+            }
+            boolean danada = !errores.isBlank();
+            if (danada) {
+                log.info("La imagen {} tiene errores de decodificacion y se reencoda: {}", clave,
+                        errores.length() > 200 ? errores.substring(0, 200) + "..." : errores);
+            }
+
+            if (!danada && esJpeg(clave)
+                    && espec.cumple(medidas.ancho(), medidas.alto(), original.sizeBytes())) {
                 // Ya servía. No se toca: reencodar una foto que ya cumple solo
                 // le quita calidad.
                 return null;

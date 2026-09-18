@@ -4,6 +4,7 @@ import java.time.LocalDateTime;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
+import java.util.Locale;
 import java.util.Map;
 import java.util.Optional;
 import java.util.UUID;
@@ -20,6 +21,7 @@ import org.springframework.web.client.RestClientException;
 import com.metricol.api.config.UploadPostProperties;
 import com.metricol.api.entity.SocialConnectionCheck;
 import com.metricol.api.entity.Workspace;
+import com.metricol.api.enums.Platform;
 import com.metricol.api.repository.SocialConnectionCheckRepository;
 import com.metricol.api.repository.WorkspaceRepository;
 
@@ -275,7 +277,22 @@ public class UploadPostConnectService {
         // "se conectó en otro perfil" sin tener que mirar la base.
         log.info("Estado de conexiones del perfil {}: {}", username, resumenDe(socialAccounts));
 
-        accountSync.sync(socialAccounts);
+        // Las que la persona apagó desde Pícale salen de aquí como si no
+        // estuvieran conectadas.
+        //
+        // Sin esto, "Desconectar" no parecía hacer nada: marcaba la fila en
+        // la base —y con eso dejaba de publicar, que es lo importante— pero
+        // esta respuesta se devolvía tal cual la manda upload-post, que sigue
+        // teniendo el token y la sigue dando por conectada. La pantalla se
+        // refresca justo con esto al desconectar, así que la red volvía a
+        // pintarse en verde en el mismo segundo.
+        //
+        // Se pone a null en vez de quitar la llave porque null es como el
+        // propio upload-post dice "esta red no está conectada", y es lo que
+        // la app ya sabe leer.
+        for (Platform apagada : accountSync.sync(socialAccounts)) {
+            socialAccounts.put(apagada.name().toLowerCase(Locale.ROOT), null);
+        }
 
         return socialAccounts;
     }
@@ -601,7 +618,7 @@ public class UploadPostConnectService {
      * terminaba en el build web y la app nativa se quedaba esperando.
      *
      * <p>La página puente ({@code web/social-connected.html} de metricol_app)
-     * recibe el https y rebota a {@code pulso://social-connected}. En un
+     * recibe el https y rebota a {@code picale://social-connected}. En un
      * navegador de escritorio no intenta el esquema y sigue al build web, así
      * que el mismo enlace sirve para las dos plataformas.
      *

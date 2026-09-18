@@ -8,11 +8,13 @@ import org.springframework.security.core.annotation.AuthenticationPrincipal;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
+import org.springframework.web.bind.annotation.PutMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
 
 import com.metricol.api.entity.User;
+import com.metricol.api.models.request.EspacioUpdateRequest;
 import com.metricol.api.models.request.WorkspaceCreateRequest;
 import com.metricol.api.models.response.ApiResponse;
 import com.metricol.api.models.response.AuthResponse;
@@ -57,5 +59,32 @@ public class WorkspacesController {
     public ResponseEntity<ApiResponse<AuthResponse>> activar(
             @AuthenticationPrincipal User currentUser, @PathVariable UUID id) {
         return ResponseEntity.ok(ApiResponse.success(membresias.activar(currentUser, id)));
+    }
+
+    /** Nombre, logotipo, color y etiquetas. Solo quien administra la organización. */
+    @PutMapping("/{id}")
+    public ResponseEntity<ApiResponse<MiWorkspaceResponse>> editar(
+            @AuthenticationPrincipal User currentUser, @PathVariable UUID id,
+            @RequestBody EspacioUpdateRequest peticion) {
+        return ResponseEntity.ok(ApiResponse.success(membresias.editar(currentUser, id, peticion)));
+    }
+
+    /**
+     * Archiva un espacio: deja de publicar y sale de la lista, sin borrar nada.
+     *
+     * <p>Es un POST y no un DELETE a propósito: no se borra el espacio, y
+     * llamarlo DELETE haría creer —a quien lea el código o la red— que sí.
+     */
+    @PostMapping("/{id}/archivar")
+    public ResponseEntity<ApiResponse<MiWorkspaceResponse>> archivar(
+            @AuthenticationPrincipal User currentUser, @PathVariable UUID id) {
+        return ResponseEntity.ok(ApiResponse.success(membresias.archivar(currentUser, id, true)));
+    }
+
+    /** Lo devuelve a la vida: vuelve a aparecer y vuelve a publicar. */
+    @PostMapping("/{id}/restaurar")
+    public ResponseEntity<ApiResponse<MiWorkspaceResponse>> restaurar(
+            @AuthenticationPrincipal User currentUser, @PathVariable UUID id) {
+        return ResponseEntity.ok(ApiResponse.success(membresias.archivar(currentUser, id, false)));
     }
 }

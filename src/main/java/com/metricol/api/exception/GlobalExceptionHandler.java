@@ -74,6 +74,20 @@ public class GlobalExceptionHandler {
                 .body(ApiResponse.error("FILE_TOO_LARGE", "El archivo supera el tamaño máximo permitido."));
     }
 
+    /**
+     * Le falta un permiso dentro de su propio workspace.
+     *
+     * <p>Se responde con el mensaje de la excepción y no con uno genérico: ya
+     * viene escrito para quien lo va a leer ("No tienes permiso para publicar
+     * en este espacio") y es lo que le dice qué pedirle a su administrador.
+     */
+    @ExceptionHandler(ForbiddenException.class)
+    public ResponseEntity<ApiResponse<Void>> handleForbidden(ForbiddenException ex) {
+        log.warn("Permiso denegado: {}", ex.getMessage());
+        return ResponseEntity.status(HttpStatus.FORBIDDEN)
+                .body(ApiResponse.error("FORBIDDEN", ex.getMessage()));
+    }
+
     @ExceptionHandler(AccessDeniedException.class)
     public ResponseEntity<ApiResponse<Void>> handleAccessDenied(AccessDeniedException ex) {
         log.warn(ex.getMessage());
