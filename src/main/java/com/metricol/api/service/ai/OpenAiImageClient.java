@@ -111,15 +111,51 @@ public class OpenAiImageClient {
         }
     }
 
+    /**
+     * Si OpenAI rechazó {@code input_fidelity} una vez, no se vuelve a mandar en
+     * esta vida del proceso: el parámetro es un ajuste de calidad, no una
+     * condición para generar, y no debe poder tumbar todas las ediciones.
+     */
+    private volatile boolean fidelidadSoportada = true;
+
     /** Una imagen que parte de las fotos de referencia. */
     public Resultado editar(String prompt, List<Referencia> referencias, String tamano) {
         exigirConfiguracion();
+        String fidelidad = props.getImageInputFidelity();
+        boolean conFidelidad = fidelidadSoportada && fidelidad != null && !fidelidad.isBlank();
+
+        try {
+            return enviarEdicion(prompt, referencias, tamano, conFidelidad ? fidelidad.trim() : null);
+        } catch (RestClientResponseException ex) {
+            if (conFidelidad && ex.getStatusCode().value() == 400
+                    && ex.getResponseBodyAsString().contains("input_fidelity")) {
+                log.warn("El modelo de imágenes no acepta input_fidelity: se sigue sin él. {}",
+                        recortar(ex.getResponseBodyAsString()));
+                fidelidadSoportada = false;
+                try {
+                    return enviarEdicion(prompt, referencias, tamano, null);
+                } catch (RestClientResponseException segundo) {
+                    throw traducir(segundo);
+                } catch (ResourceAccessException segundo) {
+                    throw sinRespuesta(segundo);
+                }
+            }
+            throw traducir(ex);
+        } catch (ResourceAccessException ex) {
+            throw sinRespuesta(ex);
+        }
+    }
+
+    private Resultado enviarEdicion(String prompt, List<Referencia> referencias, String tamano, String fidelidad) {
         MultipartBodyBuilder cuerpo = new MultipartBodyBuilder();
         cuerpo.part("model", props.getImageModel());
         cuerpo.part("prompt", prompt);
         cuerpo.part("size", tamanoValido(tamano));
         cuerpo.part("quality", "medium");
         cuerpo.part("n", "1");
+        if (fidelidad != null) {
+            cuerpo.part("input_fidelity", fidelidad);
+        }
         for (Referencia foto : referencias) {
             cuerpo.part("image[]", new ByteArrayResource(foto.bytes()) {
                 @Override
@@ -129,20 +165,14 @@ public class OpenAiImageClient {
             }).contentType(MediaType.parseMediaType(foto.contentType()));
         }
 
-        try {
-            Map<?, ?> respuesta = restClient.post()
-                    .uri("/images/edits")
-                    .header("Authorization", "Bearer " + props.getApiKey())
-                    .contentType(MediaType.MULTIPART_FORM_DATA)
-                    .body(cuerpo.build())
-                    .retrieve()
-                    .body(Map.class);
-            return leer(respuesta);
-        } catch (RestClientResponseException ex) {
-            throw traducir(ex);
-        } catch (ResourceAccessException ex) {
-            throw sinRespuesta(ex);
-        }
+        Map<?, ?> respuesta = restClient.post()
+                .uri("/images/edits")
+                .header("Authorization", "Bearer " + props.getApiKey())
+                .contentType(MediaType.MULTIPART_FORM_DATA)
+                .body(cuerpo.build())
+                .retrieve()
+                .body(Map.class);
+        return leer(respuesta);
     }
 
     private void exigirConfiguracion() {

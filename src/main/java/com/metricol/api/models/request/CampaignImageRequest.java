@@ -31,7 +31,12 @@ public record CampaignImageRequest(
     public record Format(String code, String ratio, String outputSize) {
     }
 
+    /**
+     * {@code logoPosition}: TOP_LEFT, TOP_CENTER, TOP_RIGHT, BOTTOM_LEFT,
+     * BOTTOM_CENTER, BOTTOM_RIGHT, o NONE para no poner logo. Sin valor, el
+     * servidor elige según el formato.
+     */
     @JsonIgnoreProperties(ignoreUnknown = true)
-    public record Brand(String logoUrl) {
+    public record Brand(String logoUrl, String logoPosition) {
     }
 }

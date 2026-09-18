@@ -3,6 +3,7 @@ package com.metricol.api.service.ai;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.hamcrest.Matchers.containsString;
+import static org.hamcrest.Matchers.not;
 import static org.springframework.test.web.client.match.MockRestRequestMatchers.content;
 import static org.springframework.test.web.client.match.MockRestRequestMatchers.header;
 import static org.springframework.test.web.client.match.MockRestRequestMatchers.method;
@@ -168,5 +169,77 @@ class OpenAiImageClientTest {
 
         assertThat(sinLlave.disponible()).isFalse();
         assertThatThrownBy(() -> sinLlave.generar("x", null)).isInstanceOf(IllegalStateException.class);
+    }
+
+    private static Referencia foto() {
+        return new Referencia(new byte[] { 9, 9 }, "referencia.png", "image/png");
+    }
+
+    @Test
+    @DisplayName("editar pide fidelidad alta a las fotos de referencia")
+    void pideFidelidad() {
+        servidor.expect(requestTo(BASE + "/images/edits"))
+                .andExpect(content().string(containsString("name=\"input_fidelity\"")))
+                .andExpect(content().string(containsString("high")))
+                .andRespond(withSuccess(respuestaOk(), MediaType.APPLICATION_JSON));
+
+        cliente.editar("x", List.of(foto()), "1024x1536");
+
+        servidor.verify();
+    }
+
+    @Test
+    @DisplayName("con la fidelidad en blanco no se manda el parámetro")
+    void sinFidelidadConfigurada() {
+        OpenAiProperties props = new OpenAiProperties();
+        props.setApiKey("sk-de-prueba");
+        props.setImageInputFidelity("");
+        RestClient.Builder builder = RestClient.builder().baseUrl(BASE);
+        MockRestServiceServer otro = MockRestServiceServer.bindTo(builder).build();
+        OpenAiImageClient sinFidelidad = new OpenAiImageClient(props, builder.build());
+
+        otro.expect(requestTo(BASE + "/images/edits"))
+                .andExpect(content().string(not(containsString("input_fidelity"))))
+                .andRespond(withSuccess(respuestaOk(), MediaType.APPLICATION_JSON));
+
+        sinFidelidad.editar("x", List.of(foto()), "1024x1536");
+
+        otro.verify();
+    }
+
+    @Test
+    @DisplayName("si el modelo no acepta input_fidelity, se reintenta sin él y no se vuelve a mandar")
+    void modeloSinFidelidad() {
+        servidor.expect(requestTo(BASE + "/images/edits"))
+                .andExpect(content().string(containsString("input_fidelity")))
+                .andRespond(withStatus(HttpStatus.BAD_REQUEST).contentType(MediaType.APPLICATION_JSON)
+                        .body("{\"error\":{\"code\":\"unknown_parameter\","
+                                + "\"message\":\"Unknown parameter: 'input_fidelity'.\"}}"));
+        servidor.expect(requestTo(BASE + "/images/edits"))
+                .andExpect(content().string(not(containsString("input_fidelity"))))
+                .andRespond(withSuccess(respuestaOk(), MediaType.APPLICATION_JSON));
+        servidor.expect(requestTo(BASE + "/images/edits"))
+                .andExpect(content().string(not(containsString("input_fidelity"))))
+                .andRespond(withSuccess(respuestaOk(), MediaType.APPLICATION_JSON));
+
+        Resultado primera = cliente.editar("x", List.of(foto()), "1024x1536");
+        Resultado segunda = cliente.editar("x", List.of(foto()), "1024x1536");
+
+        assertThat(primera.imagen()).hasSize(4);
+        assertThat(segunda.imagen()).hasSize(4);
+        servidor.verify();
+    }
+
+    @Test
+    @DisplayName("otro error 400 que no es de la fidelidad no se reintenta a ciegas")
+    void otroErrorNoSeReintenta() {
+        servidor.expect(requestTo(BASE + "/images/edits"))
+                .andRespond(withStatus(HttpStatus.BAD_REQUEST).contentType(MediaType.APPLICATION_JSON)
+                        .body("{\"error\":{\"code\":\"invalid_image\",\"message\":\"bad image\"}}"));
+
+        assertThatThrownBy(() -> cliente.editar("x", List.of(foto()), "1024x1536"))
+                .isInstanceOf(IllegalStateException.class)
+                .hasMessage("No se pudo generar la imagen. Inténtalo de nuevo.");
+        servidor.verify();
     }
 }

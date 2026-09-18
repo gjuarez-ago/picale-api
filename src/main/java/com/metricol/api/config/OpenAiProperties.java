@@ -25,6 +25,14 @@ public class OpenAiProperties {
     private Pricing imagePricing = new Pricing();
 
     /**
+     * Qué tan fielmente conserva gpt-image los detalles de las fotos de
+     * referencia al editarlas (rostros, equipo, letreros): {@code high} o
+     * {@code low}. Vacío = no se manda. Con {@code high} las fotos entran a
+     * más resolución y cuestan más tokens de entrada.
+     */
+    private String imageInputFidelity = "high";
+
+    /**
      * Lo que cobra OpenAI por {@link #model}. Con esto se calcula el costo de
      * cada llamada que se anota en {@code ai_usage}.
      *

@@ -133,12 +133,81 @@ class CampaignImageServiceTest {
                 2,
                 new CampaignImageRequest.Format(formato, "4:5", "1024x1536"),
                 recursos,
-                logo == null ? null : new CampaignImageRequest.Brand(logo),
+                logo == null ? null : new CampaignImageRequest.Brand(logo, null),
                 "Anuncia el 20% de descuento",
                 "Vender",
                 List.of("Minimalista"),
                 "Cercano",
                 "Escríbenos");
+    }
+
+    private static CampaignImageRequest peticion(String formato, List<String> recursos, String logo,
+            String posicionLogo) {
+        return new CampaignImageRequest(
+                2,
+                new CampaignImageRequest.Format(formato, "4:5", "1024x1536"),
+                recursos,
+                new CampaignImageRequest.Brand(logo, posicionLogo),
+                "Anuncia el 20% de descuento",
+                "Vender",
+                List.of("Minimalista"),
+                "Cercano",
+                "Escríbenos");
+    }
+
+    /** Un logo como el de un negocio: hoja blanca con un bloque azul en el centro. */
+    private static byte[] logoPng() throws Exception {
+        BufferedImage logo = new BufferedImage(1600, 800, BufferedImage.TYPE_INT_RGB);
+        for (int y = 0; y < 800; y++) {
+            for (int x = 0; x < 1600; x++) {
+                boolean bloque = x >= 500 && x < 1100 && y >= 300 && y < 500;
+                logo.setRGB(x, y, bloque ? 0x0B2A5B : 0xFFFFFF);
+            }
+        }
+        ByteArrayOutputStream salida = new ByteArrayOutputStream();
+        ImageIO.write(logo, "png", salida);
+        return salida.toByteArray();
+    }
+
+    /** Cuántos píxeles azules del logo hay entre las filas dadas (proporción del alto). */
+    private static int azulesEntre(byte[] jpeg, double desde, double hasta) throws Exception {
+        BufferedImage imagen = ImageIO.read(new ByteArrayInputStream(jpeg));
+        int n = 0;
+        for (int y = (int) (imagen.getHeight() * desde); y < (int) (imagen.getHeight() * hasta); y++) {
+            for (int x = 0; x < imagen.getWidth(); x++) {
+                int p = imagen.getRGB(x, y);
+                int r = (p >> 16) & 0xFF;
+                int g = (p >> 8) & 0xFF;
+                int b = p & 0xFF;
+                if (b > 60 && b < 130 && r < 50 && g < 80) {
+                    n++;
+                }
+            }
+        }
+        return n;
+    }
+
+    private static String claveDe(String url) {
+        return "media/" + WORKSPACE + "/" + url.hashCode() + ".jpg";
+    }
+
+    /** R2 sirve un contenido distinto según el archivo pedido. */
+    private void r2SirveSegun(java.util.Map<String, byte[]> porUrl) {
+        when(storage.descargar(anyString(), any(Path.class))).thenAnswer(i -> {
+            String clave = i.getArgument(0);
+            for (var entrada : porUrl.entrySet()) {
+                if (claveDe(entrada.getKey()).equals(clave)) {
+                    Files.write(i.getArgument(1), entrada.getValue());
+                    return true;
+                }
+            }
+            return false;
+        });
+    }
+
+    private void assetsPorUrl() {
+        when(assets.findByUrlIn(anyList())).thenAnswer(i -> ((List<String>) i.getArgument(0)).stream()
+                .map(u -> asset(u, u.endsWith("logo.png") ? "image/png" : "image/jpeg")).toList());
     }
 
     private MediaAsset asset(String url, String tipoContenido) {
@@ -209,24 +278,14 @@ class CampaignImageServiceTest {
     }
 
     @Test
-    @DisplayName("con fotos del workspace usa la edición y le pasa la foto y el logo")
+    @DisplayName("con foto y logo: la IA recibe solo la foto y el logo real se pega después")
     void conFotoYLogo() throws Exception {
         String foto = "https://cdn.test/foto.jpg";
         String logo = "https://cdn.test/logo.png";
-        when(assets.findByUrlIn(anyList())).thenAnswer(i -> {
-            List<String> urls = i.getArgument(0);
-            List<MediaAsset> encontrados = new ArrayList<>();
-            if (urls.contains(foto)) {
-                encontrados.add(asset(foto, "image/jpeg"));
-            }
-            if (urls.contains(logo)) {
-                encontrados.add(asset(logo, "image/png"));
-            }
-            return encontrados;
-        });
-        r2Sirve(new byte[] { 7, 7, 7 });
+        assetsPorUrl();
+        r2SirveSegun(java.util.Map.of(foto, new byte[] { 7, 7, 7 }, logo, logoPng()));
         when(imagenes.editar(anyString(), anyList(), anyString()))
-                .thenReturn(new Resultado(png(0x0000FF), 10, 20, "gpt-image-1.5"));
+                .thenReturn(new Resultado(png(0x808080), 10, 20, "gpt-image-1.5"));
 
         servicio.generar(usuario, peticion("post", List.of(foto), logo));
 
@@ -234,17 +293,182 @@ class CampaignImageServiceTest {
         @SuppressWarnings("unchecked")
         ArgumentCaptor<List<OpenAiImageClient.Referencia>> referencias = ArgumentCaptor.forClass(List.class);
         verify(imagenes).editar(prompt.capture(), referencias.capture(), eq("1024x1536"));
-        assertThat(referencias.getValue()).hasSize(2);
+        // El logo NO viaja a la IA: solo la foto.
+        assertThat(referencias.getValue()).hasSize(1);
         assertThat(referencias.getValue().get(0).contentType()).isEqualTo("image/jpeg");
-        assertThat(referencias.getValue().get(1).contentType()).isEqualTo("image/png");
         assertThat(prompt.getValue())
                 .contains("Tacos Doña Mary")
                 .contains("Restaurante")
                 .contains("Mérida")
                 .contains("Anuncia el 20% de descuento")
-                .contains("brand logo")
-                .contains("cropped to 4:5");
+                .contains("cropped to 4:5")
+                .contains("logo will be placed there afterwards")
+                .contains("bottom-center")
+                .contains("Never draw a logo")
+                .doesNotContain("last reference image");
         verify(imagenes, never()).generar(anyString(), anyString());
+
+        // El logo real quedó pegado abajo (posición por defecto de una publicación).
+        assertThat(azulesEntre(subidos.get(0), 0.5, 1.0)).isGreaterThan(500);
+        assertThat(azulesEntre(subidos.get(0), 0.0, 0.5)).isZero();
+    }
+
+    @Test
+    @DisplayName("la posición que pide la app se respeta: arriba a la izquierda")
+    void posicionPedida() throws Exception {
+        String logo = "https://cdn.test/logo.png";
+        assetsPorUrl();
+        r2SirveSegun(java.util.Map.of(logo, logoPng()));
+        when(imagenes.generar(anyString(), anyString()))
+                .thenReturn(new Resultado(png(0x808080), 0, 0, "gpt-image-1.5"));
+
+        servicio.generar(usuario, peticion("post", List.of(), logo, "TOP_LEFT"));
+
+        ArgumentCaptor<String> prompt = ArgumentCaptor.forClass(String.class);
+        verify(imagenes).generar(prompt.capture(), anyString());
+        assertThat(prompt.getValue()).contains("top-left");
+        assertThat(azulesEntre(subidos.get(0), 0.0, 0.5)).isGreaterThan(500);
+        assertThat(azulesEntre(subidos.get(0), 0.5, 1.0)).isZero();
+    }
+
+    @Test
+    @DisplayName("en una historia el logo sube por defecto, lejos de la caja de respuesta")
+    void historiaLogoArriba() throws Exception {
+        String logo = "https://cdn.test/logo.png";
+        assetsPorUrl();
+        r2SirveSegun(java.util.Map.of(logo, logoPng()));
+        when(imagenes.generar(anyString(), anyString()))
+                .thenReturn(new Resultado(png(0x808080), 0, 0, "gpt-image-1.5"));
+
+        servicio.generar(usuario, peticion("story", List.of(), logo));
+
+        ArgumentCaptor<String> prompt = ArgumentCaptor.forClass(String.class);
+        verify(imagenes).generar(prompt.capture(), anyString());
+        assertThat(prompt.getValue()).contains("top-center").contains("top 14%").contains("bottom 20%");
+        assertThat(azulesEntre(subidos.get(0), 0.0, 0.5)).isGreaterThan(300);
+        assertThat(azulesEntre(subidos.get(0), 0.5, 1.0)).isZero();
+    }
+
+    @Test
+    @DisplayName("con NONE no se pone logo ni se reserva espacio")
+    void sinLogo() throws Exception {
+        String logo = "https://cdn.test/logo.png";
+        assetsPorUrl();
+        r2SirveSegun(java.util.Map.of(logo, logoPng()));
+        when(imagenes.generar(anyString(), anyString()))
+                .thenReturn(new Resultado(png(0x808080), 0, 0, "gpt-image-1.5"));
+
+        servicio.generar(usuario, peticion("post", List.of(), logo, "NONE"));
+
+        ArgumentCaptor<String> prompt = ArgumentCaptor.forClass(String.class);
+        verify(imagenes).generar(prompt.capture(), anyString());
+        assertThat(prompt.getValue()).doesNotContain("will be placed there afterwards");
+        verify(storage, never()).descargar(anyString(), any(Path.class));
+        assertThat(azulesEntre(subidos.get(0), 0.0, 1.0)).isZero();
+    }
+
+    @Test
+    @DisplayName("un logo que no se puede leer no tumba la campaña: sale sin logo")
+    void logoIlegible() throws Exception {
+        String logo = "https://cdn.test/logo.png";
+        assetsPorUrl();
+        r2SirveSegun(java.util.Map.of(logo, new byte[] { 1, 2, 3 }));
+        when(imagenes.generar(anyString(), anyString()))
+                .thenReturn(new Resultado(png(0xFF0000), 0, 0, "gpt-image-1.5"));
+
+        CampaignImageResponse respuesta = servicio.generar(usuario, peticion("post", List.of(), logo));
+
+        assertThat(respuesta.imageUrls()).hasSize(1);
+        assertThat(subidos).hasSize(1);
+    }
+
+    @Test
+    @DisplayName("varias fotos en una publicación son contexto de UNA sola imagen, no un carrusel")
+    void variasFotosSonContexto() throws Exception {
+        List<String> urls = List.of("https://cdn.test/a.jpg", "https://cdn.test/b.jpg", "https://cdn.test/c.jpg");
+        assetsPorUrl();
+        r2Sirve(new byte[] { 1 });
+        when(imagenes.editar(anyString(), anyList(), anyString()))
+                .thenReturn(new Resultado(png(0x808080), 5, 5, "gpt-image-1.5"));
+
+        CampaignImageResponse respuesta = servicio.generar(usuario, peticion("post", urls, null));
+
+        ArgumentCaptor<String> prompt = ArgumentCaptor.forClass(String.class);
+        @SuppressWarnings("unchecked")
+        ArgumentCaptor<List<OpenAiImageClient.Referencia>> referencias = ArgumentCaptor.forClass(List.class);
+        verify(imagenes, times(1)).editar(prompt.capture(), referencias.capture(), anyString());
+        assertThat(referencias.getValue()).hasSize(3);
+        assertThat(prompt.getValue()).contains("ONE single image").contains("3 reference photos");
+        assertThat(respuesta.imageUrls()).hasSize(1);
+        assertThat(respuesta.creditsUsed()).isEqualTo(1);
+        verify(cupo).exigirCupoImagenes(1);
+    }
+
+    @Test
+    @DisplayName("en una publicación solo se usan cuatro fotos de contexto")
+    void maximoCuatroFotos() throws Exception {
+        List<String> urls = List.of("https://cdn.test/a.jpg", "https://cdn.test/b.jpg", "https://cdn.test/c.jpg",
+                "https://cdn.test/d.jpg", "https://cdn.test/e.jpg");
+        assetsPorUrl();
+        r2Sirve(new byte[] { 1 });
+        when(imagenes.editar(anyString(), anyList(), anyString()))
+                .thenReturn(new Resultado(png(0x808080), 5, 5, "gpt-image-1.5"));
+
+        servicio.generar(usuario, peticion("post", urls, null));
+
+        @SuppressWarnings("unchecked")
+        ArgumentCaptor<List<OpenAiImageClient.Referencia>> referencias = ArgumentCaptor.forClass(List.class);
+        verify(imagenes).editar(anyString(), referencias.capture(), anyString());
+        assertThat(referencias.getValue()).hasSize(4);
+    }
+
+    @Test
+    @DisplayName("el logo elegido como foto se quita de las fotos: se pega solo, no es una diapositiva")
+    void logoEntreLasFotos() throws Exception {
+        String a = "https://cdn.test/a.jpg";
+        String b = "https://cdn.test/b.jpg";
+        String logo = "https://cdn.test/logo.png";
+        assetsPorUrl();
+        r2SirveSegun(java.util.Map.of(a, new byte[] { 1 }, b, new byte[] { 2 }, logo, logoPng()));
+        when(imagenes.editar(anyString(), anyList(), anyString()))
+                .thenReturn(new Resultado(png(0x808080), 1, 1, "gpt-image-1.5"));
+
+        CampaignImageResponse respuesta = servicio.generar(usuario, peticion("carousel", List.of(a, logo, b), logo));
+
+        // Dos diapositivas (a y b), no tres.
+        verify(imagenes, times(2)).editar(anyString(), anyList(), anyString());
+        verify(cupo).exigirCupoImagenes(2);
+        assertThat(respuesta.imageUrls()).hasSize(2);
+    }
+
+    @Test
+    @DisplayName("un carrusel de una foto más el logo no llega a dos fotos y lo dice")
+    void carruselConLogoYUnaFoto() {
+        String logo = "https://cdn.test/logo.png";
+
+        assertThatThrownBy(() -> servicio.generar(usuario,
+                peticion("carousel", List.of("https://cdn.test/a.jpg", logo), logo)))
+                .isInstanceOf(IllegalArgumentException.class)
+                .hasMessageContaining("Tu logo no cuenta");
+
+        verify(imagenes, never()).editar(anyString(), anyList(), anyString());
+    }
+
+    @Test
+    @DisplayName("el prompt pide márgenes seguros según el recorte del formato")
+    void zonaSeguraEnElPrompt() throws Exception {
+        when(imagenes.generar(anyString(), anyString()))
+                .thenReturn(new Resultado(png(0x808080), 0, 0, "gpt-image-1.5"));
+
+        servicio.generar(usuario, peticion("post", List.of(), null));
+
+        ArgumentCaptor<String> prompt = ArgumentCaptor.forClass(String.class);
+        verify(imagenes).generar(prompt.capture(), anyString());
+        assertThat(prompt.getValue())
+                .contains("central 76% of the height")
+                .contains("proper accents")
+                .contains("avoid small print")
+                .contains("S.A. de C.V.");
     }
 
     // -------------------------------------------------------------- carrusel

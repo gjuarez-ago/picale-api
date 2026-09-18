@@ -140,12 +140,15 @@ public class CampaignImageService {
 
     public CampaignImageResponse generar(User usuario, CampaignImageRequest peticion) {
         Formato formato = Formato.de(peticion.format() == null ? null : peticion.format().code());
-        List<String> recursos = peticion.resourceUrls() == null ? List.of() : peticion.resourceUrls();
+        String logoUrl = peticion.brand() == null || peticion.brand().logoUrl() == null
+                || peticion.brand().logoUrl().isBlank() ? null : peticion.brand().logoUrl().trim();
+        List<String> recursos = fotosDe(formato, peticion.resourceUrls(), logoUrl);
 
         int piezas = 1;
         if (formato.secuencia) {
             if (recursos.size() < 2 || recursos.size() > 5) {
-                throw new IllegalArgumentException("Un carrusel necesita entre 2 y 5 fotos.");
+                throw new IllegalArgumentException(
+                        "Un carrusel necesita entre 2 y 5 fotos. Tu logo no cuenta: se agrega solo.");
             }
             piezas = recursos.size();
         }
@@ -164,16 +167,17 @@ public class CampaignImageService {
         cuota.verificar(BYTES_ESTIMADOS_POR_PIEZA * piezas, "campana.jpg");
 
         Map<String, Referencia> fotos = cargarReferencias(recursos);
-        Referencia logo = cargarLogo(peticion.brand() == null ? null : peticion.brand().logoUrl());
+        SelloDeLogo.Posicion posicionLogo = posicionDelLogo(peticion, formato);
+        Referencia logo = posicionLogo == null ? null : cargarLogo(logoUrl);
+        // Sin logo que pegar no hay espacio que reservar.
+        SelloDeLogo.Posicion reservada = logo == null ? null : posicionLogo;
 
         String tamano = peticion.format().outputSize();
         List<String> prompts = new ArrayList<>();
         List<CompletableFuture<Resultado>> futuros = new ArrayList<>();
         for (int i = 0; i < piezas; i++) {
-            List<Referencia> referencias = referenciasDePieza(formato, recursos, fotos, logo, i);
-            boolean conLogo = logo != null;
-            String prompt = armarPrompt(workspace, peticion, formato, i, piezas, referencias.size() - (conLogo ? 1 : 0),
-                    conLogo);
+            List<Referencia> referencias = referenciasDePieza(formato, recursos, fotos, i);
+            String prompt = armarPrompt(workspace, peticion, formato, i, piezas, referencias.size(), reservada);
             prompts.add(prompt);
             futuros.add(CompletableFuture.supplyAsync(() -> referencias.isEmpty()
                     ? imagenes.generar(prompt, tamano)
@@ -190,6 +194,9 @@ public class CampaignImageService {
             for (int i = 0; i < resultados.size(); i++) {
                 byte[] jpeg = RecorteDeImagen.recortar(
                         resultados.get(i).imagen(), formato.ratioAncho, formato.ratioAlto, 0.9f);
+                if (logo != null) {
+                    jpeg = ponerLogo(jpeg, logo, reservada, formato == Formato.STORY);
+                }
                 String nombre = "campana-v" + Math.max(1, versionDe(peticion)) + "-" + (i + 1) + ".jpg";
                 String clave = storage.claveNueva(workspace.getId(), nombre, "image/jpeg");
                 String url = storage.subirBytes(clave, jpeg, "image/jpeg");
@@ -373,7 +380,7 @@ public class CampaignImageService {
      * las demás, todas las elegidas. El logo va al final de cada una.
      */
     private static List<Referencia> referenciasDePieza(Formato formato, List<String> urls,
-            Map<String, Referencia> fotos, Referencia logo, int indice) {
+            Map<String, Referencia> fotos, int indice) {
         List<Referencia> referencias = new ArrayList<>();
         if (formato.secuencia) {
             referencias.add(fotos.get(urls.get(indice)));
@@ -382,16 +389,53 @@ public class CampaignImageService {
                 referencias.add(fotos.get(url));
             }
         }
-        if (logo != null) {
-            referencias.add(logo);
-        }
         return referencias;
+    }
+
+    /**
+     * Las fotos que sí van a la IA: sin el logo (si vino entre ellas, se quita:
+     * se pega solo) y, en una publicación o historia, sin repetidas y hasta
+     * cuatro, que son contexto de UNA sola imagen. Un carrusel las conserva
+     * todas y en orden: cada una es una diapositiva.
+     */
+    private static List<String> fotosDe(Formato formato, List<String> pedidas, String logoUrl) {
+        List<String> sinLogo = (pedidas == null ? List.<String>of() : pedidas).stream()
+                .filter(url -> url != null && !url.isBlank() && !url.trim().equals(logoUrl))
+                .map(String::trim)
+                .toList();
+        return formato.secuencia ? sinLogo : sinLogo.stream().distinct().limit(MAX_REFERENCIAS_POR_PIEZA).toList();
+    }
+
+    /**
+     * Dónde va el logo: lo que pidió la app, o el sitio de siempre para el
+     * formato. {@code null} = sin logo.
+     */
+    private static SelloDeLogo.Posicion posicionDelLogo(CampaignImageRequest peticion, Formato formato) {
+        String pedido = peticion.brand() == null ? null : peticion.brand().logoPosition();
+        if (pedido != null && pedido.trim().equalsIgnoreCase("NONE")) {
+            return null;
+        }
+        SelloDeLogo.Posicion elegida = SelloDeLogo.Posicion.de(pedido);
+        if (elegida != null) {
+            return elegida;
+        }
+        return formato == Formato.STORY ? SelloDeLogo.Posicion.TOP_CENTER : SelloDeLogo.Posicion.BOTTOM_CENTER;
+    }
+
+    /** Sin logo la imagen sirve igual: no se tira lo que ya se pagó por un logo que no se pudo leer. */
+    private static byte[] ponerLogo(byte[] imagen, Referencia logo, SelloDeLogo.Posicion posicion, boolean historia) {
+        try {
+            return SelloDeLogo.poner(imagen, logo.bytes(), posicion, historia);
+        } catch (RuntimeException ex) {
+            log.warn("No se pudo pegar el logo: {}", ex.getMessage());
+            return imagen;
+        }
     }
 
     // ---------------------------------------------------------------- prompts
 
     static String armarPrompt(Workspace workspace, CampaignImageRequest p, Formato formato, int indice, int total,
-            int fotos, boolean conLogo) {
+            int fotos, SelloDeLogo.Posicion logo) {
         StringBuilder t = new StringBuilder();
         t.append("Create a polished, professional social media marketing image for a small business.\n");
         t.append("Business: ").append(valor(workspace.getName(), "a local business"));
@@ -419,25 +463,60 @@ public class CampaignImageService {
             t.append("Call to action, as short text inside the image: \"").append(p.cta().trim()).append("\"\n");
         }
 
-        t.append("Composition: vertical layout. Keep every important subject, text and logo inside the central safe ")
-                .append("area with about 10% of empty margin on every side, because the image will be cropped to ")
-                .append(formato.ratioAncho).append(":").append(formato.ratioAlto).append(".\n");
+        t.append("Composition: vertical layout. ").append(zonaSegura(formato)).append("\n");
         if (fotos > 0) {
-            t.append("The reference photo").append(fotos > 1 ? "s show" : " shows")
-                    .append(" the real product or subject: keep it recognizable and faithful, do not replace it ")
-                    .append("with a different one.\n");
+            if (total > 1) {
+                t.append("The reference photo shows the real subject of this slide: keep it recognizable and ")
+                        .append("faithful, do not replace it with a different one.\n");
+            } else if (fotos == 1) {
+                t.append("The reference photo shows the real product or subject: keep the real people, equipment ")
+                        .append("and place recognizable and faithful; do not replace them with different ones.\n");
+            } else {
+                t.append("The ").append(fotos).append(" reference photos are source material for ONE single image, ")
+                        .append("not a carousel and not separate panels. Pick the strongest one as the main ")
+                        .append("subject and use the others only as context, or combine at most two if it looks ")
+                        .append("natural. Keep the real people, equipment and place recognizable and faithful; do ")
+                        .append("not invent different ones.\n");
+            }
         }
-        if (conLogo) {
-            t.append("The last reference image is the brand logo: use its colors as the brand palette and, if it ")
-                    .append("fits, place the logo small and unaltered as a sign-off. Never redraw or distort it.\n");
+        if (logo != null) {
+            t.append("Leave a clean, uncluttered area ").append(zonaLogo(logo))
+                    .append(" — the business logo will be placed there afterwards. Put no text or key subject in it.\n");
         }
         if (total > 1) {
             t.append("This is slide ").append(indice + 1).append(" of ").append(total)
                     .append(" of a carousel: keep one consistent look across all slides.\n");
         }
-        t.append("Any text in the image must be in Spanish, short, legible and correctly spelled. ")
-                .append("No watermarks, no fake interface elements, no extra logos.");
+        t.append("Never draw a logo, emblem or brand mark of any kind, and do not write the company's legal name ")
+                .append("suffix (such as S.A. de C.V.): the real logo is added separately. ")
+                .append("Any text must be in Spanish, LARGE, short and correctly spelled with proper accents ")
+                .append("(at most a headline, the city and one call to action); avoid small print. ")
+                .append("No watermarks and no fake interface elements.");
         return t.toString();
+    }
+
+    /**
+     * Lo que se recorta de cada lado y lo que tapa la interfaz de la red, dicho
+     * en porcentajes que la IA pueda respetar. gpt-image entrega 2:3: llegar a
+     * 4:5 quita cerca del 8% de arriba y de abajo, y una historia quita cerca
+     * del 8% de cada lado. Se pide un margen mayor porque la IA lo respeta a medias.
+     */
+    private static String zonaSegura(Formato formato) {
+        return switch (formato) {
+            case STORY -> "The image will be cropped to 9:16 and shown under the app's own interface: keep all "
+                    + "text and every key subject inside the central 70% of the width, and nothing important "
+                    + "in the top 14% or the bottom 20% of the height.";
+            default -> "The image will be cropped to 4:5, removing the top and bottom edges: keep all text and "
+                    + "every key subject inside the central 76% of the height (nothing in the top 12% or the "
+                    + "bottom 12%), and never let text touch an edge.";
+        };
+    }
+
+    private static String zonaLogo(SelloDeLogo.Posicion posicion) {
+        String vertical = posicion.arriba() ? "at the top" : "at the bottom";
+        String horizontal = posicion.izquierda() ? "left" : posicion.derecha() ? "right" : "center";
+        return vertical + "-" + horizontal
+                + " of the frame (about 40% of the width and 12% of the height, inside the safe zone)";
     }
 
     private static String valor(String texto, String porDefecto) {
