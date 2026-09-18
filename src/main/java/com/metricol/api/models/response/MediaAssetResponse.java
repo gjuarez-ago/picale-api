@@ -33,4 +33,7 @@ public class MediaAssetResponse {
     private Long sizeBytes;
     private String sizeLabel;
     private LocalDateTime createdAt;
+
+    /** Cuándo se archivó, o nulo si sigue a la vista en Contenido. */
+    private LocalDateTime archivedAt;
 }

@@ -33,6 +33,12 @@ public interface MediaAssetRepository extends JpaRepository<MediaAsset, UUID> {
 
     List<MediaAsset> findAllByOrderByCreatedAtDesc();
 
+    /** La galería del día a día: lo confirmado y no archivado. */
+    List<MediaAsset> findByStatusAndArchivedAtIsNullOrderByCreatedAtDesc(MediaAssetStatus status);
+
+    /** Lo archivado, lo último en archivarse primero. Se puede devolver a la galería. */
+    List<MediaAsset> findByStatusAndArchivedAtIsNotNullOrderByArchivedAtDesc(MediaAssetStatus status);
+
     /**
      * Pone READY a las filas anteriores a que existiera la columna de estado.
      *
@@ -160,6 +166,7 @@ public interface MediaAssetRepository extends JpaRepository<MediaAsset, UUID> {
             select cast(m.id as varchar), m.tenant_id
             from media_assets m
             where m.status = 'READY'
+              and m.archived_at is null
               and m.created_at < :limite
               and not exists (
                     select 1 from post_media pm where pm.url = m.url

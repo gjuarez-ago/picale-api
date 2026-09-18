@@ -107,11 +107,40 @@ public class MediaController {
                 service.upload(file, currentUser.getWorkspace().getId())));
     }
 
+    /** Lo archivado, para devolverlo a la galería. */
+    @GetMapping("/archived")
+    public ResponseEntity<ApiResponse<List<MediaAssetResponse>>> archived() {
+        return ResponseEntity.ok(ApiResponse.success(service.listArchived()));
+    }
+
+    /** Sale de Contenido, sigue en R2 y sigue contando en la cuota. Se puede devolver. */
+    @PostMapping("/{id}/archive")
+    public ResponseEntity<ApiResponse<MediaAssetResponse>> archive(
+            @AuthenticationPrincipal User currentUser, @PathVariable UUID id) {
+        permisos.exigir(currentUser, Permission.MEDIA_DELETE);
+        return ResponseEntity.ok(ApiResponse.success(service.archive(id, true)));
+    }
+
+    /** Lo devuelve a la galería. */
+    @DeleteMapping("/{id}/archive")
+    public ResponseEntity<ApiResponse<MediaAssetResponse>> unarchive(
+            @AuthenticationPrincipal User currentUser, @PathVariable UUID id) {
+        permisos.exigir(currentUser, Permission.MEDIA_DELETE);
+        return ResponseEntity.ok(ApiResponse.success(service.archive(id, false)));
+    }
+
+    /**
+     * Ya no borra: archiva.
+     *
+     * <p>Nada se elimina físicamente. La ruta se deja por si una versión vieja
+     * de la web o de la app la llama, pero hace lo mismo que
+     * {@code POST /{id}/archive}: el archivo no se borra de R2 ni libera cuota.
+     */
     @DeleteMapping("/{id}")
     public ResponseEntity<ApiResponse<Void>> delete(
             @AuthenticationPrincipal User currentUser, @PathVariable UUID id) {
         permisos.exigir(currentUser, Permission.MEDIA_DELETE);
-        service.delete(id);
+        service.archive(id, true);
         return ResponseEntity.ok(ApiResponse.success(null));
     }
 }

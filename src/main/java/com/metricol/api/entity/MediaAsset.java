@@ -113,4 +113,14 @@ public class MediaAsset {
 
     @CreationTimestamp
     private LocalDateTime createdAt;
+
+    /**
+     * Cuándo se archivó, o nulo si sigue a la vista.
+     *
+     * <p>En Pícale nada se elimina físicamente: "quitar" un archivo de Contenido
+     * es archivarlo. Sale de la galería, se puede devolver, sigue en R2 y SIGUE
+     * CONTANDO en la cuota —el archivo existe y se paga—. Ver
+     * {@code MediaService.archive}.
+     */
+    private LocalDateTime archivedAt;
 }

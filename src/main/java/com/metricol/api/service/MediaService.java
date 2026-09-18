@@ -3,6 +3,7 @@ package com.metricol.api.service;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.time.LocalDateTime;
 import java.util.List;
 import java.util.UUID;
 
@@ -73,9 +74,36 @@ public class MediaService {
 
     /** La galería: solo lo confirmado. Ver el comentario del repositorio. */
     public List<MediaAssetResponse> list() {
-        return repository.findByStatusOrderByCreatedAtDesc(MediaAssetStatus.READY).stream()
+        return repository.findByStatusAndArchivedAtIsNullOrderByCreatedAtDesc(MediaAssetStatus.READY).stream()
                 .map(this::toResponse)
                 .toList();
+    }
+
+    /** Lo que se archivó, para poder devolverlo a la galería. */
+    public List<MediaAssetResponse> listArchived() {
+        return repository.findByStatusAndArchivedAtIsNotNullOrderByArchivedAtDesc(MediaAssetStatus.READY).stream()
+                .map(this::toResponse)
+                .toList();
+    }
+
+    /**
+     * Archiva o devuelve a la galería un archivo.
+     *
+     * <p>No toca R2 ni la cuota: el archivo sigue existiendo, así que sigue
+     * ocupando el espacio. Es la forma de "quitar" en una plataforma donde nada
+     * se borra físicamente. Idempotente: archivar dos veces no mueve la fecha, y
+     * devolver algo que no estaba archivado no falla.
+     */
+    @Transactional
+    public MediaAssetResponse archive(UUID id, boolean archivar) {
+        MediaAsset asset = repository.findById(id)
+                .orElseThrow(() -> new ResourceNotFoundException("Archivo no encontrado."));
+        if (archivar && asset.getArchivedAt() == null) {
+            asset.setArchivedAt(LocalDateTime.now());
+        } else if (!archivar) {
+            asset.setArchivedAt(null);
+        }
+        return toResponse(repository.save(asset));
     }
 
     /**
@@ -463,6 +491,7 @@ public class MediaService {
                         ? null
                         : MediaLimitsProperties.legible(asset.getSizeBytes()))
                 .createdAt(asset.getCreatedAt())
+                .archivedAt(asset.getArchivedAt())
                 .build();
     }
 }

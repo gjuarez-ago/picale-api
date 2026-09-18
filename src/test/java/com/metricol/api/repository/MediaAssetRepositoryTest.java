@@ -91,6 +91,39 @@ class MediaAssetRepositoryTest {
     }
 
     @Test
+    @DisplayName("Un archivo ARCHIVADO no se limpia solo, aunque nadie lo use")
+    void laLimpiezaNoTocaLoArchivado() {
+        enElWorkspace(() -> {
+            MediaAsset archivado = subir("lo-archive-yo.jpg");
+            archivado.setArchivedAt(LocalDateTime.now());
+            mediaAssets.save(archivado);
+
+            // Sin usar y viejo, igual que uno olvidado; lo único que cambia es
+            // que alguien lo archivó a propósito, y nada se borra fisicamente.
+            assertThat(idsSinUsar()).doesNotContain(archivado.getId().toString());
+        });
+    }
+
+    @Test
+    @DisplayName("Archivar saca el archivo de la galería y lo deja en Archivados, sin liberar cuota")
+    void archivarNoLiberaCuota() {
+        enElWorkspace(() -> {
+            MediaAsset asset = subir("archivar-y-contar.jpg");
+            long usadoAntes = mediaAssets.espacioUsado();
+
+            asset.setArchivedAt(LocalDateTime.now());
+            mediaAssets.save(asset);
+
+            assertThat(mediaAssets.findByStatusAndArchivedAtIsNullOrderByCreatedAtDesc(MediaAssetStatus.READY))
+                    .extracting(MediaAsset::getId).doesNotContain(asset.getId());
+            assertThat(mediaAssets.findByStatusAndArchivedAtIsNotNullOrderByArchivedAtDesc(MediaAssetStatus.READY))
+                    .extracting(MediaAsset::getId).contains(asset.getId());
+            // El archivo sigue en R2, asi que sigue ocupando el espacio.
+            assertThat(mediaAssets.espacioUsado()).isEqualTo(usadoAntes);
+        });
+    }
+
+    @Test
     @DisplayName("Un archivo que ninguna publicación usa sale en la lista")
     void encuentraElQueNadieUsa() {
         enElWorkspace(() -> {
