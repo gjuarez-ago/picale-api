@@ -18,6 +18,12 @@ public class OpenAiProperties {
 
     private String model;
 
+    /** El modelo que genera las imágenes de campaña. Tiene que estar permitido en el proyecto de OpenAI. */
+    private String imageModel = "gpt-image-1.5";
+
+    /** Lo que cobra OpenAI por {@link #imageModel}; mismo criterio que {@link #pricing}. */
+    private Pricing imagePricing = new Pricing();
+
     /**
      * Lo que cobra OpenAI por {@link #model}. Con esto se calcula el costo de
      * cada llamada que se anota en {@code ai_usage}.

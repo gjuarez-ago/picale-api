@@ -45,6 +45,10 @@ public class AiUsageRecorder {
             log.warn("OpenAI esta configurado pero sus precios no (OPENAI_PRICING_*): "
                     + "se contaran los tokens y el costo saldra en cero.");
         }
+        if (props.isConfigured() && !props.getImagePricing().isConfigured()) {
+            log.warn("OpenAI esta configurado pero los precios de imagen no (OPENAI_IMAGE_PRICING_*): "
+                    + "las imagenes de campana se contaran pero su costo saldra en cero.");
+        }
     }
 
     /**
@@ -58,13 +62,27 @@ public class AiUsageRecorder {
      */
     @Transactional(propagation = Propagation.REQUIRES_NEW)
     public void registrar(AiOperacion operacion, String modelo, int tokensEntrada, int tokensSalida) {
+        guardar(operacion, modelo, tokensEntrada, tokensSalida, props.getPricing());
+    }
+
+    /**
+     * Una imagen generada. Aparte porque se cobra con el precio del modelo de
+     * imágenes, no con el del de texto.
+     */
+    @Transactional(propagation = Propagation.REQUIRES_NEW)
+    public void registrarImagen(String modelo, int tokensEntrada, int tokensSalida) {
+        guardar(AiOperacion.GENERAR_IMAGEN, modelo, tokensEntrada, tokensSalida, props.getImagePricing());
+    }
+
+    private void guardar(AiOperacion operacion, String modelo, int tokensEntrada, int tokensSalida,
+            OpenAiProperties.Pricing precio) {
         repository.save(AiUsage.builder()
                 .workspaceId(workspaceActual())
                 .operacion(operacion)
                 .modelo(nombreDeModelo(modelo))
                 .tokensEntrada(Math.max(0, tokensEntrada))
                 .tokensSalida(Math.max(0, tokensSalida))
-                .costoUsd(costo(tokensEntrada, tokensSalida, props.getPricing()))
+                .costoUsd(costo(tokensEntrada, tokensSalida, precio))
                 .build());
     }
 

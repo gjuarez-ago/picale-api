@@ -20,6 +20,13 @@ public interface PostRepository extends JpaRepository<Post, UUID> {
     List<Post> findTop5ByOrderByCreatedAtDesc();
 
     /**
+     * Lo último que salió, para que la IA conozca la voz del negocio. Solo
+     * publicadas y sin archivar: un borrador o algo que la persona descartó no
+     * dice cómo quiere sonar.
+     */
+    List<Post> findTop8ByStatusAndArchivedAtIsNullOrderByPublishedAtDesc(PostStatus status);
+
+    /**
      * Solo el estado de cada publicación, sin tocar medios ni destinos.
      *
      * <p>Es la consulta que la app pide cada pocos segundos mientras algo

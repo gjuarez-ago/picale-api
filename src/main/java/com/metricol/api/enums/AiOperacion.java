@@ -25,5 +25,11 @@ public enum AiOperacion {
     ACORTAR,
 
     /** El endpoint viejo de sugerir un caption suelto. */
-    SUGERIR_CAPTION
+    SUGERIR_CAPTION,
+
+    /** Una imagen de campaña generada con gpt-image (una fila por pieza). */
+    GENERAR_IMAGEN,
+
+    /** El titular y el caption que acompañan a una imagen de campaña. */
+    TEXTO_CAMPANA
 }

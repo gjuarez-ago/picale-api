@@ -55,6 +55,7 @@ public class LimitesConfigurables {
     public static final String MAX_PENDIENTES = "limits.posts.max_pending";
     public static final String MAX_POR_DIA = "limits.posts.max_per_day";
     public static final String MAX_IA_POR_DIA = "limits.ai.max_calls_per_day";
+    public static final String MAX_IMAGENES_IA_POR_DIA = "limits.ai.max_images_per_day";
     public static final String PAUSA_PROVEEDOR_SEGUNDOS = "limits.provider.pause_seconds";
 
     private final AppLimitRepository repository;
@@ -107,6 +108,10 @@ public class LimitesConfigurables {
 
     public int maxIaPorDia() {
         return (int) Math.max(0, valor(MAX_IA_POR_DIA, limites.getMaxAiCallsPerDay()));
+    }
+
+    public int maxImagenesIaPorDia() {
+        return (int) Math.max(0, valor(MAX_IMAGENES_IA_POR_DIA, limites.getMaxImageGenerationsPerDay()));
     }
 
     public int pausaProveedorSegundos() {
@@ -203,6 +208,8 @@ public class LimitesConfigurables {
                 "Publicaciones que un workspace puede crear por dia. 0 = sin tope."));
         semillas.put(MAX_IA_POR_DIA, new Semilla(limites.getMaxAiCallsPerDay(),
                 "Llamadas a la IA por workspace y dia. 0 = sin tope."));
+        semillas.put(MAX_IMAGENES_IA_POR_DIA, new Semilla(limites.getMaxImageGenerationsPerDay(),
+                "Imagenes de campana con IA por workspace y dia. Cada una cuesta dinero en OpenAI. 0 = sin tope."));
         semillas.put(PAUSA_PROVEEDOR_SEGUNDOS, new Semilla(limites.getProviderPauseSeconds(),
                 "Segundos que se pausa la cola tras un 429 del proveedor sin Retry-After."));
         return semillas;

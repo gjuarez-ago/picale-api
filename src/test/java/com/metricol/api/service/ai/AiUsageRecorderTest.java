@@ -88,4 +88,22 @@ class AiUsageRecorderTest {
         assertThat(sinPrecio.getPricing().isConfigured()).isFalse();
         assertThat(AiUsageRecorder.costo(1000, 1000, sinPrecio.getPricing())).isEqualByComparingTo("0");
     }
+
+    @Test
+    @DisplayName("una imagen se cobra con el precio del modelo de imagenes, no con el del texto")
+    void imagenConSuPrecio() {
+        props.getImagePricing().setInputUsdPerMillion(new BigDecimal("8"));
+        props.getImagePricing().setOutputUsdPerMillion(new BigDecimal("32"));
+
+        TenantIdentifierResolver.comoTenant(WS,
+                () -> recorder.registrarImagen("gpt-image-1.5", 100, 1000));
+
+        ArgumentCaptor<AiUsage> guardado = ArgumentCaptor.forClass(AiUsage.class);
+        verify(repository).save(guardado.capture());
+        assertThat(guardado.getValue().getOperacion()).isEqualTo(AiOperacion.GENERAR_IMAGEN);
+        assertThat(guardado.getValue().getModelo()).isEqualTo("gpt-image-1.5");
+        assertThat(guardado.getValue().getWorkspaceId()).isEqualTo(UUID.fromString(WS));
+        // 100 x 8 + 1000 x 32 = 32800 dolares por millon = 0.0328.
+        assertThat(guardado.getValue().getCostoUsd()).isEqualByComparingTo("0.0328");
+    }
 }

@@ -33,6 +33,12 @@ public class WorkspaceLimitsProperties {
     private int maxAiCallsPerDay = 200;
 
     /**
+     * Imágenes de campaña por workspace y día. Aparte del tope de arriba porque
+     * una imagen cuesta muchas veces lo que una llamada de texto.
+     */
+    private int maxImageGenerationsPerDay = 10;
+
+    /**
      * Cuánto se pausa la cola entera cuando el proveedor contesta 429 sin
      * decir cuánto esperar. Cinco minutos: lo que tarda un tope por minuto en
      * vaciarse, y poco para lo que dura una publicación programada.
