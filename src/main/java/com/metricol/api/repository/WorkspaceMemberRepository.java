@@ -5,12 +5,36 @@ import java.util.Optional;
 import java.util.UUID;
 
 import org.springframework.data.jpa.repository.JpaRepository;
+import org.springframework.data.jpa.repository.Modifying;
 import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
+import org.springframework.transaction.annotation.Transactional;
 
 import com.metricol.api.entity.WorkspaceMember;
 
 public interface WorkspaceMemberRepository extends JpaRepository<WorkspaceMember, UUID> {
+
+    /**
+     * Quita el CHECK que la base puso sobre los valores del rol.
+     *
+     * <p>La tabla nació cuando {@code Role} solo tenía {@code ADMIN}, y
+     * Hibernate genera {@code check (role in ('ADMIN'))} al crearla; con
+     * {@code ddl-auto=update} no lo vuelve a tocar. Después se añadieron
+     * {@code EDITOR} y {@code VIEWER}: compila, pasa las pruebas de una base
+     * nueva, y en una base que ya existía falla al escribir —al aceptar una
+     * invitación como editor, o al dar acceso a alguien— con
+     * {@code violates check constraint workspace_members_role_check}.
+     *
+     * <p>Mismo caso, y misma solución, que
+     * {@code MediaAssetRepository.quitarCheckDeEstado}: quien valida el rol es
+     * el enum de Java, único sitio por donde se escribe. {@code if exists}
+     * porque corre en cada arranque.
+     */
+    @Modifying
+    @Transactional
+    @Query(value = "alter table workspace_members drop constraint if exists workspace_members_role_check",
+            nativeQuery = true)
+    void quitarCheckDeRol();
 
     /**
      * La única comprobación que separa a un cliente de otro al cambiar de

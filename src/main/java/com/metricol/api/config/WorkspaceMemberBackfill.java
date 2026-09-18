@@ -7,6 +7,7 @@ import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.core.annotation.Order;
 
+import com.metricol.api.repository.WorkspaceMemberRepository;
 import com.metricol.api.service.WorkspaceMembershipService;
 
 /**
@@ -26,8 +27,20 @@ public class WorkspaceMemberBackfill {
 
     @Bean
     @Order(10)
-    public ApplicationRunner completarMembresias(WorkspaceMembershipService membresias) {
+    public ApplicationRunner completarMembresias(WorkspaceMembershipService membresias,
+            WorkspaceMemberRepository repositorio) {
         return args -> {
+            // Antes que nada: el CHECK sobre el rol se quedó con los valores que
+            // tenía el enum el día que se creó la tabla (solo ADMIN). Sin esto,
+            // guardar a alguien como EDITOR o VIEWER falla en una base que ya
+            // existía y solo ahí.
+            try {
+                repositorio.quitarCheckDeRol();
+            } catch (Exception ex) {
+                // H2 y Postgres lo nombran distinto y puede no existir.
+                log.warn("No se pudo quitar el check de rol de workspace_members: {}", ex.getMessage());
+            }
+
             try {
                 int creadas = membresias.completarMembresiasFaltantes();
                 if (creadas > 0) {

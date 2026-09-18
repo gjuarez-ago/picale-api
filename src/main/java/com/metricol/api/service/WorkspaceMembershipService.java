@@ -14,6 +14,7 @@ import com.metricol.api.entity.User;
 import com.metricol.api.entity.Workspace;
 import com.metricol.api.entity.WorkspaceMember;
 import com.metricol.api.enums.OrgPermission;
+import com.metricol.api.enums.Permission;
 import com.metricol.api.enums.Role;
 import com.metricol.api.exception.ResourceNotFoundException;
 import com.metricol.api.models.request.EspacioUpdateRequest;
@@ -85,7 +86,7 @@ public class WorkspaceMembershipService {
 
         if (organizacion != null && esAdministradorDe(actual, organizacion)) {
             return workspaces.findDeLaOrganizacion(organizacion.getId()).stream()
-                    .map(w -> respuesta(w, Role.ADMIN, w.getId().equals(activo)))
+                    .map(w -> respuesta(w, Role.ADMIN, Role.ADMIN.permisosPorDefecto(), w.getId().equals(activo)))
                     .toList();
         }
 
@@ -96,7 +97,7 @@ public class WorkspaceMembershipService {
             // quien existía antes de ellas. Su workspace es suyo igual.
             Workspace suyo = workspaces.findById(activo)
                     .orElseThrow(() -> new ResourceNotFoundException("Workspace no encontrado."));
-            return List.of(respuesta(suyo, rolDe(actual), true));
+            return List.of(respuesta(suyo, rolDe(actual), rolDe(actual).permisosPorDefecto(), true));
         }
 
         return propias.stream()
@@ -104,7 +105,8 @@ public class WorkspaceMembershipService {
                 // en el selector solo lleva a entrar y no entender por qué
                 // nada sale. Quien lo administra sí lo ve, para restaurarlo.
                 .filter(m -> !m.getWorkspace().archivado())
-                .map(m -> respuesta(m.getWorkspace(), m.getRole(), m.getWorkspace().getId().equals(activo)))
+                .map(m -> respuesta(m.getWorkspace(), m.getRole(), m.permisosEfectivos(),
+                        m.getWorkspace().getId().equals(activo)))
                 .toList();
     }
 
@@ -154,7 +156,7 @@ public class WorkspaceMembershipService {
         // entrara sin ella: así el espacio aparece en su lista de siempre.
         miembros.save(WorkspaceMember.de(user, nuevo, Role.ADMIN));
 
-        return respuesta(nuevo, Role.ADMIN, false);
+        return respuesta(nuevo, Role.ADMIN, Role.ADMIN.permisosPorDefecto(), false);
     }
 
     /**
@@ -194,7 +196,7 @@ public class WorkspaceMembershipService {
         espacio.setArchivedAt(archivar ? LocalDateTime.now() : null);
         workspaces.save(espacio);
 
-        return respuesta(espacio, Role.ADMIN, false);
+        return respuesta(espacio, Role.ADMIN, Role.ADMIN.permisosPorDefecto(), false);
     }
 
     /**
@@ -286,7 +288,7 @@ public class WorkspaceMembershipService {
         }
 
         workspaces.save(espacio);
-        return respuesta(espacio, Role.ADMIN, workspaceId.equals(actual.getWorkspace().getId()));
+        return respuesta(espacio, Role.ADMIN, Role.ADMIN.permisosPorDefecto(), workspaceId.equals(actual.getWorkspace().getId()));
     }
 
     /**
@@ -317,11 +319,13 @@ public class WorkspaceMembershipService {
         return logoUploader.subirComo(file, workspaceId);
     }
 
-    private static MiWorkspaceResponse respuesta(Workspace workspace, Role role, boolean activo) {
+    private static MiWorkspaceResponse respuesta(Workspace workspace, Role role,
+            java.util.Set<Permission> permisos, boolean activo) {
         return new MiWorkspaceResponse(workspace.getId(), workspace.getName(), workspace.getLogoUrl(),
                 workspace.getColor(),
                 workspace.getTags() == null ? List.of() : List.copyOf(workspace.getTags()),
-                role, activo, workspace.archivado());
+                role, permisos.stream().map(Enum::name).sorted().toList(),
+                activo, workspace.archivado());
     }
 
     private static Role rolDe(User user) {

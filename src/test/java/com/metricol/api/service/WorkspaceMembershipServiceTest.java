@@ -18,6 +18,7 @@ import org.springframework.test.context.TestPropertySource;
 import com.metricol.api.entity.User;
 import com.metricol.api.entity.Workspace;
 import com.metricol.api.entity.WorkspaceMember;
+import com.metricol.api.enums.Permission;
 import com.metricol.api.enums.Role;
 import com.metricol.api.exception.ResourceNotFoundException;
 import com.metricol.api.models.response.AuthResponse;
@@ -117,6 +118,31 @@ class WorkspaceMembershipServiceTest {
 
     private UUID activoDe(User user) {
         return users.findById(user.getId()).orElseThrow().getWorkspace().getId();
+    }
+
+    @Test
+    @DisplayName("cada espacio trae lo que la persona puede hacer ahi, con sus ajustes")
+    void traeLosPermisosEfectivosDeCadaEspacio() {
+        Workspace tacos = workspace("Tacos Don Pepe");
+        Workspace gym = workspace("Gym Fuerza");
+        User ana = usuario(tacos);
+
+        // Editor en Tacos, sin permiso de publicar (se le quito a mano).
+        WorkspaceMember enTacos = WorkspaceMember.de(ana, tacos, Role.EDITOR);
+        enTacos.setDeniedPermissions(java.util.EnumSet.of(Permission.POST_PUBLISH));
+        miembros.save(enTacos);
+        // Solo lectura en el gimnasio, con "conectar redes" dado a mano.
+        WorkspaceMember enGym = WorkspaceMember.de(ana, gym, Role.VIEWER);
+        enGym.setExtraPermissions(java.util.EnumSet.of(Permission.NETWORK_MANAGE));
+        miembros.save(enGym);
+
+        List<MiWorkspaceResponse> mios = membresias.misWorkspaces(ana);
+
+        MiWorkspaceResponse deTacos = mios.stream().filter(w -> w.name().equals("Tacos Don Pepe")).findFirst().orElseThrow();
+        MiWorkspaceResponse deGym = mios.stream().filter(w -> w.name().equals("Gym Fuerza")).findFirst().orElseThrow();
+
+        assertThat(deTacos.permisos()).contains("POST_CREATE", "POST_SCHEDULE").doesNotContain("POST_PUBLISH", "NETWORK_MANAGE");
+        assertThat(deGym.permisos()).containsExactly("NETWORK_MANAGE");
     }
 
     @Test
