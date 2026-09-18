@@ -7,6 +7,8 @@ import java.util.UUID;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import org.springframework.web.multipart.MultipartFile;
+
 import com.metricol.api.entity.Organization;
 import com.metricol.api.entity.User;
 import com.metricol.api.entity.Workspace;
@@ -16,6 +18,7 @@ import com.metricol.api.enums.Role;
 import com.metricol.api.exception.ResourceNotFoundException;
 import com.metricol.api.models.request.EspacioUpdateRequest;
 import com.metricol.api.models.response.AuthResponse;
+import com.metricol.api.models.response.MediaAssetResponse;
 import com.metricol.api.models.response.MiWorkspaceResponse;
 import com.metricol.api.repository.UserRepository;
 import com.metricol.api.repository.WorkspaceMemberRepository;
@@ -50,15 +53,17 @@ public class WorkspaceMembershipService {
     private final UserRepository users;
     private final AuthService auth;
     private final OrganizationService organizaciones;
+    private final WorkspaceLogoUploader logoUploader;
 
     public WorkspaceMembershipService(WorkspaceMemberRepository miembros, WorkspaceRepository workspaces,
             UserRepository users, AuthService auth,
-            OrganizationService organizaciones) {
+            OrganizationService organizaciones, WorkspaceLogoUploader logoUploader) {
         this.miembros = miembros;
         this.workspaces = workspaces;
         this.users = users;
         this.auth = auth;
         this.organizaciones = organizaciones;
+        this.logoUploader = logoUploader;
     }
 
     /**
@@ -282,6 +287,34 @@ public class WorkspaceMembershipService {
 
         workspaces.save(espacio);
         return respuesta(espacio, Role.ADMIN, workspaceId.equals(actual.getWorkspace().getId()));
+    }
+
+    /**
+     * Sube el logotipo de un espacio que no es, necesariamente, el activo de
+     * quien lo sube — el modal grande de administrar espacios deja tocar
+     * cualquiera de la organización sin cambiar a él primero.
+     *
+     * <p>Por eso el archivo NO se sube aquí mismo: se delega a
+     * {@link WorkspaceLogoUploader}, que lo guarda a nombre de
+     * {@code workspaceId} y no del espacio activo de {@code actual}. Ver ahí
+     * el porqué.
+     *
+     * <p>No {@code @Transactional}: la comprobación de permiso es de sobra
+     * con la transacción propia de {@code workspaces.findById}, y el resto
+     * necesita abrir SU PROPIA transacción después de imponer el tenant, no
+     * heredar una que ya estaría abierta con el tenant de {@code actual}.
+     */
+    public MediaAssetResponse subirLogo(User actual, UUID workspaceId, MultipartFile file) {
+        Workspace espacio = workspaces.findById(workspaceId)
+                .orElseThrow(() -> new ResourceNotFoundException("Espacio de trabajo no encontrado."));
+
+        Organization organizacion = espacio.getOrganization();
+        if (organizacion == null) {
+            throw new ResourceNotFoundException("Espacio de trabajo no encontrado.");
+        }
+        organizaciones.exigirAdministrador(actual, organizacion.getId());
+
+        return logoUploader.subirComo(file, workspaceId);
     }
 
     private static MiWorkspaceResponse respuesta(Workspace workspace, Role role, boolean activo) {

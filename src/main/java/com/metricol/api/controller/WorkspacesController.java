@@ -11,13 +11,16 @@ import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.PutMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
+import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
+import org.springframework.web.multipart.MultipartFile;
 
 import com.metricol.api.entity.User;
 import com.metricol.api.models.request.EspacioUpdateRequest;
 import com.metricol.api.models.request.WorkspaceCreateRequest;
 import com.metricol.api.models.response.ApiResponse;
 import com.metricol.api.models.response.AuthResponse;
+import com.metricol.api.models.response.MediaAssetResponse;
 import com.metricol.api.models.response.MiWorkspaceResponse;
 import com.metricol.api.service.WorkspaceMembershipService;
 
@@ -67,6 +70,22 @@ public class WorkspacesController {
             @AuthenticationPrincipal User currentUser, @PathVariable UUID id,
             @RequestBody EspacioUpdateRequest peticion) {
         return ResponseEntity.ok(ApiResponse.success(membresias.editar(currentUser, id, peticion)));
+    }
+
+    /**
+     * Sube el logotipo de {@code id}, sea o no el espacio activo de quien lo
+     * sube. Devuelve la URL para que la pantalla la mande luego en
+     * {@link #editar}; subir no guarda el logotipo por sí solo.
+     *
+     * <p>Aparte de {@code /media/upload}: ese guarda el archivo a nombre del
+     * espacio activo de la sesión, y el modal de administrar espacios deja
+     * tocar cualquiera de la organización sin cambiar a él primero.
+     */
+    @PostMapping("/{id}/logo")
+    public ResponseEntity<ApiResponse<MediaAssetResponse>> subirLogo(
+            @AuthenticationPrincipal User currentUser, @PathVariable UUID id,
+            @RequestParam("file") MultipartFile file) {
+        return ResponseEntity.ok(ApiResponse.success(membresias.subirLogo(currentUser, id, file)));
     }
 
     /**
