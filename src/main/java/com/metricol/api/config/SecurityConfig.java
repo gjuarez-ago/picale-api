@@ -60,6 +60,8 @@ public class SecurityConfig {
                         // Sin sesión a propósito: los protege su propia llave
                         // (X-Ops-Key), comprobada en OpsController.
                         .requestMatchers("/api/v1/ops/**").permitAll()
+                        // Stripe no tiene sesión: cada aviso se autentica con su firma (ver StripeWebhookVerifier).
+                        .requestMatchers("/api/v1/billing/webhook").permitAll()
                         .anyRequest().authenticated())
                 .headers(headers -> headers.frameOptions(frame -> frame.sameOrigin()))
                 .exceptionHandling(handling -> handling

@@ -54,6 +54,7 @@ import com.metricol.api.repository.MediaAssetRepository;
 import com.metricol.api.repository.PostRepository;
 import com.metricol.api.service.ai.AiQuotaGuard;
 import com.metricol.api.service.ai.AiUsageRecorder;
+import com.metricol.api.service.billing.CreditService;
 import com.metricol.api.service.ai.ArtDirector;
 import com.metricol.api.service.ai.OpenAiClient;
 import com.metricol.api.service.ai.OpenAiImageClient;
@@ -74,6 +75,7 @@ class CampaignImageServiceTest {
     private AiQuotaGuard cupo;
     private AiUsageRecorder usos;
     private ArtDirector director;
+    private CreditService creditos;
     private CampaignImageService servicio;
     private User usuario;
 
@@ -91,11 +93,14 @@ class CampaignImageServiceTest {
         cupo = mock(AiQuotaGuard.class);
         usos = mock(AiUsageRecorder.class);
         director = mock(ArtDirector.class);
+        creditos = mock(CreditService.class);
+        // Sin cobros no hay tope de créditos: es el estado de siempre.
+        when(creditos.consumirGeneracion(any(), anyString())).thenReturn(Integer.MAX_VALUE);
         // Por defecto el director no está: es el camino de siempre. Las pruebas del
         // director lo encienden.
         when(director.disponible()).thenReturn(false);
         when(director.dirigir(any())).thenReturn(Optional.empty());
-        servicio = new CampaignImageService(imagenes, texto, storage, assets, posts, cuota, cupo, usos, director);
+        servicio = new CampaignImageService(imagenes, texto, storage, assets, posts, cuota, cupo, usos, director, creditos);
 
         when(imagenes.disponible()).thenReturn(true);
         when(cupo.exigirCupoImagenes(anyInt())).thenReturn(9);

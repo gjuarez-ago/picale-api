@@ -29,6 +29,7 @@ import com.metricol.api.repository.WorkspaceMemberRepository;
 import com.metricol.api.repository.WorkspaceRepository;
 import com.metricol.api.security.JwtService;
 import com.metricol.api.service.auth.EmailService;
+import com.metricol.api.service.billing.LicenseService;
 import com.metricol.api.service.auth.EmailVerificationService;
 import com.metricol.api.service.auth.GoogleTokenVerifier;
 import com.metricol.api.util.Correos;
@@ -50,6 +51,7 @@ public class AuthService {
     private final EmailVerificationService codigos;
     private final EmailService correo;
     private final OrganizationService organizaciones;
+    private final LicenseService licencias;
 
     public AuthService(
             UserRepository userRepository,
@@ -61,7 +63,8 @@ public class AuthService {
             WorkspaceMemberRepository workspaceMembers,
             EmailVerificationService codigos,
             EmailService correo,
-            OrganizationService organizaciones) {
+            OrganizationService organizaciones,
+            LicenseService licencias) {
         this.userRepository = userRepository;
         this.workspaceRepository = workspaceRepository;
         this.workspaceMembers = workspaceMembers;
@@ -72,6 +75,7 @@ public class AuthService {
         this.codigos = codigos;
         this.correo = correo;
         this.organizaciones = organizaciones;
+        this.licencias = licencias;
     }
 
     @Transactional
@@ -108,6 +112,8 @@ public class AuthService {
         // dice nada—, pero existe desde el minuto uno: el día que tome un
         // segundo cliente, la capa ya está y no hay nada que migrar.
         organizaciones.crearPara(user, workspace, workspace.getName());
+        // Con los cobros encendidos, empieza su prueba gratis (con sus créditos).
+        licencias.iniciarPruebaAlRegistrarse(workspace);
 
         return sesionPara(user);
     }
@@ -210,6 +216,7 @@ public class AuthService {
         guardarNuevo(nuevo);
         workspaceMembers.save(WorkspaceMember.de(nuevo, workspace, Role.ADMIN));
         organizaciones.crearPara(nuevo, workspace, workspace.getName());
+        licencias.iniciarPruebaAlRegistrarse(workspace);
 
         log.info("Cuenta creada desde Google: {}", email);
         return sesionPara(nuevo);

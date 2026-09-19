@@ -40,6 +40,7 @@ import com.metricol.api.repository.MediaAssetRepository;
 import com.metricol.api.repository.PostRepository;
 import com.metricol.api.service.ai.AiQuotaGuard;
 import com.metricol.api.service.ai.AiUsageRecorder;
+import com.metricol.api.service.billing.CreditService;
 import com.metricol.api.service.ai.ArtDirector;
 import com.metricol.api.service.ai.EspecTexto;
 import com.metricol.api.service.ai.OpenAiClient;
@@ -113,9 +114,12 @@ public class CampaignImageService {
         return hilo;
     });
 
+    private final CreditService creditos;
+
     public CampaignImageService(OpenAiImageClient imagenes, OpenAiClient texto, R2StorageService storage,
             MediaAssetRepository assets, PostRepository posts, StorageQuotaService cuota, AiQuotaGuard cupo,
-            AiUsageRecorder usos, ArtDirector director) {
+            AiUsageRecorder usos, ArtDirector director, CreditService creditos) {
+        this.creditos = creditos;
         this.imagenes = imagenes;
         this.texto = texto;
         this.storage = storage;
@@ -188,7 +192,8 @@ public class CampaignImageService {
             CampaignImageRequest peticion,
             int piezasPorVariante,
             int totalImagenes,
-            int restantes) {
+            int restantes,
+            String referenciaCredito) {
     }
 
     /** El resultado de una versión. {@code causa} solo sirve dentro del proceso: es lo que se relanza. */
@@ -234,9 +239,16 @@ public class CampaignImageService {
     /** El endpoint de siempre: una imagen, en la misma petición. */
     public CampaignImageResponse generar(User usuario, CampaignImageRequest peticion) {
         Preparado p = preparar(usuario, peticion);
-        Generado g = ejecutar(p, Progreso.NINGUNO);
+        Generado g;
+        try {
+            g = ejecutar(p, Progreso.NINGUNO);
+        } catch (RuntimeException ex) {
+            devolverCredito(p);
+            throw ex;
+        }
         VarianteGenerada v = g.variantes().get(0);
         if (v.causa() != null) {
+            devolverCredito(p);
             throw v.causa();
         }
         return new CampaignImageResponse(
@@ -251,6 +263,20 @@ public class CampaignImageService {
                 g.prompt(),
                 p.totalImagenes(),
                 g.restantes() == Integer.MAX_VALUE ? null : g.restantes());
+    }
+
+    /**
+     * Devuelve el crédito de una generación que no produjo nada. Nunca lanza:
+     * es lo último que se hace al fallar, y un error aquí taparía el verdadero.
+     */
+    void devolverCredito(Preparado p) {
+        try {
+            if (p != null && p.referenciaCredito() != null) {
+                creditos.devolverGeneracion(p.negocio().id(), p.referenciaCredito());
+            }
+        } catch (Exception ex) {
+            log.warn("No se pudo devolver el crédito de la generación {}: {}", p.referenciaCredito(), ex.toString());
+        }
     }
 
     // ------------------------------------------------------------ preparar
@@ -295,10 +321,16 @@ public class CampaignImageService {
         SelloDeLogo.Posicion posicionLogo = posicionDelLogo(peticion, formato);
         Referencia logo = posicionLogo == null ? null : cargarLogo(logoUrl);
 
+        // El crédito se gasta al final, cuando ya no puede fallar nada de lo que se valida: una
+        // petición mal armada no cuesta un crédito. 1 crédito = 1 generación, salgan las versiones
+        // que salgan. Con los cobros apagados no hace nada.
+        String referenciaCredito = UUID.randomUUID().toString();
+        restantes = Math.min(restantes, creditos.consumirGeneracion(workspace.getId(), referenciaCredito));
+
         return new Preparado(Negocio.de(workspace), formato, variantes, recursos, fotos, logo,
                 // Sin logo que pegar no hay espacio que reservar.
                 logo == null ? null : posicionLogo,
-                peticion, piezas, total, restantes);
+                peticion, piezas, total, restantes, referenciaCredito);
     }
 
     /**

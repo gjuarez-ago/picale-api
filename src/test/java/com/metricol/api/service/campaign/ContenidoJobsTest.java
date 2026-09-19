@@ -56,7 +56,7 @@ class ContenidoJobsTest {
 
     private static Preparado preparado() {
         return new Preparado(new Negocio(WS, "CMRG", null, null, null, null), Formato.POST, DOS_VERSIONES, List.of(),
-                Map.of(), null, null, null, 1, 2, 8);
+                Map.of(), null, null, null, 1, 2, 8, "ref-credito");
     }
 
     private static VarianteGenerada lista(String id, Lienzo lienzo, List<Platform> redes) {

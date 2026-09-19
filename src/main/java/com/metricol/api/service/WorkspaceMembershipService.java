@@ -22,7 +22,9 @@ import com.metricol.api.models.request.WorkspaceCreateRequest;
 import com.metricol.api.models.response.AuthResponse;
 import com.metricol.api.models.response.MediaAssetResponse;
 import com.metricol.api.models.response.MiWorkspaceResponse;
+import com.metricol.api.repository.OrganizationRepository;
 import com.metricol.api.repository.UserRepository;
+import com.metricol.api.service.billing.BillingConfig;
 import com.metricol.api.repository.WorkspaceMemberRepository;
 import com.metricol.api.repository.WorkspaceRepository;
 
@@ -56,10 +58,15 @@ public class WorkspaceMembershipService {
     private final AuthService auth;
     private final OrganizationService organizaciones;
     private final WorkspaceLogoUploader logoUploader;
+    private final OrganizationRepository organizacionesRepo;
+    private final BillingConfig cobros;
 
     public WorkspaceMembershipService(WorkspaceMemberRepository miembros, WorkspaceRepository workspaces,
             UserRepository users, AuthService auth,
-            OrganizationService organizaciones, WorkspaceLogoUploader logoUploader) {
+            OrganizationService organizaciones, WorkspaceLogoUploader logoUploader,
+            OrganizationRepository organizacionesRepo, BillingConfig cobros) {
+        this.organizacionesRepo = organizacionesRepo;
+        this.cobros = cobros;
         this.miembros = miembros;
         this.workspaces = workspaces;
         this.users = users;
@@ -146,6 +153,10 @@ public class WorkspaceMembershipService {
         if (nombre == null || nombre.isBlank()) {
             throw new IllegalArgumentException("El espacio de trabajo necesita un nombre.");
         }
+        if (cobros.habilitado()) {
+            // Cada espacio es una licencia: se compra, y el espacio nace cuando Stripe avisa que se pagó.
+            throw new IllegalStateException("Un espacio nuevo necesita su licencia. Contrátala desde la web, en Facturación.");
+        }
         User user = users.findById(actual.getId())
                 .orElseThrow(() -> new ResourceNotFoundException("Usuario no encontrado."));
 
@@ -175,6 +186,35 @@ public class WorkspaceMembershipService {
         miembros.save(WorkspaceMember.de(user, nuevo, Role.ADMIN));
 
         return respuesta(nuevo, Role.ADMIN, Role.ADMIN.permisosPorDefecto(), false);
+    }
+
+
+    /**
+     * Crea el espacio de una licencia ya pagada. Lo llama el aviso de Stripe,
+     * sin sesión: quién compró y para qué organización viajan en los datos de la
+     * compra.
+     *
+     * <p>Sin el tope de espacios de la organización: con los cobros encendidos
+     * lo que limita es la licencia, y una licencia pagada no puede quedarse sin
+     * su espacio por un tope viejo.
+     */
+    @Transactional
+    public Workspace crearParaLicencia(UUID organizationId, UUID userId, WorkspaceCreateRequest datos) {
+        Organization organizacion = organizacionesRepo.findById(organizationId)
+                .orElseThrow(() -> new ResourceNotFoundException("Organización no encontrada."));
+        User comprador = users.findById(userId)
+                .orElseThrow(() -> new ResourceNotFoundException("Usuario no encontrado."));
+
+        Workspace nuevo = workspaces.save(Workspace.builder()
+                .name(datos.getName().trim())
+                .giro(limpio(datos.getGiro()))
+                .ciudad(limpio(datos.getCiudad()))
+                .descripcion(limpio(datos.getDescripcion()))
+                .objetivo(datos.getObjetivo())
+                .organization(organizacion)
+                .build());
+        miembros.save(WorkspaceMember.de(comprador, nuevo, Role.ADMIN));
+        return nuevo;
     }
 
     /**

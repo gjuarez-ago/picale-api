@@ -125,9 +125,14 @@ public class ContenidoJobs {
         try {
             Generado generado = generador.ejecutar(trabajo.preparado, trabajo);
             trabajo.terminar(generado, reloj.getAsLong());
+            // Si no salió ninguna versión, no se cobra el crédito.
+            if (trabajo.estado == Estado.FAILED) {
+                generador.devolverCredito(trabajo.preparado);
+            }
         } catch (Throwable ex) {
             log.error("Falló la creación de contenido {}: {}", trabajo.id, ex.toString(), ex);
             trabajo.fallar("No se pudo crear el contenido. Inténtalo de nuevo.", reloj.getAsLong());
+            generador.devolverCredito(trabajo.preparado);
         } finally {
             workspacesOcupados.remove(trabajo.workspaceId);
         }

@@ -61,6 +61,14 @@ public class Organization {
     @Column(name = "max_workspaces", nullable = false)
     private int maxWorkspaces = 3;
 
+    /**
+     * El cliente de Stripe de esta organización ({@code cus_...}): con él se
+     * cobran todas sus licencias y se abre su portal de facturación. Se crea la
+     * primera vez que compra algo.
+     */
+    @Column(name = "stripe_customer_id", length = 80)
+    private String stripeCustomerId;
+
     @Builder.Default
     @Column(nullable = false, updatable = false)
     private LocalDateTime createdAt = LocalDateTime.now();

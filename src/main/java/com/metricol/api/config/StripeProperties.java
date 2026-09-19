@@ -50,6 +50,12 @@ public class StripeProperties {
      */
     private String priceWorkspace = "";
 
+    /** Donde vive la API de Stripe. Cambia solo en las pruebas. */
+    private String apiBaseUrl = "https://api.stripe.com/v1";
+
+    /** Cuánto se tolera de diferencia entre el reloj de Stripe y el nuestro al verificar una firma. */
+    private int webhookToleranceSeconds = 300;
+
     public boolean cobrosActivos() {
         return secretKey != null && !secretKey.isBlank();
     }
