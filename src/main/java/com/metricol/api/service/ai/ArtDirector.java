@@ -66,12 +66,15 @@ public class ArtDirector {
             List<String> paleta,
             List<String> captionsAnteriores,
             String formato,
-            List<String> fotoUrls) {
+            List<String> fotoUrls,
+            List<String> redes) {
     }
 
     /**
      * El plan. {@code fotoProtagonista} va de 1 en adelante (0 = sin preferencia).
      * {@code cta} puede venir vacío: la persona ya escribió el suyo y ese manda.
+     * {@code captionsPorRed} lleva un texto por cada red pedida (clave = nombre de la red en
+     * mayúsculas); puede faltar alguna, y entonces vale {@code caption}.
      */
     public record Brief(
             String layout,
@@ -80,7 +83,8 @@ public class ArtDirector {
             String titular,
             String subtitulo,
             String cta,
-            String caption) {
+            String caption,
+            Map<String, String> captionsPorRed) {
     }
 
     private static final String SISTEMA = """
@@ -97,6 +101,11 @@ public class ArtDirector {
             "subtitle": SPANISH, at most 8 words (city or a real differentiator), or "".
             "cta": SPANISH, at most 4 words, or "".
             "caption": SPANISH, 2-4 short lines, at most 2 emojis, no hashtags, ends with the call to action.
+            "captions": an object with one caption per requested network, using exactly the network names given
+              (for example "INSTAGRAM"). Tailor each: Instagram is warm and visual, up to 2 emojis; Facebook is
+              conversational and can be a little longer; LinkedIn is professional and concrete, no emojis. Each one
+              is SPANISH, 2-4 short lines, no hashtags, and ends with the call to action. Omit it if no networks
+              were requested.
 
             Layouts:
             - photo_bottom_band: the photo fills the frame and a solid brand-color panel at the bottom holds the
@@ -261,6 +270,9 @@ public class ArtDirector {
             t.append("Captions this business already published (match their voice, do not repeat them):\n");
             c.captionsAnteriores().forEach(caption -> t.append("- ").append(caption).append("\n"));
         }
+        if (c.redes() != null && !c.redes().isEmpty()) {
+            t.append("Networks to write captions for: ").append(String.join(", ", c.redes())).append("\n");
+        }
         int fotos = c.fotoUrls().size();
         t.append(fotos == 0
                 ? "There are no photos: design the scene from the description."
@@ -299,7 +311,22 @@ public class ArtDirector {
                 titular,
                 limpio(nodo.path("subtitle").asText(""), 70),
                 limpio(nodo.path("cta").asText(""), 40),
-                parrafos(nodo.path("caption").asText(""), 600)));
+                parrafos(nodo.path("caption").asText(""), 600),
+                captionsPorRed(nodo.path("captions"))));
+    }
+
+    /** Un texto por red, con las claves en mayúsculas; lo vacío se descarta. */
+    private static Map<String, String> captionsPorRed(JsonNode nodo) {
+        Map<String, String> captions = new LinkedHashMap<>();
+        if (nodo != null && nodo.isObject()) {
+            nodo.fields().forEachRemaining(e -> {
+                String texto = parrafos(e.getValue().asText(""), 600);
+                if (!texto.isBlank()) {
+                    captions.put(e.getKey().trim().toUpperCase(java.util.Locale.ROOT), texto);
+                }
+            });
+        }
+        return captions;
     }
 
     private void anotarGasto(Map<?, ?> respuesta) {

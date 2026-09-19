@@ -24,7 +24,12 @@ public record CampaignImageRequest(
         @Size(max = 80) String objective,
         @Size(max = 8) List<@Size(max = 60) String> visualStyle,
         @Size(max = 120) String tone,
-        @Size(max = 200) String cta) {
+        @Size(max = 200) String cta,
+        /**
+         * Las redes donde va a publicarse (INSTAGRAM, FACEBOOK, LINKEDIN...). Con ellas se crea una
+         * versión por cada proporción distinta. Sin ellas (la app anterior) sale una sola imagen.
+         */
+        @Size(max = 5) List<@Size(max = 30) String> networks) {
 
     /** {@code code}: post, carousel o story. */
     @JsonIgnoreProperties(ignoreUnknown = true)

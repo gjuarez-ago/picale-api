@@ -3,7 +3,6 @@ package com.metricol.api.service.campaign;
 import java.util.List;
 import java.util.Locale;
 
-import com.metricol.api.service.campaign.CampaignImageService.Formato;
 import com.metricol.api.service.campaign.SelloDeLogo.Posicion;
 
 /**
@@ -52,7 +51,7 @@ final class PromptDeImagen {
      * @param logo dónde se pegará el logo real, o {@code null} si no hay logo
      */
     record Datos(
-            Formato formato,
+            Lienzo lienzo,
             Layout layout,
             String negocio,
             String escena,
@@ -68,9 +67,11 @@ final class PromptDeImagen {
         StringBuilder t = new StringBuilder();
         t.append("Create ONE finished, professional social-media advertisement for ")
                 .append(valor(d.negocio(), "a local business"))
-                .append(". Portrait canvas of 1024x1536 pixels.\n\n");
+                .append(d.lienzo() == Lienzo.CUADRADO
+                        ? ". Square canvas of 1024x1024 pixels.\n\n"
+                        : ". Portrait canvas of 1024x1536 pixels.\n\n");
 
-        t.append("SAFE AREA (critical): ").append(zonaSegura(d.formato())).append("\n\n");
+        t.append("SAFE AREA (critical): ").append(zonaSegura(d.lienzo())).append("\n\n");
 
         if (d.fotos() > 0) {
             t.append("PHOTO: Photo 1 is the hero and must appear large, complete and recognizable. ");
@@ -85,7 +86,7 @@ final class PromptDeImagen {
                     .append("Never add fog, haze or glow effects.\n\n");
         }
 
-        t.append("LAYOUT: ").append(descripcion(d.layout())).append("\n\n");
+        t.append("LAYOUT: ").append(descripcion(d.layout(), d.lienzo())).append("\n\n");
 
         t.append("TEXT: render exactly these words, in Spanish, letter for letter and with their accents, ")
                 .append("and NO other words anywhere in the image.\n");
@@ -110,7 +111,7 @@ final class PromptDeImagen {
         }
 
         if (d.logo() != null) {
-            t.append("LOGO: leave ").append(zonaLogo(d.logo(), d.formato()))
+            t.append("LOGO: leave ").append(zonaLogo(d.logo(), d.lienzo()))
                     .append(" completely clean (plain background, no text, no key subject): the business's real logo ")
                     .append("will be placed there afterwards. Do not draw any logo, emblem or brand mark anywhere.\n\n");
         } else {
@@ -128,25 +129,29 @@ final class PromptDeImagen {
         return t.toString();
     }
 
-    /** Lo que sobrevive al recorte y a la interfaz de la red, en píxeles del lienzo de 1024x1536. */
-    static String zonaSegura(Formato formato) {
-        return switch (formato) {
-            case STORY -> "The image is cut to 9:16 and shown under the app's own interface. Every letter, button, "
-                    + "face and key object must lie completely inside the rectangle x=130..894, y=240..1230; the "
-                    + "margins are cut off or covered. Plain background color may run past that rectangle to the "
-                    + "edges, but nothing that must be read or seen.";
-            default -> "The image is cut to 4:5, removing the top and bottom strips. Every letter, button, face and "
-                    + "key object must lie completely inside the rectangle x=64..960, y=200..1336; the top 200 and "
-                    + "bottom 200 pixels are cut or covered. A panel or frame may run to the edges only as plain "
-                    + "color, and never let any text touch an edge.";
+    /** Lo que sobrevive al recorte y a la interfaz de la red, en píxeles del lienzo pedido. */
+    static String zonaSegura(Lienzo lienzo) {
+        return switch (lienzo) {
+            case HISTORIA -> "The image is cut to 9:16 and shown under the app's own interface. Every letter, "
+                    + "button, face and key object must lie completely inside the rectangle x=130..894, "
+                    + "y=240..1230; the margins are cut off or covered. Plain background color may run past that "
+                    + "rectangle to the edges, but nothing that must be read or seen.";
+            case CUADRADO -> "The image is a 1:1 square shown as it is. Every letter, button, face and key object "
+                    + "must lie completely inside the rectangle x=80..944, y=80..944. A panel or frame may run to "
+                    + "the edges only as plain color, and never let any text touch an edge.";
+            case CUATRO_QUINTOS -> "The image is cut to 4:5, removing the top and bottom strips. Every letter, "
+                    + "button, face and key object must lie completely inside the rectangle x=64..960, "
+                    + "y=200..1336; the top 200 and bottom 200 pixels are cut or covered. A panel or frame may run "
+                    + "to the edges only as plain color, and never let any text touch an edge.";
         };
     }
 
-    private static String descripcion(Layout layout) {
+    private static String descripcion(Layout layout, Lienzo lienzo) {
+        int alturaBanda = lienzo == Lienzo.CUADRADO ? 700 : 1000;
         return switch (layout) {
             case PHOTO_BOTTOM_BAND -> "The hero photo fills the whole canvas, unchanged. A solid panel in the "
                     + "primary brand color, with softly rounded top corners, is anchored to the bottom and rises to "
-                    + "about y=1000. Inside the safe rectangle, left-aligned on the panel: the HEADLINE, the "
+                    + "about y=" + alturaBanda + ". Inside the safe rectangle, left-aligned on the panel: the HEADLINE, the "
                     + "SUBTITLE under it, and the BUTTON at the bottom of the panel.";
             case PHOTO_TOP_TITLE -> "The hero photo fills the whole canvas, unchanged, with only a soft dark "
                     + "gradient over the top third to hold the text (no fog, no blur). Inside the safe rectangle, "
@@ -160,12 +165,25 @@ final class PromptDeImagen {
     }
 
     /** El rincón que se deja libre para el logo, en píxeles aproximados del lienzo. */
-    static String zonaLogo(Posicion posicion, Formato formato) {
-        boolean historia = formato == Formato.STORY;
+    static String zonaLogo(Posicion posicion, Lienzo lienzo) {
         int ancho = 440;
         int alto = 210;
-        int x = posicion.izquierda() ? (historia ? 110 : 40) : posicion.derecha() ? (historia ? 470 : 550) : 292;
-        int y = posicion.arriba() ? (historia ? 215 : 165) : (historia ? 1035 : 1150);
+        int x;
+        int y;
+        switch (lienzo) {
+            case HISTORIA -> {
+                x = posicion.izquierda() ? 110 : posicion.derecha() ? 470 : 292;
+                y = posicion.arriba() ? 215 : 1035;
+            }
+            case CUADRADO -> {
+                x = posicion.izquierda() ? 40 : posicion.derecha() ? 544 : 292;
+                y = posicion.arriba() ? 40 : 774;
+            }
+            default -> {
+                x = posicion.izquierda() ? 40 : posicion.derecha() ? 550 : 292;
+                y = posicion.arriba() ? 165 : 1150;
+            }
+        }
         return "the area of about " + ancho + "x" + alto + " pixels " + (posicion.arriba() ? "at the top" : "at the bottom")
                 + "-" + (posicion.izquierda() ? "left" : posicion.derecha() ? "right" : "center")
                 + " (roughly x=" + x + ".." + (x + ancho) + ", y=" + y + ".." + (y + alto) + ")";

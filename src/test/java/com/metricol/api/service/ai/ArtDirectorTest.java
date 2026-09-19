@@ -54,7 +54,8 @@ class ArtDirectorTest {
     private static Contexto contexto(List<String> fotos) {
         return new Contexto("CMRG", "Mantenimiento industrial", "Manzanillo, Colima", "Obra y mantenimiento",
                 "VENDER", "Anunciar nuestro servicio de montaje", "Vender", "Profesional", "Minimalista",
-                "Escríbenos por WhatsApp", List.of("#0B2A5B", "#1FA34A"), List.of("Llegamos a tiempo."), "post", fotos);
+                "Escríbenos por WhatsApp", List.of("#0B2A5B", "#1FA34A"), List.of("Llegamos a tiempo."), "post", fotos,
+                List.of("INSTAGRAM", "LINKEDIN"));
     }
 
     private static String respuesta(String plan) {
@@ -66,7 +67,9 @@ class ArtDirectorTest {
     private static final String PLAN = "{\"layout\":\"photo_top_title\",\"hero_photo\":2,"
             + "\"scene\":\"Warm afternoon light, natural grade.\",\"headline\":\"Montaje seguro y a tiempo\","
             + "\"subtitle\":\"Manzanillo, Colima\",\"cta\":\"Cotiza hoy\","
-            + "\"caption\":\"Levantamos y nivelamos.\\nEscríbenos por WhatsApp.\"}";
+            + "\"caption\":\"Levantamos y nivelamos.\\nEscríbenos por WhatsApp.\","
+            + "\"captions\":{\"instagram\":\"Hoy levantamos 🏗️\",\"LINKEDIN\":\"Servicio de montaje industrial.\","
+            + "\"FACEBOOK\":\"  \"}}";
 
     @Test
     @DisplayName("manda el modelo, las fotos y la respuesta cerrada, y devuelve el plan")
@@ -96,6 +99,9 @@ class ArtDirectorTest {
         assertThat(brief.cta()).isEqualTo("Cotiza hoy");
         assertThat(brief.caption()).isEqualTo("Levantamos y nivelamos.\nEscríbenos por WhatsApp.");
         assertThat(brief.escena()).contains("Warm afternoon light");
+        // Un texto por red, con la clave en mayúsculas; lo vacío se descarta.
+        assertThat(brief.captionsPorRed()).containsOnlyKeys("INSTAGRAM", "LINKEDIN");
+        assertThat(brief.captionsPorRed().get("LINKEDIN")).isEqualTo("Servicio de montaje industrial.");
         verify(usos).registrarDirector("gpt-5.5-2026", 900, 250);
         servidor.verify();
     }
@@ -113,6 +119,7 @@ class ArtDirectorTest {
                 .contains("Escríbenos por WhatsApp")
                 .contains("#0B2A5B, #1FA34A")
                 .contains("Llegamos a tiempo.")
+                .contains("Networks to write captions for: INSTAGRAM, LINKEDIN")
                 .contains("1 attached photo(s)");
     }
 

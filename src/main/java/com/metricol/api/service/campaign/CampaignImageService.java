@@ -4,12 +4,14 @@ import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.ArrayList;
+import java.util.EnumSet;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
 import java.util.Optional;
 import java.util.Set;
+import java.util.UUID;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ExecutionException;
 import java.util.concurrent.ExecutorService;
@@ -24,33 +26,48 @@ import org.springframework.stereotype.Service;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.metricol.api.entity.MediaAsset;
+import com.metricol.api.entity.Post;
 import com.metricol.api.entity.User;
 import com.metricol.api.entity.Workspace;
 import com.metricol.api.enums.AiOperacion;
 import com.metricol.api.enums.MediaAssetStatus;
 import com.metricol.api.enums.MediaType;
+import com.metricol.api.enums.Platform;
+import com.metricol.api.enums.PostStatus;
 import com.metricol.api.models.request.CampaignImageRequest;
 import com.metricol.api.models.response.CampaignImageResponse;
-import com.metricol.api.entity.Post;
-import com.metricol.api.enums.PostStatus;
 import com.metricol.api.repository.MediaAssetRepository;
 import com.metricol.api.repository.PostRepository;
 import com.metricol.api.service.ai.AiQuotaGuard;
 import com.metricol.api.service.ai.AiUsageRecorder;
 import com.metricol.api.service.ai.ArtDirector;
+import com.metricol.api.service.ai.EspecTexto;
 import com.metricol.api.service.ai.OpenAiClient;
 import com.metricol.api.service.ai.OpenAiImageClient;
 import com.metricol.api.service.ai.OpenAiImageClient.Referencia;
 import com.metricol.api.service.ai.OpenAiImageClient.Resultado;
+import com.metricol.api.service.campaign.Lienzo.Variante;
 import com.metricol.api.service.storage.R2StorageService;
 import com.metricol.api.service.storage.StorageQuotaService;
 
 import jakarta.annotation.PreDestroy;
 
 /**
- * Genera las imágenes de una campaña: las pide a gpt-image, las recorta a la
- * proporción de la red, las guarda en R2 como parte de Contenido y escribe el
- * texto que las acompaña.
+ * Crea el contenido con IA: pide las imágenes a gpt-image, las recorta a la
+ * proporción de cada red, les pega el logo real, las guarda en R2 como parte de
+ * Contenido y escribe el texto que las acompaña.
+ *
+ * <p><b>Dos tiempos.</b> {@link #preparar} corre en la petición y hace todo lo
+ * que puede fallar sin gastar nada —validar formato y redes, el tope del día,
+ * que las fotos sean del workspace—. {@link #ejecutar} es lo lento y puede
+ * correr en segundo plano: el director de arte, las imágenes y el guardado. Lo
+ * que pasa de uno al otro es un {@link Preparado} que ya no depende de la
+ * sesión de base de datos de la petición.
+ *
+ * <p><b>Una imagen por versión, no por red.</b> Las redes se agrupan por
+ * {@link Lienzo}: Instagram y Facebook comparten la 4:5 y LinkedIn tiene la
+ * suya. Todas las versiones salen del MISMO plan del director, así el mensaje
+ * es el mismo en todas; lo único que cambia es la forma y el texto de cada red.
  *
  * <p><b>Qué protege.</b>
  *
@@ -58,17 +75,15 @@ import jakarta.annotation.PreDestroy;
  * <li>Las fotos de referencia y el logo solo pueden ser archivos del propio
  * workspace: se buscan por URL en su Contenido y no se baja nada que la app
  * mande por su cuenta.
- * <li>El tope diario de imágenes se comprueba con TODAS las piezas de la
- * campaña antes de pagar la primera.
- * <li>Nada se guarda hasta que todas las piezas llegaron: un carrusel a medias
- * no le sirve a nadie y ocuparía espacio.
+ * <li>El tope diario de imágenes se comprueba con TODAS las piezas antes de
+ * pagar la primera.
+ * <li>Una versión que falla no tira a las demás; y de un carrusel no se guarda
+ * nada a medias.
  * </ul>
  *
- * <p><b>Las piezas de un carrusel se piden a la vez.</b> Una sola pieza tarda
- * hasta un minuto y Cloudflare corta la petición a los 100 segundos: cinco en
- * fila nunca cabrían. El orden se conserva porque se recogen por posición.
- * Esos hilos solo hablan con OpenAI; el gasto y el guardado ocurren después,
- * en el hilo de la petición, que es el que sabe de qué workspace se trata.
+ * <p>Las piezas se piden a la vez: una tarda hasta un minuto y varias en fila
+ * no cabrían. Esos hilos solo hablan con OpenAI; el gasto y el guardado ocurren
+ * en el hilo de quien ejecuta, que es el que sabe de qué workspace se trata.
  */
 @Service
 public class CampaignImageService {
@@ -92,7 +107,7 @@ public class CampaignImageService {
     private final ArtDirector director;
     private final ObjectMapper json = new ObjectMapper();
 
-    private final ExecutorService pool = Executors.newFixedThreadPool(5, tarea -> {
+    private final ExecutorService pool = Executors.newFixedThreadPool(8, tarea -> {
         Thread hilo = new Thread(tarea, "campaign-image");
         hilo.setDaemon(true);
         return hilo;
@@ -117,18 +132,25 @@ public class CampaignImageService {
         pool.shutdownNow();
     }
 
-    /** Las proporciones y el nombre de cada formato de la app. */
+    /** Lo que se crea y en qué redes puede publicarse. */
     enum Formato {
-        POST(4, 5, false), CAROUSEL(4, 5, true), STORY(9, 16, false);
+        POST(false, "publicaciones", EnumSet.of(Platform.INSTAGRAM, Platform.FACEBOOK, Platform.LINKEDIN)),
+        CAROUSEL(true, "carruseles", EnumSet.of(Platform.INSTAGRAM, Platform.FACEBOOK, Platform.LINKEDIN)),
+        STORY(false, "historias", EnumSet.of(Platform.INSTAGRAM, Platform.FACEBOOK));
 
-        final int ratioAncho;
-        final int ratioAlto;
         final boolean secuencia;
+        final String plural;
+        final Set<Platform> redes;
 
-        Formato(int ratioAncho, int ratioAlto, boolean secuencia) {
-            this.ratioAncho = ratioAncho;
-            this.ratioAlto = ratioAlto;
+        Formato(boolean secuencia, String plural, Set<Platform> redes) {
             this.secuencia = secuencia;
+            this.plural = plural;
+            this.redes = redes;
+        }
+
+        /** El lienzo de siempre cuando no se dice a qué redes va. */
+        Lienzo lienzoPorDefecto() {
+            return this == STORY ? Lienzo.HISTORIA : Lienzo.CUATRO_QUINTOS;
         }
 
         static Formato de(String codigo) {
@@ -142,7 +164,103 @@ public class CampaignImageService {
         }
     }
 
+    /**
+     * Los datos del negocio, copiados. Quien ejecuta en segundo plano no puede
+     * tocar el {@code Workspace} de la petición: es una entidad ligada a una
+     * sesión de base de datos que ya se cerró.
+     */
+    record Negocio(UUID id, String nombre, String giro, String ciudad, String descripcion, String objetivo) {
+        static Negocio de(Workspace w) {
+            return new Negocio(w.getId(), w.getName(), w.getGiro(), w.getCiudad(), w.getDescripcion(),
+                    w.getObjetivo() == null ? null : w.getObjetivo().name());
+        }
+    }
+
+    /** Todo lo validado y descargado, listo para ejecutar sin volver a la petición. */
+    record Preparado(
+            Negocio negocio,
+            Formato formato,
+            List<Variante> variantes,
+            List<String> recursos,
+            Map<String, Referencia> fotos,
+            Referencia logo,
+            SelloDeLogo.Posicion posicionLogo,
+            CampaignImageRequest peticion,
+            int piezasPorVariante,
+            int totalImagenes,
+            int restantes) {
+    }
+
+    /** El resultado de una versión. {@code causa} solo sirve dentro del proceso: es lo que se relanza. */
+    record VarianteGenerada(
+            String id,
+            Lienzo lienzo,
+            List<Platform> redes,
+            List<String> urls,
+            List<String> assetIds,
+            String error,
+            RuntimeException causa) {
+    }
+
+    record Generado(
+            List<VarianteGenerada> variantes,
+            String titular,
+            String subtitulo,
+            String captionGeneral,
+            Map<Platform, String> captionsPorRed,
+            String prompt,
+            int restantes) {
+    }
+
+    /** Para que quien ejecuta en segundo plano vaya contando cómo va. */
+    interface Progreso {
+        void etapa(String etapa);
+
+        void varianteLista(VarianteGenerada variante);
+
+        Progreso NINGUNO = new Progreso() {
+            @Override
+            public void etapa(String etapa) {
+            }
+
+            @Override
+            public void varianteLista(VarianteGenerada variante) {
+            }
+        };
+    }
+
+    // ------------------------------------------------------------ el camino de una imagen
+
+    /** El endpoint de siempre: una imagen, en la misma petición. */
     public CampaignImageResponse generar(User usuario, CampaignImageRequest peticion) {
+        Preparado p = preparar(usuario, peticion);
+        Generado g = ejecutar(p, Progreso.NINGUNO);
+        VarianteGenerada v = g.variantes().get(0);
+        if (v.causa() != null) {
+            throw v.causa();
+        }
+        return new CampaignImageResponse(
+                v.assetIds().get(0),
+                versionDe(peticion),
+                "PRODUCT",
+                g.titular(),
+                g.subtitulo(),
+                v.urls().get(0),
+                v.urls(),
+                g.captionGeneral(),
+                g.prompt(),
+                p.totalImagenes(),
+                g.restantes() == Integer.MAX_VALUE ? null : g.restantes());
+    }
+
+    // ------------------------------------------------------------ preparar
+
+    /**
+     * Valida y reúne todo, sin gastar nada. Corre en la petición: aquí es donde
+     * se le dice a la persona lo que está mal, y falla antes de crear ningún
+     * trabajo.
+     */
+    Preparado preparar(User usuario, CampaignImageRequest peticion) {
         Formato formato = Formato.de(peticion.format() == null ? null : peticion.format().code());
         String logoUrl = peticion.brand() == null || peticion.brand().logoUrl() == null
                 || peticion.brand().logoUrl().isBlank() ? null : peticion.brand().logoUrl().trim();
@@ -162,22 +280,76 @@ public class CampaignImageService {
             throw new IllegalStateException("Elige un espacio de trabajo para crear el contenido.");
         }
 
+        List<Variante> variantes = variantesDe(peticion, formato);
+        int total = piezas * variantes.size();
+
         // Todo lo que puede fallar sin haber gastado nada, primero.
         if (!imagenes.disponible()) {
             throw new IllegalStateException("La generación de imágenes no está disponible por ahora.");
         }
         cupo.exigirCupo();
-        int restantes = cupo.exigirCupoImagenes(piezas);
-        cuota.verificar(BYTES_ESTIMADOS_POR_PIEZA * piezas, "campana.jpg");
+        int restantes = cupo.exigirCupoImagenes(total);
+        cuota.verificar(BYTES_ESTIMADOS_POR_PIEZA * total, "contenido.jpg");
 
         Map<String, Referencia> fotos = cargarReferencias(recursos);
         SelloDeLogo.Posicion posicionLogo = posicionDelLogo(peticion, formato);
         Referencia logo = posicionLogo == null ? null : cargarLogo(logoUrl);
-        // Sin logo que pegar no hay espacio que reservar.
-        SelloDeLogo.Posicion reservada = logo == null ? null : posicionLogo;
+
+        return new Preparado(Negocio.de(workspace), formato, variantes, recursos, fotos, logo,
+                // Sin logo que pegar no hay espacio que reservar.
+                logo == null ? null : posicionLogo,
+                peticion, piezas, total, restantes);
+    }
+
+    /**
+     * Las versiones que hay que crear. Sin redes indicadas (el endpoint de
+     * siempre) es una sola, con el lienzo del formato; con redes, una por cada
+     * lienzo distinto.
+     */
+    private static List<Variante> variantesDe(CampaignImageRequest peticion, Formato formato) {
+        List<String> pedidas = peticion.networks();
+        if (pedidas == null || pedidas.isEmpty()) {
+            return List.of(new Variante("v1", formato.lienzoPorDefecto(), List.of()));
+        }
+
+        List<Platform> redes = new ArrayList<>();
+        for (String codigo : pedidas) {
+            Platform red;
+            try {
+                red = Platform.valueOf(codigo == null ? "" : codigo.trim().toUpperCase(Locale.ROOT));
+            } catch (IllegalArgumentException ex) {
+                throw new IllegalArgumentException("Esa red no existe: " + codigo);
+            }
+            if (!formato.redes.contains(red)) {
+                throw new IllegalArgumentException(
+                        red.getLabel() + " no admite " + formato.plural + ". Quítala o cambia de formato.");
+            }
+            if (!redes.contains(red)) {
+                redes.add(red);
+            }
+        }
+        return Variante.agrupar(formato, redes);
+    }
+
+    // ------------------------------------------------------------ ejecutar
+
+    /**
+     * Lo lento: el plan del director, las imágenes de cada versión y su guardado.
+     * Puede correr en segundo plano; quien lo llame debe haber puesto el
+     * workspace (ver {@code TenantIdentifierResolver.comoTenant}) si no es el
+     * hilo de una petición.
+     */
+    Generado ejecutar(Preparado p, Progreso progreso) {
+        Negocio negocio = p.negocio();
+        CampaignImageRequest peticion = p.peticion();
+        Formato formato = p.formato();
+
+        progreso.etapa("Pensando la composición…");
 
         // Los colores de la marca salen del logo, no de una descripción.
-        List<String> paleta = logo == null ? List.of() : PaletaDeLogo.dominantes(logo.bytes(), 3);
+        List<String> paleta = p.logo() == null ? List.of() : PaletaDeLogo.dominantes(p.logo().bytes(), 3);
+        List<String> nombresDeRedes = p.variantes().stream().flatMap(v -> v.redes().stream()).map(Platform::name)
+                .toList();
 
         // Qué se dice y cómo se compone, antes de dibujar. En una publicación o
         // historia lo decide el director de arte (que ve las fotos); si no
@@ -189,12 +361,14 @@ public class CampaignImageService {
         int heroe = 0;
         String titular;
         String subtitulo;
-        String caption;
+        String captionGeneral;
+        Map<String, String> captionsDelPlan = Map.of();
         String ctaPropio = ArtDirector.limpio(peticion.cta(), 40);
 
         Optional<ArtDirector.Brief> plan = formato.secuencia || !director.disponible()
                 ? Optional.empty()
-                : director.dirigir(contextoDelDirector(workspace, peticion, formato, paleta, recursos));
+                : director.dirigir(contextoDelDirector(negocio, peticion, formato, paleta, p.recursos(),
+                        nombresDeRedes));
         if (plan.isPresent()) {
             ArtDirector.Brief brief = plan.get();
             layout = PromptDeImagen.Layout.de(brief.layout());
@@ -202,51 +376,108 @@ public class CampaignImageService {
             heroe = brief.fotoProtagonista();
             titular = brief.titular();
             subtitulo = brief.subtitulo();
-            caption = brief.caption().isBlank() ? escribirTextos(workspace, peticion).caption() : brief.caption();
+            captionsDelPlan = brief.captionsPorRed();
+            captionGeneral = brief.caption().isBlank() ? escribirTextos(negocio, peticion).caption()
+                    : brief.caption();
             if (ctaPropio.isBlank()) {
                 ctaPropio = brief.cta();
             }
         } else {
-            Textos textos = escribirTextos(workspace, peticion);
+            Textos textos = escribirTextos(negocio, peticion);
             titular = textos.titular();
             subtitulo = textos.apoyo();
-            caption = textos.caption();
+            captionGeneral = textos.caption();
         }
 
-        String tamano = peticion.format().outputSize();
-        List<String> prompts = new ArrayList<>();
-        List<CompletableFuture<Resultado>> futuros = new ArrayList<>();
-        for (int i = 0; i < piezas; i++) {
-            List<Referencia> referencias = referenciasDePieza(formato, recursos, fotos, i);
-            if (!formato.secuencia) {
-                referencias = conHeroeAlFrente(referencias, heroe);
+        progreso.etapa("Creando las imágenes…");
+
+        // Se piden TODAS las piezas de TODAS las versiones a la vez.
+        record Envio(Variante variante, List<CompletableFuture<Resultado>> futuros) {
+        }
+        List<Envio> envios = new ArrayList<>();
+        String primerPrompt = null;
+        for (Variante variante : p.variantes()) {
+            List<CompletableFuture<Resultado>> futuros = new ArrayList<>();
+            for (int i = 0; i < p.piezasPorVariante(); i++) {
+                List<Referencia> referencias = referenciasDePieza(formato, p.recursos(), p.fotos(), i);
+                if (!formato.secuencia) {
+                    referencias = conHeroeAlFrente(referencias, heroe);
+                }
+                String prompt = formato.secuencia
+                        ? armarPrompt(negocio, peticion, variante.lienzo(), i, p.piezasPorVariante(),
+                                referencias.size(), p.posicionLogo())
+                        : PromptDeImagen.armar(new PromptDeImagen.Datos(variante.lienzo(), layout, negocio.nombre(),
+                                escena, titular, subtitulo, ctaPropio, paleta, referencias.size(), p.posicionLogo()));
+                if (primerPrompt == null) {
+                    primerPrompt = prompt;
+                }
+                List<Referencia> paraLaIa = referencias;
+                String tamano = variante.lienzo().tamano;
+                futuros.add(CompletableFuture.supplyAsync(() -> paraLaIa.isEmpty()
+                        ? imagenes.generar(prompt, tamano)
+                        : imagenes.editar(prompt, paraLaIa, tamano), pool));
             }
-            String prompt = formato.secuencia
-                    ? armarPrompt(workspace, peticion, formato, i, piezas, referencias.size(), reservada)
-                    : PromptDeImagen.armar(new PromptDeImagen.Datos(formato, layout, workspace.getName(), escena,
-                            titular, subtitulo, ctaPropio, paleta, referencias.size(), reservada));
-            prompts.add(prompt);
-            List<Referencia> paraLaIa = referencias;
-            futuros.add(CompletableFuture.supplyAsync(() -> paraLaIa.isEmpty()
-                    ? imagenes.generar(prompt, tamano)
-                    : imagenes.editar(prompt, paraLaIa, tamano), pool));
+            envios.add(new Envio(variante, futuros));
         }
 
-        List<Resultado> resultados = recogerEnOrden(futuros);
+        // Cada versión se guarda y se avisa en cuanto llega, sin esperar a las
+        // demás: quien mira la pantalla ve aparecer la primera mientras la
+        // segunda todavía se dibuja.
+        List<VarianteGenerada> generadas = new ArrayList<>();
+        for (Envio envio : envios) {
+            VarianteGenerada generada;
+            try {
+                List<Resultado> resultados = recogerEnOrden(envio.futuros());
+                generada = guardar(negocio, peticion, p, envio.variante(), resultados);
+            } catch (RuntimeException ex) {
+                log.warn("Una versión del contenido falló ({}): {}", envio.variante().lienzo(), ex.getMessage());
+                generada = new VarianteGenerada(envio.variante().id(), envio.variante().lienzo(),
+                        envio.variante().redes(), List.of(), List.of(), ex.getMessage(), ex);
+            }
+            generadas.add(generada);
+            progreso.varianteLista(generada);
+        }
 
-        // Con todas las piezas ya pagadas, se recortan y se suben. Si algo
-        // falla a partir de aquí no se conserva nada a medias.
+        // Un texto por red: el del plan si lo trae, el general si no, siempre
+        // dentro de lo que esa red acepta.
+        Map<Platform, String> captions = new LinkedHashMap<>();
+        for (int i = 0; i < p.variantes().size(); i++) {
+            // De una versión que no salió no hay nada que publicar.
+            if (generadas.get(i).causa() != null) {
+                continue;
+            }
+            for (Platform red : p.variantes().get(i).redes()) {
+                String caption = captionsDelPlan.get(red.name());
+                if (caption == null || caption.isBlank()) {
+                    caption = captionGeneral;
+                }
+                if (caption != null && !caption.isBlank()) {
+                    captions.put(red, EspecTexto.de(red).recortar(caption));
+                }
+            }
+        }
+
+        return new Generado(generadas, titular, subtitulo, captionGeneral, captions, primerPrompt, p.restantes());
+    }
+
+    /**
+     * Recorta, pega el logo y sube las piezas de una versión. Si algo falla no
+     * se conserva nada a medias.
+     */
+    private VarianteGenerada guardar(Negocio negocio, CampaignImageRequest peticion, Preparado p, Variante variante,
+            List<Resultado> resultados) {
         List<String> claves = new ArrayList<>();
         List<MediaAsset> nuevos = new ArrayList<>();
         try {
             for (int i = 0; i < resultados.size(); i++) {
-                byte[] jpeg = RecorteDeImagen.recortar(
-                        resultados.get(i).imagen(), formato.ratioAncho, formato.ratioAlto, 0.9f);
-                if (logo != null) {
-                    jpeg = ponerLogo(jpeg, logo, reservada, formato == Formato.STORY);
+                byte[] jpeg = RecorteDeImagen.recortar(resultados.get(i).imagen(), variante.lienzo().ratioAncho,
+                        variante.lienzo().ratioAlto, 0.9f);
+                if (p.logo() != null) {
+                    jpeg = ponerLogo(jpeg, p.logo(), p.posicionLogo(), variante.lienzo().historia());
                 }
-                String nombre = "campana-v" + Math.max(1, versionDe(peticion)) + "-" + (i + 1) + ".jpg";
-                String clave = storage.claveNueva(workspace.getId(), nombre, "image/jpeg");
+                String nombre = "contenido-v" + Math.max(1, versionDe(peticion)) + "-" + variante.id() + "-" + (i + 1)
+                        + ".jpg";
+                String clave = storage.claveNueva(negocio.id(), nombre, "image/jpeg");
                 String url = storage.subirBytes(clave, jpeg, "image/jpeg");
                 claves.add(clave);
                 nuevos.add(MediaAsset.builder()
@@ -271,19 +502,9 @@ public class CampaignImageService {
             throw ex;
         }
 
-        List<String> urls = nuevos.stream().map(MediaAsset::getUrl).toList();
-        return new CampaignImageResponse(
-                nuevos.get(0).getId().toString(),
-                versionDe(peticion),
-                "PRODUCT",
-                titular,
-                subtitulo,
-                urls.get(0),
-                urls,
-                caption,
-                prompts.get(0),
-                piezas,
-                restantes == Integer.MAX_VALUE ? null : restantes);
+        return new VarianteGenerada(variante.id(), variante.lienzo(), variante.redes(),
+                nuevos.stream().map(MediaAsset::getUrl).toList(),
+                nuevos.stream().map(a -> a.getId().toString()).toList(), null, null);
     }
 
     private static int versionDe(CampaignImageRequest peticion) {
@@ -365,7 +586,7 @@ public class CampaignImageService {
         return fotos;
     }
 
-    /** El logo, si es de este workspace. Sin él la campaña sale igual: no se falla por decoración. */
+    /** El logo, si es de este workspace. Sin él el contenido sale igual: no se falla por decoración. */
     private Referencia cargarLogo(String url) {
         if (url == null || url.isBlank()) {
             return null;
@@ -424,7 +645,7 @@ public class CampaignImageService {
 
     /**
      * Qué fotos ve la IA en cada pieza: en un carrusel, la de su posición; en
-     * las demás, todas las elegidas. El logo va al final de cada una.
+     * las demás, todas las elegidas.
      */
     private static List<Referencia> referenciasDePieza(Formato formato, List<String> urls,
             Map<String, Referencia> fotos, int indice) {
@@ -450,14 +671,14 @@ public class CampaignImageService {
         return ordenadas;
     }
 
-    private ArtDirector.Contexto contextoDelDirector(Workspace workspace, CampaignImageRequest p, Formato formato,
-            List<String> paleta, List<String> fotoUrls) {
+    private ArtDirector.Contexto contextoDelDirector(Negocio negocio, CampaignImageRequest p, Formato formato,
+            List<String> paleta, List<String> fotoUrls, List<String> redes) {
         return new ArtDirector.Contexto(
-                workspace.getName(),
-                workspace.getGiro(),
-                workspace.getCiudad(),
-                workspace.getDescripcion(),
-                workspace.getObjetivo() == null ? null : workspace.getObjetivo().name(),
+                negocio.nombre(),
+                negocio.giro(),
+                negocio.ciudad(),
+                negocio.descripcion(),
+                negocio.objetivo(),
                 p.brief(),
                 p.objective(),
                 p.tone(),
@@ -466,7 +687,8 @@ public class CampaignImageService {
                 paleta,
                 captionsAnteriores(),
                 formato.name().toLowerCase(Locale.ROOT),
-                fotoUrls);
+                fotoUrls,
+                redes);
     }
 
     /**
@@ -513,20 +735,21 @@ public class CampaignImageService {
 
     // ---------------------------------------------------------------- prompts
 
-    static String armarPrompt(Workspace workspace, CampaignImageRequest p, Formato formato, int indice, int total,
+    /** El prompt de una diapositiva de carrusel. Las publicaciones e historias usan {@link PromptDeImagen}. */
+    static String armarPrompt(Negocio negocio, CampaignImageRequest p, Lienzo lienzo, int indice, int total,
             int fotos, SelloDeLogo.Posicion logo) {
         StringBuilder t = new StringBuilder();
         t.append("Create a polished, professional social media marketing image for a small business.\n");
-        t.append("Business: ").append(valor(workspace.getName(), "a local business"));
-        if (workspace.getGiro() != null && !workspace.getGiro().isBlank()) {
-            t.append(" (").append(workspace.getGiro().trim()).append(")");
+        t.append("Business: ").append(valor(negocio.nombre(), "a local business"));
+        if (negocio.giro() != null && !negocio.giro().isBlank()) {
+            t.append(" (").append(negocio.giro().trim()).append(")");
         }
-        if (workspace.getCiudad() != null && !workspace.getCiudad().isBlank()) {
-            t.append(", ").append(workspace.getCiudad().trim());
+        if (negocio.ciudad() != null && !negocio.ciudad().isBlank()) {
+            t.append(", ").append(negocio.ciudad().trim());
         }
         t.append(".\n");
-        if (workspace.getDescripcion() != null && !workspace.getDescripcion().isBlank()) {
-            t.append("About the business: ").append(workspace.getDescripcion().trim()).append("\n");
+        if (negocio.descripcion() != null && !negocio.descripcion().isBlank()) {
+            t.append("About the business: ").append(negocio.descripcion().trim()).append("\n");
         }
         if (p.objective() != null && !p.objective().isBlank()) {
             t.append("Goal of the post: ").append(p.objective().trim()).append("\n");
@@ -542,7 +765,7 @@ public class CampaignImageService {
             t.append("Call to action, as short text inside the image: \"").append(p.cta().trim()).append("\"\n");
         }
 
-        t.append("Composition: vertical layout. ").append(PromptDeImagen.zonaSegura(formato)).append("\n");
+        t.append("Composition: vertical layout. ").append(PromptDeImagen.zonaSegura(lienzo)).append("\n");
         if (fotos > 0) {
             if (total > 1) {
                 t.append("The reference photo shows the real subject of this slide: keep it recognizable and ")
@@ -559,7 +782,7 @@ public class CampaignImageService {
             }
         }
         if (logo != null) {
-            t.append("Leave ").append(PromptDeImagen.zonaLogo(logo, formato))
+            t.append("Leave ").append(PromptDeImagen.zonaLogo(logo, lienzo))
                     .append(" completely clean: the business logo will be placed there afterwards. ")
                     .append("Put no text or key subject in it.\n");
         }
@@ -585,21 +808,21 @@ public class CampaignImageService {
     }
 
     /**
-     * El titular y el caption. Si la IA de texto falla, la campaña sale igual
-     * con lo mínimo: la imagen ya se pagó y es lo que se pidió.
+     * El titular y el caption. Si la IA de texto falla, el contenido sale igual
+     * con lo mínimo: la imagen ya se va a pagar y es lo que se pidió.
      */
-    private Textos escribirTextos(Workspace workspace, CampaignImageRequest p) {
+    private Textos escribirTextos(Negocio negocio, CampaignImageRequest p) {
         String porDefecto = p.brief().trim();
         Textos respaldo = new Textos(
                 porDefecto.length() <= 60 ? porDefecto : porDefecto.substring(0, 57) + "...", "", null);
         try {
             StringBuilder usuario = new StringBuilder();
-            usuario.append("Negocio: ").append(valor(workspace.getName(), "un negocio local")).append("\n");
-            if (workspace.getGiro() != null && !workspace.getGiro().isBlank()) {
-                usuario.append("Giro: ").append(workspace.getGiro().trim()).append("\n");
+            usuario.append("Negocio: ").append(valor(negocio.nombre(), "un negocio local")).append("\n");
+            if (negocio.giro() != null && !negocio.giro().isBlank()) {
+                usuario.append("Giro: ").append(negocio.giro().trim()).append("\n");
             }
-            if (workspace.getCiudad() != null && !workspace.getCiudad().isBlank()) {
-                usuario.append("Ciudad: ").append(workspace.getCiudad().trim()).append("\n");
+            if (negocio.ciudad() != null && !negocio.ciudad().isBlank()) {
+                usuario.append("Ciudad: ").append(negocio.ciudad().trim()).append("\n");
             }
             usuario.append("Lo que se quiere comunicar: ").append(porDefecto).append("\n");
             if (p.objective() != null && !p.objective().isBlank()) {
@@ -632,14 +855,14 @@ public class CampaignImageService {
             String caption = limpio(nodo.path("caption").asText(null));
             return new Textos(titular == null ? respaldo.titular() : titular, apoyo == null ? "" : apoyo, caption);
         } catch (Exception ex) {
-            log.warn("No se pudo escribir el texto de la campaña: {}", ex.toString());
+            log.warn("No se pudo escribir el texto del contenido: {}", ex.toString());
             return respaldo;
         }
     }
 
     /**
      * Los últimos captions publicados del negocio, como contexto para escribir
-     * el nuevo. Si no se pueden leer, la campaña sale igual: es una mejora del
+     * el nuevo. Si no se pueden leer, el contenido sale igual: es una mejora del
      * texto, no una condición para crearlo.
      */
     private List<String> captionsAnteriores() {

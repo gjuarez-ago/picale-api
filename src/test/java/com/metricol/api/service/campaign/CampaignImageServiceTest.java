@@ -25,6 +25,7 @@ import java.util.ArrayList;
 import java.util.Collection;
 import java.util.Collections;
 import java.util.List;
+import java.util.Map;
 import java.util.Optional;
 import java.util.UUID;
 import java.util.concurrent.atomic.AtomicInteger;
@@ -46,6 +47,7 @@ import com.metricol.api.exception.QuotaExceededException;
 import com.metricol.api.models.request.CampaignImageRequest;
 import com.metricol.api.models.response.CampaignImageResponse;
 import com.metricol.api.entity.Post;
+import com.metricol.api.enums.Platform;
 import com.metricol.api.enums.PostStatus;
 import com.metricol.api.repository.MediaAssetRepository;
 import com.metricol.api.repository.PostRepository;
@@ -146,7 +148,8 @@ class CampaignImageServiceTest {
                 "Vender",
                 List.of("Minimalista"),
                 "Cercano",
-                "Escríbenos");
+                "Escríbenos",
+                null);
     }
 
     private static CampaignImageRequest peticion(String formato, List<String> recursos, String logo,
@@ -160,7 +163,8 @@ class CampaignImageServiceTest {
                 "Vender",
                 List.of("Minimalista"),
                 "Cercano",
-                "Escríbenos");
+                "Escríbenos",
+                null);
     }
 
     /** Un logo como el de un negocio: hoja blanca con un bloque azul en el centro. */
@@ -730,7 +734,7 @@ class CampaignImageServiceTest {
 
     private static ArtDirector.Brief plan(String layout, int heroe, String caption) {
         return new ArtDirector.Brief(layout, heroe, "Warm afternoon light, natural grade.",
-                "Obra segura y a tiempo", "Manzanillo, Colima", "Cotiza hoy", caption);
+                "Obra segura y a tiempo", "Manzanillo, Colima", "Cotiza hoy", caption, java.util.Map.of());
     }
 
     @Test
@@ -875,5 +879,184 @@ class CampaignImageServiceTest {
         ArgumentCaptor<List<OpenAiImageClient.Referencia>> referencias = ArgumentCaptor.forClass(List.class);
         verify(imagenes).editar(anyString(), referencias.capture(), anyString());
         assertThat(referencias.getValue().get(0).bytes()).containsExactly(1);
+    }
+
+    // ------------------------------------------------- varias versiones (una por lienzo)
+
+    private static CampaignImageRequest conRedes(String formato, List<String> recursos, List<String> redes) {
+        return new CampaignImageRequest(
+                2,
+                new CampaignImageRequest.Format(formato, "4:5", "1024x1536"),
+                recursos,
+                null,
+                "Anuncia el 20% de descuento",
+                "Vender",
+                List.of("Minimalista"),
+                "Cercano",
+                "Escríbenos",
+                redes);
+    }
+
+    private static double proporcionDe(byte[] jpeg) throws Exception {
+        BufferedImage imagen = ImageIO.read(new ByteArrayInputStream(jpeg));
+        return (double) imagen.getWidth() / imagen.getHeight();
+    }
+
+    /** Guarda lo que va contando quien ejecuta, para comprobar el avance. */
+    private static final class Avance implements CampaignImageService.Progreso {
+        final List<String> etapas = Collections.synchronizedList(new ArrayList<>());
+        final List<String> versiones = Collections.synchronizedList(new ArrayList<>());
+
+        @Override
+        public void etapa(String etapa) {
+            etapas.add(etapa);
+        }
+
+        @Override
+        public void varianteLista(CampaignImageService.VarianteGenerada variante) {
+            versiones.add(variante.id() + (variante.causa() == null ? ":ok" : ":falla"));
+        }
+    }
+
+    @Test
+    @DisplayName("Instagram y Facebook comparten imagen 4:5 y LinkedIn recibe la suya cuadrada: dos imágenes, no tres")
+    void unaImagenPorLienzo() throws Exception {
+        when(imagenes.generar(anyString(), anyString()))
+                .thenAnswer(i -> new Resultado(png(0x808080), 5, 5, "gpt-image-1.5"));
+
+        var preparado = servicio.preparar(usuario, conRedes("post", List.of(), List.of("INSTAGRAM", "FACEBOOK", "LINKEDIN")));
+        var generado = servicio.ejecutar(preparado, CampaignImageService.Progreso.NINGUNO);
+
+        assertThat(generado.variantes()).hasSize(2);
+        assertThat(generado.variantes().get(0).redes()).containsExactly(Platform.INSTAGRAM, Platform.FACEBOOK);
+        assertThat(generado.variantes().get(1).redes()).containsExactly(Platform.LINKEDIN);
+        assertThat(generado.variantes()).allSatisfy(v -> assertThat(v.urls()).hasSize(1));
+        // A la IA se le piden los tamaños que le tocan a cada lienzo.
+        verify(imagenes).generar(anyString(), eq("1024x1536"));
+        verify(imagenes).generar(anyString(), eq("1024x1024"));
+        verify(cupo).exigirCupoImagenes(2);
+        // Y cada imagen queda con la proporción de su red.
+        assertThat(proporcionDe(subidos.get(0))).isBetween(0.79, 0.81);
+        assertThat(proporcionDe(subidos.get(1))).isBetween(0.99, 1.01);
+        verify(usos, times(2)).registrarImagen(anyString(), anyInt(), anyInt());
+    }
+
+    @Test
+    @DisplayName("todas las redes reciben su texto; el del plan manda y el general cubre lo que falte")
+    void textoPorRed() throws Exception {
+        when(director.disponible()).thenReturn(true);
+        when(director.dirigir(any())).thenReturn(Optional.of(new ArtDirector.Brief("photo_bottom_band", 0,
+                "Warm light.", "Obra segura", "Manzanillo", "Cotiza hoy", "Caption general",
+                Map.of("LINKEDIN", "Texto profesional para LinkedIn"))));
+        when(imagenes.generar(anyString(), anyString()))
+                .thenAnswer(i -> new Resultado(png(0x808080), 5, 5, "gpt-image-1.5"));
+
+        var generado = servicio.ejecutar(
+                servicio.preparar(usuario, conRedes("post", List.of(), List.of("INSTAGRAM", "FACEBOOK", "LINKEDIN"))),
+                CampaignImageService.Progreso.NINGUNO);
+
+        assertThat(generado.captionsPorRed()).containsOnlyKeys(Platform.INSTAGRAM, Platform.FACEBOOK, Platform.LINKEDIN);
+        assertThat(generado.captionsPorRed().get(Platform.LINKEDIN)).isEqualTo("Texto profesional para LinkedIn");
+        assertThat(generado.captionsPorRed().get(Platform.INSTAGRAM)).isEqualTo("Caption general");
+        assertThat(generado.captionsPorRed().get(Platform.FACEBOOK)).isEqualTo("Caption general");
+        // Y el director supo para qué redes escribir.
+        ArgumentCaptor<ArtDirector.Contexto> contexto = ArgumentCaptor.forClass(ArtDirector.Contexto.class);
+        verify(director).dirigir(contexto.capture());
+        assertThat(contexto.getValue().redes()).containsExactly("INSTAGRAM", "FACEBOOK", "LINKEDIN");
+    }
+
+    @Test
+    @DisplayName("si una versión falla, las demás salen y la que falló dice por qué")
+    void unaVersionFalla() throws Exception {
+        when(imagenes.generar(anyString(), anyString())).thenAnswer(i -> {
+            if ("1024x1024".equals(i.getArgument(1))) {
+                throw new IllegalStateException("La IA está atendiendo muchas peticiones.");
+            }
+            return new Resultado(png(0x808080), 5, 5, "gpt-image-1.5");
+        });
+        Avance avance = new Avance();
+
+        var generado = servicio.ejecutar(
+                servicio.preparar(usuario, conRedes("post", List.of(), List.of("INSTAGRAM", "LINKEDIN"))), avance);
+
+        assertThat(generado.variantes().get(0).urls()).hasSize(1);
+        assertThat(generado.variantes().get(0).error()).isNull();
+        assertThat(generado.variantes().get(1).urls()).isEmpty();
+        assertThat(generado.variantes().get(1).error()).contains("muchas peticiones");
+        // Solo hay texto para lo que sí se puede publicar.
+        assertThat(generado.captionsPorRed()).containsOnlyKeys(Platform.INSTAGRAM);
+        assertThat(avance.versiones).containsExactly("v1:ok", "v2:falla");
+    }
+
+    @Test
+    @DisplayName("quien ejecuta va avisando el avance: primero se piensa, luego se crean las imágenes")
+    void avance() throws Exception {
+        when(imagenes.generar(anyString(), anyString()))
+                .thenAnswer(i -> new Resultado(png(0x808080), 5, 5, "gpt-image-1.5"));
+        Avance avance = new Avance();
+
+        servicio.ejecutar(servicio.preparar(usuario, conRedes("post", List.of(), List.of("INSTAGRAM"))), avance);
+
+        assertThat(avance.etapas).containsExactly("Pensando la composición…", "Creando las imágenes…");
+        assertThat(avance.versiones).containsExactly("v1:ok");
+    }
+
+    @Test
+    @DisplayName("una historia va a Instagram y Facebook con una sola imagen 9:16")
+    void historiaUnaVersion() throws Exception {
+        when(imagenes.generar(anyString(), anyString()))
+                .thenAnswer(i -> new Resultado(png(0x808080), 5, 5, "gpt-image-1.5"));
+
+        var generado = servicio.ejecutar(
+                servicio.preparar(usuario, conRedes("story", List.of(), List.of("INSTAGRAM", "FACEBOOK"))),
+                CampaignImageService.Progreso.NINGUNO);
+
+        assertThat(generado.variantes()).hasSize(1);
+        assertThat(proporcionDe(subidos.get(0))).isBetween(0.55, 0.57);
+    }
+
+    @Test
+    @DisplayName("LinkedIn no publica historias: se dice antes de gastar nada")
+    void redNoAdmitida() {
+        assertThatThrownBy(() -> servicio.preparar(usuario, conRedes("story", List.of(), List.of("INSTAGRAM", "LINKEDIN"))))
+                .isInstanceOf(IllegalArgumentException.class)
+                .hasMessageContaining("LinkedIn no admite historias");
+
+        verify(imagenes, never()).generar(anyString(), anyString());
+        verify(cupo, never()).exigirCupoImagenes(anyInt());
+    }
+
+    @Test
+    @DisplayName("una red que no existe se rechaza con su nombre")
+    void redInexistente() {
+        assertThatThrownBy(() -> servicio.preparar(usuario, conRedes("post", List.of(), List.of("MYSPACE"))))
+                .isInstanceOf(IllegalArgumentException.class)
+                .hasMessageContaining("Esa red no existe: MYSPACE");
+    }
+
+    @Test
+    @DisplayName("el tope diario cuenta todas las imágenes: un carrusel de dos fotos en dos versiones son cuatro")
+    void topeCuentaTodas() throws Exception {
+        String a = "https://cdn.test/a.jpg";
+        String b = "https://cdn.test/b.jpg";
+        assetsPorUrl();
+        r2Sirve(new byte[] { 1 });
+
+        servicio.preparar(usuario, conRedes("carousel", List.of(a, b), List.of("INSTAGRAM", "LINKEDIN")));
+
+        verify(cupo).exigirCupoImagenes(4);
+    }
+
+    @Test
+    @DisplayName("el endpoint de siempre, sin redes, sigue dando una sola imagen")
+    void sinRedesSigueIgual() throws Exception {
+        when(imagenes.generar(anyString(), anyString()))
+                .thenReturn(new Resultado(png(0x808080), 5, 5, "gpt-image-1.5"));
+
+        var preparado = servicio.preparar(usuario, peticion("post", List.of(), null));
+
+        assertThat(preparado.variantes()).hasSize(1);
+        assertThat(preparado.variantes().get(0).redes()).isEmpty();
+        assertThat(preparado.totalImagenes()).isEqualTo(1);
     }
 }
