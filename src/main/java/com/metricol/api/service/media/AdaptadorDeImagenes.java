@@ -19,6 +19,7 @@ import org.springframework.stereotype.Service;
 
 import com.metricol.api.config.MediaAdaptProperties;
 import com.metricol.api.enums.Platform;
+import com.metricol.api.enums.PostFormat;
 import com.metricol.api.service.storage.R2StorageService;
 
 /**
@@ -79,11 +80,24 @@ public class AdaptadorDeImagenes {
      * persona, y perder una o cambiarlas de sitio se vería en la red.
      */
     public Adaptacion adaptar(UUID workspaceId, List<String> urls, Collection<Platform> platforms) {
+        return adaptar(workspaceId, urls, platforms, PostFormat.PHOTO);
+    }
+
+    /**
+     * Igual, sabiendo qué formato se publica. Una historia o un reel piden 9:16
+     * y esto lo deja así solo: la foto se encaja sobre un fondo hecho con ella
+     * misma, sin recortar y sin pedirle nada a nadie. Antes la app rechazaba en
+     * rojo cualquier foto que no fuera vertical y obligaba a cambiarla.
+     */
+    public Adaptacion adaptar(UUID workspaceId, List<String> urls, Collection<Platform> platforms,
+            PostFormat formato) {
         if (!props.isEnabled() || urls == null || urls.isEmpty()) {
             return new Adaptacion(urls, false);
         }
 
-        EspecImagen espec = EspecImagen.interseccion(platforms);
+        EspecImagen espec = exigeVertical(formato)
+                ? EspecImagen.vertical(platforms)
+                : EspecImagen.interseccion(platforms);
         List<String> resultado = new ArrayList<>(urls.size());
         boolean huboFallo = false;
 
@@ -100,6 +114,11 @@ public class AdaptadorDeImagenes {
             resultado.add(adaptada == null ? url : adaptada);
         }
         return new Adaptacion(resultado, huboFallo);
+    }
+
+    /** Historia y reel piden 9:16; el resto de los formatos, lo que pida cada red. */
+    static boolean exigeVertical(PostFormat formato) {
+        return formato == PostFormat.STORY || formato == PostFormat.REEL;
     }
 
     /**

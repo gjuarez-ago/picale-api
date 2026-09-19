@@ -31,5 +31,8 @@ public enum AiOperacion {
     GENERAR_IMAGEN,
 
     /** El titular y el caption que acompañan a una imagen de campaña. */
-    TEXTO_CAMPANA
+    TEXTO_CAMPANA,
+
+    /** El director de arte: mira las fotos y arma el plan de la imagen de campaña. */
+    DIRECTOR_ARTE
 }

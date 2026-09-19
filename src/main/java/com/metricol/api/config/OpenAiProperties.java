@@ -33,6 +33,29 @@ public class OpenAiProperties {
     private String imageInputFidelity = "high";
 
     /**
+     * El modelo del director de arte: el que mira las fotos y decide la
+     * composición de la campaña. Aparte del modelo de texto de siempre porque
+     * aquí sí vale la pena uno más capaz —se llama una vez por campaña, y de
+     * su decisión depende lo que cuesta cada imagen—. Tiene que estar permitido
+     * en el proyecto de OpenAI.
+     */
+    private String directorModel = "gpt-5.5";
+
+    /**
+     * Cuánto razona el director: {@code minimal}, {@code low}, {@code medium} o
+     * {@code high}. Vacío = no se manda (los modelos que no razonan lo
+     * rechazan). En {@code low} porque la respuesta se espera con la pantalla
+     * abierta y Cloudflare corta a los 100 s.
+     */
+    private String directorReasoningEffort = "low";
+
+    /** Segundos que se le espera al director antes de seguir sin él. */
+    private int directorTimeoutSeconds = 25;
+
+    /** Lo que cobra OpenAI por {@link #directorModel}. */
+    private Pricing directorPricing = new Pricing();
+
+    /**
      * Lo que cobra OpenAI por {@link #model}. Con esto se calcula el costo de
      * cada llamada que se anota en {@code ai_usage}.
      *

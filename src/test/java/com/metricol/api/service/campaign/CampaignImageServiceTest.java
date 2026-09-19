@@ -25,6 +25,7 @@ import java.util.ArrayList;
 import java.util.Collection;
 import java.util.Collections;
 import java.util.List;
+import java.util.Optional;
 import java.util.UUID;
 import java.util.concurrent.atomic.AtomicInteger;
 
@@ -50,6 +51,7 @@ import com.metricol.api.repository.MediaAssetRepository;
 import com.metricol.api.repository.PostRepository;
 import com.metricol.api.service.ai.AiQuotaGuard;
 import com.metricol.api.service.ai.AiUsageRecorder;
+import com.metricol.api.service.ai.ArtDirector;
 import com.metricol.api.service.ai.OpenAiClient;
 import com.metricol.api.service.ai.OpenAiImageClient;
 import com.metricol.api.service.ai.OpenAiImageClient.Resultado;
@@ -68,6 +70,7 @@ class CampaignImageServiceTest {
     private StorageQuotaService cuota;
     private AiQuotaGuard cupo;
     private AiUsageRecorder usos;
+    private ArtDirector director;
     private CampaignImageService servicio;
     private User usuario;
 
@@ -84,7 +87,12 @@ class CampaignImageServiceTest {
         cuota = mock(StorageQuotaService.class);
         cupo = mock(AiQuotaGuard.class);
         usos = mock(AiUsageRecorder.class);
-        servicio = new CampaignImageService(imagenes, texto, storage, assets, posts, cuota, cupo, usos);
+        director = mock(ArtDirector.class);
+        // Por defecto el director no está: es el camino de siempre. Las pruebas del
+        // director lo encienden.
+        when(director.disponible()).thenReturn(false);
+        when(director.dirigir(any())).thenReturn(Optional.empty());
+        servicio = new CampaignImageService(imagenes, texto, storage, assets, posts, cuota, cupo, usos, director);
 
         when(imagenes.disponible()).thenReturn(true);
         when(cupo.exigirCupoImagenes(anyInt())).thenReturn(9);
@@ -298,19 +306,17 @@ class CampaignImageServiceTest {
         assertThat(referencias.getValue().get(0).contentType()).isEqualTo("image/jpeg");
         assertThat(prompt.getValue())
                 .contains("Tacos Doña Mary")
-                .contains("Restaurante")
-                .contains("Mérida")
-                .contains("Anuncia el 20% de descuento")
-                .contains("cropped to 4:5")
+                .contains("HEADLINE: \"20% esta semana\"")
+                .contains("cut to 4:5")
                 .contains("logo will be placed there afterwards")
-                .contains("bottom-center")
-                .contains("Never draw a logo")
+                .contains("top-left")
+                .contains("Do not draw any logo")
                 .doesNotContain("last reference image");
         verify(imagenes, never()).generar(anyString(), anyString());
 
-        // El logo real quedó pegado abajo (posición por defecto de una publicación).
-        assertThat(azulesEntre(subidos.get(0), 0.5, 1.0)).isGreaterThan(500);
-        assertThat(azulesEntre(subidos.get(0), 0.0, 0.5)).isZero();
+        // El logo real quedó pegado arriba a la izquierda (lo de siempre en una publicación).
+        assertThat(azulesEntre(subidos.get(0), 0.0, 0.5)).isGreaterThan(500);
+        assertThat(azulesEntre(subidos.get(0), 0.5, 1.0)).isZero();
     }
 
     @Test
@@ -344,7 +350,7 @@ class CampaignImageServiceTest {
 
         ArgumentCaptor<String> prompt = ArgumentCaptor.forClass(String.class);
         verify(imagenes).generar(prompt.capture(), anyString());
-        assertThat(prompt.getValue()).contains("top-center").contains("top 14%").contains("bottom 20%");
+        assertThat(prompt.getValue()).contains("top-center").contains("x=130..894, y=240..1230");
         assertThat(azulesEntre(subidos.get(0), 0.0, 0.5)).isGreaterThan(300);
         assertThat(azulesEntre(subidos.get(0), 0.5, 1.0)).isZero();
     }
@@ -398,7 +404,7 @@ class CampaignImageServiceTest {
         ArgumentCaptor<List<OpenAiImageClient.Referencia>> referencias = ArgumentCaptor.forClass(List.class);
         verify(imagenes, times(1)).editar(prompt.capture(), referencias.capture(), anyString());
         assertThat(referencias.getValue()).hasSize(3);
-        assertThat(prompt.getValue()).contains("ONE single image").contains("3 reference photos");
+        assertThat(prompt.getValue()).contains("Photo 1 is the hero").contains("context only");
         assertThat(respuesta.imageUrls()).hasSize(1);
         assertThat(respuesta.creditsUsed()).isEqualTo(1);
         verify(cupo).exigirCupoImagenes(1);
@@ -465,10 +471,11 @@ class CampaignImageServiceTest {
         ArgumentCaptor<String> prompt = ArgumentCaptor.forClass(String.class);
         verify(imagenes).generar(prompt.capture(), anyString());
         assertThat(prompt.getValue())
-                .contains("central 76% of the height")
-                .contains("proper accents")
-                .contains("avoid small print")
-                .contains("S.A. de C.V.");
+                .contains("x=64..960, y=200..1336")
+                .contains("letter for letter")
+                .contains("with their accents")
+                .contains("no small print")
+                .contains("HEADLINE: \"20% esta semana\"");
     }
 
     // -------------------------------------------------------------- carrusel
@@ -717,5 +724,156 @@ class CampaignImageServiceTest {
 
         assertThat(respuesta.imageUrls()).hasSize(1);
         assertThat(respuesta.caption()).isEqualTo("Ven por tu descuento");
+    }
+
+    // -------------------------------------------------------- director de arte
+
+    private static ArtDirector.Brief plan(String layout, int heroe, String caption) {
+        return new ArtDirector.Brief(layout, heroe, "Warm afternoon light, natural grade.",
+                "Obra segura y a tiempo", "Manzanillo, Colima", "Cotiza hoy", caption);
+    }
+
+    @Test
+    @DisplayName("con director: el plan manda la composición, los textos y la foto protagonista")
+    void conDirector() throws Exception {
+        String a = "https://cdn.test/a.jpg";
+        String b = "https://cdn.test/b.jpg";
+        assetsPorUrl();
+        r2SirveSegun(java.util.Map.of(a, new byte[] { 1 }, b, new byte[] { 2 }));
+        when(director.disponible()).thenReturn(true);
+        when(director.dirigir(any())).thenReturn(Optional.of(plan("framed_photo", 2, "Caption del director")));
+        when(imagenes.editar(anyString(), anyList(), anyString()))
+                .thenReturn(new Resultado(png(0x808080), 1, 1, "gpt-image-1.5"));
+
+        CampaignImageResponse respuesta = servicio.generar(usuario, peticion("post", List.of(a, b), null));
+
+        ArgumentCaptor<String> prompt = ArgumentCaptor.forClass(String.class);
+        @SuppressWarnings("unchecked")
+        ArgumentCaptor<List<OpenAiImageClient.Referencia>> referencias = ArgumentCaptor.forClass(List.class);
+        verify(imagenes).editar(prompt.capture(), referencias.capture(), anyString());
+        assertThat(prompt.getValue())
+                .contains("HEADLINE: \"Obra segura y a tiempo\"")
+                .contains("SUBTITLE: \"Manzanillo, Colima\"")
+                // El botón lleva lo que la persona escribió, no lo que sugirió el director.
+                .contains("BUTTON: \"Escríbenos\"")
+                .contains("solid background in the primary brand color")
+                .contains("Warm afternoon light");
+        // La foto protagonista (la 2) va PRIMERA: para el modelo, la primera manda.
+        assertThat(referencias.getValue().get(0).bytes()).containsExactly(2);
+        assertThat(referencias.getValue().get(1).bytes()).containsExactly(1);
+        assertThat(respuesta.headline()).isEqualTo("Obra segura y a tiempo");
+        assertThat(respuesta.supportingCopy()).isEqualTo("Manzanillo, Colima");
+        assertThat(respuesta.caption()).isEqualTo("Caption del director");
+        // El plan ya trae el caption: no se paga otra llamada de texto.
+        verify(texto, never()).completeJson(any(), anyString(), anyString());
+    }
+
+    @Test
+    @DisplayName("el director recibe las fotos, los colores del logo y el perfil del negocio")
+    void contextoDelDirector() throws Exception {
+        String foto = "https://cdn.test/foto.jpg";
+        String logo = "https://cdn.test/logo.png";
+        assetsPorUrl();
+        r2SirveSegun(java.util.Map.of(foto, new byte[] { 7 }, logo, logoPng()));
+        when(director.disponible()).thenReturn(true);
+        when(director.dirigir(any())).thenReturn(Optional.of(plan("photo_bottom_band", 0, "c")));
+        when(imagenes.editar(anyString(), anyList(), anyString()))
+                .thenReturn(new Resultado(png(0x808080), 1, 1, "gpt-image-1.5"));
+
+        servicio.generar(usuario, peticion("post", List.of(foto), logo));
+
+        ArgumentCaptor<ArtDirector.Contexto> contexto = ArgumentCaptor.forClass(ArtDirector.Contexto.class);
+        verify(director).dirigir(contexto.capture());
+        assertThat(contexto.getValue().fotoUrls()).containsExactly(foto);
+        assertThat(contexto.getValue().negocio()).isEqualTo("Tacos Doña Mary");
+        assertThat(contexto.getValue().giro()).isEqualTo("Restaurante");
+        assertThat(contexto.getValue().idea()).isEqualTo("Anuncia el 20% de descuento");
+        assertThat(contexto.getValue().formato()).isEqualTo("post");
+        // El azul del logo, leído del archivo real.
+        assertThat(contexto.getValue().paleta()).hasSize(1);
+        assertThat(contexto.getValue().paleta().get(0)).isEqualTo("#0B2A5B");
+    }
+
+    @Test
+    @DisplayName("los colores del logo llegan al prompt de imagen con su código")
+    void paletaEnElPrompt() throws Exception {
+        String logo = "https://cdn.test/logo.png";
+        assetsPorUrl();
+        r2SirveSegun(java.util.Map.of(logo, logoPng()));
+        when(imagenes.generar(anyString(), anyString()))
+                .thenReturn(new Resultado(png(0x808080), 0, 0, "gpt-image-1.5"));
+
+        servicio.generar(usuario, peticion("post", List.of(), logo));
+
+        ArgumentCaptor<String> prompt = ArgumentCaptor.forClass(String.class);
+        verify(imagenes).generar(prompt.capture(), anyString());
+        assertThat(prompt.getValue()).contains("#0B2A5B").contains("brand colors, read from the logo");
+    }
+
+    @Test
+    @DisplayName("si el director falla la campaña sigue: el texto lo escribe el modelo de siempre y va literal en la imagen")
+    void directorFalla() throws Exception {
+        when(director.disponible()).thenReturn(true);
+        when(director.dirigir(any())).thenReturn(Optional.empty());
+        when(imagenes.generar(anyString(), anyString()))
+                .thenReturn(new Resultado(png(0x808080), 0, 0, "gpt-image-1.5"));
+
+        CampaignImageResponse respuesta = servicio.generar(usuario, peticion("post", List.of(), null));
+
+        ArgumentCaptor<String> prompt = ArgumentCaptor.forClass(String.class);
+        verify(imagenes).generar(prompt.capture(), anyString());
+        assertThat(prompt.getValue()).contains("HEADLINE: \"20% esta semana\"").contains("solid panel");
+        assertThat(respuesta.caption()).isEqualTo("Ven por tu descuento");
+        verify(texto).completeJson(any(), anyString(), anyString());
+    }
+
+    @Test
+    @DisplayName("un plan sin caption pide solo el caption al modelo de texto")
+    void planSinCaption() throws Exception {
+        when(director.disponible()).thenReturn(true);
+        when(director.dirigir(any())).thenReturn(Optional.of(plan("photo_top_title", 0, "")));
+        when(imagenes.generar(anyString(), anyString()))
+                .thenReturn(new Resultado(png(0x808080), 0, 0, "gpt-image-1.5"));
+
+        CampaignImageResponse respuesta = servicio.generar(usuario, peticion("post", List.of(), null));
+
+        assertThat(respuesta.headline()).isEqualTo("Obra segura y a tiempo");
+        assertThat(respuesta.caption()).isEqualTo("Ven por tu descuento");
+    }
+
+    @Test
+    @DisplayName("un carrusel no usa director: cada diapositiva sale con su foto")
+    void carruselSinDirector() throws Exception {
+        String a = "https://cdn.test/a.jpg";
+        String b = "https://cdn.test/b.jpg";
+        assetsPorUrl();
+        r2Sirve(new byte[] { 1 });
+        when(director.disponible()).thenReturn(true);
+        when(imagenes.editar(anyString(), anyList(), anyString()))
+                .thenReturn(new Resultado(png(0x808080), 1, 1, "gpt-image-1.5"));
+
+        servicio.generar(usuario, peticion("carousel", List.of(a, b), null));
+
+        verify(director, never()).dirigir(any());
+    }
+
+    @Test
+    @DisplayName("una foto protagonista fuera de rango no reordena nada")
+    void heroeInvalido() throws Exception {
+        String a = "https://cdn.test/a.jpg";
+        String b = "https://cdn.test/b.jpg";
+        assetsPorUrl();
+        r2SirveSegun(java.util.Map.of(a, new byte[] { 1 }, b, new byte[] { 2 }));
+        when(director.disponible()).thenReturn(true);
+        when(director.dirigir(any())).thenReturn(Optional.of(plan("photo_bottom_band", 9, "c")));
+        when(imagenes.editar(anyString(), anyList(), anyString()))
+                .thenReturn(new Resultado(png(0x808080), 1, 1, "gpt-image-1.5"));
+
+        servicio.generar(usuario, peticion("post", List.of(a, b), null));
+
+        @SuppressWarnings("unchecked")
+        ArgumentCaptor<List<OpenAiImageClient.Referencia>> referencias = ArgumentCaptor.forClass(List.class);
+        verify(imagenes).editar(anyString(), referencias.capture(), anyString());
+        assertThat(referencias.getValue().get(0).bytes()).containsExactly(1);
     }
 }

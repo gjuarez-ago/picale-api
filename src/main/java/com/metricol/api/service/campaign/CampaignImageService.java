@@ -8,6 +8,7 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
+import java.util.Optional;
 import java.util.Set;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ExecutionException;
@@ -36,6 +37,7 @@ import com.metricol.api.repository.MediaAssetRepository;
 import com.metricol.api.repository.PostRepository;
 import com.metricol.api.service.ai.AiQuotaGuard;
 import com.metricol.api.service.ai.AiUsageRecorder;
+import com.metricol.api.service.ai.ArtDirector;
 import com.metricol.api.service.ai.OpenAiClient;
 import com.metricol.api.service.ai.OpenAiImageClient;
 import com.metricol.api.service.ai.OpenAiImageClient.Referencia;
@@ -87,6 +89,7 @@ public class CampaignImageService {
     private final StorageQuotaService cuota;
     private final AiQuotaGuard cupo;
     private final AiUsageRecorder usos;
+    private final ArtDirector director;
     private final ObjectMapper json = new ObjectMapper();
 
     private final ExecutorService pool = Executors.newFixedThreadPool(5, tarea -> {
@@ -97,7 +100,7 @@ public class CampaignImageService {
 
     public CampaignImageService(OpenAiImageClient imagenes, OpenAiClient texto, R2StorageService storage,
             MediaAssetRepository assets, PostRepository posts, StorageQuotaService cuota, AiQuotaGuard cupo,
-            AiUsageRecorder usos) {
+            AiUsageRecorder usos, ArtDirector director) {
         this.imagenes = imagenes;
         this.texto = texto;
         this.storage = storage;
@@ -106,6 +109,7 @@ public class CampaignImageService {
         this.cuota = cuota;
         this.cupo = cupo;
         this.usos = usos;
+        this.director = director;
     }
 
     @PreDestroy
@@ -155,7 +159,7 @@ public class CampaignImageService {
 
         Workspace workspace = usuario.getWorkspace();
         if (workspace == null) {
-            throw new IllegalStateException("Elige un espacio de trabajo para crear la campaña.");
+            throw new IllegalStateException("Elige un espacio de trabajo para crear el contenido.");
         }
 
         // Todo lo que puede fallar sin haber gastado nada, primero.
@@ -172,16 +176,60 @@ public class CampaignImageService {
         // Sin logo que pegar no hay espacio que reservar.
         SelloDeLogo.Posicion reservada = logo == null ? null : posicionLogo;
 
+        // Los colores de la marca salen del logo, no de una descripción.
+        List<String> paleta = logo == null ? List.of() : PaletaDeLogo.dominantes(logo.bytes(), 3);
+
+        // Qué se dice y cómo se compone, antes de dibujar. En una publicación o
+        // historia lo decide el director de arte (que ve las fotos); si no
+        // puede, o en un carrusel, el texto sale del modelo de siempre. En los
+        // dos casos las palabras que llevará la imagen se conocen ANTES de
+        // pedirla: la IA las escribe literales en vez de inventarlas.
+        PromptDeImagen.Layout layout = PromptDeImagen.Layout.PHOTO_BOTTOM_BAND;
+        String escena = null;
+        int heroe = 0;
+        String titular;
+        String subtitulo;
+        String caption;
+        String ctaPropio = ArtDirector.limpio(peticion.cta(), 40);
+
+        Optional<ArtDirector.Brief> plan = formato.secuencia || !director.disponible()
+                ? Optional.empty()
+                : director.dirigir(contextoDelDirector(workspace, peticion, formato, paleta, recursos));
+        if (plan.isPresent()) {
+            ArtDirector.Brief brief = plan.get();
+            layout = PromptDeImagen.Layout.de(brief.layout());
+            escena = brief.escena();
+            heroe = brief.fotoProtagonista();
+            titular = brief.titular();
+            subtitulo = brief.subtitulo();
+            caption = brief.caption().isBlank() ? escribirTextos(workspace, peticion).caption() : brief.caption();
+            if (ctaPropio.isBlank()) {
+                ctaPropio = brief.cta();
+            }
+        } else {
+            Textos textos = escribirTextos(workspace, peticion);
+            titular = textos.titular();
+            subtitulo = textos.apoyo();
+            caption = textos.caption();
+        }
+
         String tamano = peticion.format().outputSize();
         List<String> prompts = new ArrayList<>();
         List<CompletableFuture<Resultado>> futuros = new ArrayList<>();
         for (int i = 0; i < piezas; i++) {
             List<Referencia> referencias = referenciasDePieza(formato, recursos, fotos, i);
-            String prompt = armarPrompt(workspace, peticion, formato, i, piezas, referencias.size(), reservada);
+            if (!formato.secuencia) {
+                referencias = conHeroeAlFrente(referencias, heroe);
+            }
+            String prompt = formato.secuencia
+                    ? armarPrompt(workspace, peticion, formato, i, piezas, referencias.size(), reservada)
+                    : PromptDeImagen.armar(new PromptDeImagen.Datos(formato, layout, workspace.getName(), escena,
+                            titular, subtitulo, ctaPropio, paleta, referencias.size(), reservada));
             prompts.add(prompt);
-            futuros.add(CompletableFuture.supplyAsync(() -> referencias.isEmpty()
+            List<Referencia> paraLaIa = referencias;
+            futuros.add(CompletableFuture.supplyAsync(() -> paraLaIa.isEmpty()
                     ? imagenes.generar(prompt, tamano)
-                    : imagenes.editar(prompt, referencias, tamano), pool));
+                    : imagenes.editar(prompt, paraLaIa, tamano), pool));
         }
 
         List<Resultado> resultados = recogerEnOrden(futuros);
@@ -223,17 +271,16 @@ public class CampaignImageService {
             throw ex;
         }
 
-        Textos textos = escribirTextos(workspace, peticion);
         List<String> urls = nuevos.stream().map(MediaAsset::getUrl).toList();
         return new CampaignImageResponse(
                 nuevos.get(0).getId().toString(),
                 versionDe(peticion),
                 "PRODUCT",
-                textos.titular(),
-                textos.apoyo(),
+                titular,
+                subtitulo,
                 urls.get(0),
                 urls,
-                textos.caption(),
+                caption,
                 prompts.get(0),
                 piezas,
                 restantes == Integer.MAX_VALUE ? null : restantes);
@@ -392,6 +439,36 @@ public class CampaignImageService {
         return referencias;
     }
 
+    /** La foto que el director eligió como protagonista va primera: para el modelo, la primera manda. */
+    private static List<Referencia> conHeroeAlFrente(List<Referencia> referencias, int heroe) {
+        if (heroe < 2 || heroe > referencias.size()) {
+            return referencias;
+        }
+        List<Referencia> ordenadas = new ArrayList<>(referencias);
+        Referencia elegida = ordenadas.remove(heroe - 1);
+        ordenadas.add(0, elegida);
+        return ordenadas;
+    }
+
+    private ArtDirector.Contexto contextoDelDirector(Workspace workspace, CampaignImageRequest p, Formato formato,
+            List<String> paleta, List<String> fotoUrls) {
+        return new ArtDirector.Contexto(
+                workspace.getName(),
+                workspace.getGiro(),
+                workspace.getCiudad(),
+                workspace.getDescripcion(),
+                workspace.getObjetivo() == null ? null : workspace.getObjetivo().name(),
+                p.brief(),
+                p.objective(),
+                p.tone(),
+                p.visualStyle() == null ? null : String.join(", ", p.visualStyle()),
+                p.cta(),
+                paleta,
+                captionsAnteriores(),
+                formato.name().toLowerCase(Locale.ROOT),
+                fotoUrls);
+    }
+
     /**
      * Las fotos que sí van a la IA: sin el logo (si vino entre ellas, se quita:
      * se pega solo) y, en una publicación o historia, sin repetidas y hasta
@@ -419,7 +496,9 @@ public class CampaignImageService {
         if (elegida != null) {
             return elegida;
         }
-        return formato == Formato.STORY ? SelloDeLogo.Posicion.TOP_CENTER : SelloDeLogo.Posicion.BOTTOM_CENTER;
+        // Arriba en todas: las composiciones ponen el texto y el botón abajo o en
+        // el centro, y el logo necesita un rincón que ninguna les quite.
+        return formato == Formato.STORY ? SelloDeLogo.Posicion.TOP_CENTER : SelloDeLogo.Posicion.TOP_LEFT;
     }
 
     /** Sin logo la imagen sirve igual: no se tira lo que ya se pagó por un logo que no se pudo leer. */
@@ -463,7 +542,7 @@ public class CampaignImageService {
             t.append("Call to action, as short text inside the image: \"").append(p.cta().trim()).append("\"\n");
         }
 
-        t.append("Composition: vertical layout. ").append(zonaSegura(formato)).append("\n");
+        t.append("Composition: vertical layout. ").append(PromptDeImagen.zonaSegura(formato)).append("\n");
         if (fotos > 0) {
             if (total > 1) {
                 t.append("The reference photo shows the real subject of this slide: keep it recognizable and ")
@@ -480,8 +559,9 @@ public class CampaignImageService {
             }
         }
         if (logo != null) {
-            t.append("Leave a clean, uncluttered area ").append(zonaLogo(logo))
-                    .append(" — the business logo will be placed there afterwards. Put no text or key subject in it.\n");
+            t.append("Leave ").append(PromptDeImagen.zonaLogo(logo, formato))
+                    .append(" completely clean: the business logo will be placed there afterwards. ")
+                    .append("Put no text or key subject in it.\n");
         }
         if (total > 1) {
             t.append("This is slide ").append(indice + 1).append(" of ").append(total)
@@ -493,30 +573,6 @@ public class CampaignImageService {
                 .append("(at most a headline, the city and one call to action); avoid small print. ")
                 .append("No watermarks and no fake interface elements.");
         return t.toString();
-    }
-
-    /**
-     * Lo que se recorta de cada lado y lo que tapa la interfaz de la red, dicho
-     * en porcentajes que la IA pueda respetar. gpt-image entrega 2:3: llegar a
-     * 4:5 quita cerca del 8% de arriba y de abajo, y una historia quita cerca
-     * del 8% de cada lado. Se pide un margen mayor porque la IA lo respeta a medias.
-     */
-    private static String zonaSegura(Formato formato) {
-        return switch (formato) {
-            case STORY -> "The image will be cropped to 9:16 and shown under the app's own interface: keep all "
-                    + "text and every key subject inside the central 70% of the width, and nothing important "
-                    + "in the top 14% or the bottom 20% of the height.";
-            default -> "The image will be cropped to 4:5, removing the top and bottom edges: keep all text and "
-                    + "every key subject inside the central 76% of the height (nothing in the top 12% or the "
-                    + "bottom 12%), and never let text touch an edge.";
-        };
-    }
-
-    private static String zonaLogo(SelloDeLogo.Posicion posicion) {
-        String vertical = posicion.arriba() ? "at the top" : "at the bottom";
-        String horizontal = posicion.izquierda() ? "left" : posicion.derecha() ? "right" : "center";
-        return vertical + "-" + horizontal
-                + " of the frame (about 40% of the width and 12% of the height, inside the safe zone)";
     }
 
     private static String valor(String texto, String porDefecto) {
@@ -566,7 +622,7 @@ public class CampaignImageService {
             String crudo = texto.completeJson(AiOperacion.TEXTO_CAMPANA, """
                     Eres un community manager experto en redes sociales para negocios pequeños.
                     Escribes en español natural, sin sonar robótico. Devuelve SOLO un JSON con tres llaves:
-                    "headline": titular de máximo 8 palabras, "supportingCopy": una frase de máximo 20 palabras
+                    "headline": titular de máximo 8 palabras, "supportingCopy": un subtítulo de máximo 8 palabras
                     que lo complementa, y "caption": texto de 2 a 4 líneas para la publicación, con máximo 2
                     emojis, sin hashtags, que incluya el llamado a la acción si se dio uno.
                     """, usuario.toString());

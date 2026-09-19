@@ -104,6 +104,36 @@ public record EspecImagen(
         return new EspecImagen(ratioMin, ratioMax, anchoMin, anchoMax, bytesMax, maxFotos);
     }
 
+    /** 9:16, la proporción de una historia o un reel. */
+    public static final double RATIO_VERTICAL = 9.0 / 16.0;
+
+    /**
+     * Lo que exige una historia o un reel: 9:16, cualquiera sea la red.
+     *
+     * <p>No se cruza con los límites del feed de {@link #interseccion}: una
+     * historia de Instagram admite 9:16 aunque el feed por API pida entre 4:5 y
+     * 1.91:1, y mezclarlos daría un rango vacío. De la intersección solo se
+     * toma lo que sigue valiendo —el peso y el ancho máximos—.
+     *
+     * <p>La proporción lleva un margen de un 0.01: 1080 × 1919 es la misma foto
+     * que 1080 × 1920 y no debe reencodarse por un píxel.
+     */
+    public static EspecImagen vertical(Collection<Platform> platforms) {
+        EspecImagen base = interseccion(platforms);
+        return new EspecImagen(
+                RATIO_VERTICAL - 0.01,
+                RATIO_VERTICAL + 0.01,
+                720,
+                Math.min(1080, base.anchoMax()),
+                base.bytesMax(),
+                base.maxFotos());
+    }
+
+    /** Una especificación de proporción única (9:16): no hay rango del que elegir la más cercana. */
+    public boolean proporcionFija() {
+        return ratioMax - ratioMin <= 0.03;
+    }
+
     /** ¿Hay que tocar esta imagen, o ya sirve tal cual? */
     public boolean cumple(int ancho, int alto, long bytes) {
         if (ancho <= 0 || alto <= 0) {
@@ -125,6 +155,11 @@ public record EspecImagen(
      * dos al mismo sitio.
      */
     public double ratioObjetivo(double proporcion) {
+        if (proporcionFija()) {
+            // Con un solo valor posible se va exactamente a él: acercarse al
+            // borde del margen dejaría un 9:16 que no lo es del todo.
+            return (ratioMin + ratioMax) / 2;
+        }
         if (proporcion < ratioMin) {
             return ratioMin;
         }

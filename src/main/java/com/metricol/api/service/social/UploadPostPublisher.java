@@ -296,7 +296,8 @@ public class UploadPostPublisher {
         AdaptadorDeImagenes.Adaptacion ajuste = adaptador.adaptar(
                 plan.workspaceId(),
                 medios,
-                plan.destinos().stream().map(PublishPlan.Destino::platform).toList());
+                plan.destinos().stream().map(PublishPlan.Destino::platform).toList(),
+                plan.formato());
 
         try {
             return client.publishPhotos(

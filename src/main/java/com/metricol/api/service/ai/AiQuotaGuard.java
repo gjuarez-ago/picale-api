@@ -92,7 +92,7 @@ public class AiQuotaGuard {
             throw new QuotaExceededException("IMAGE_QUOTA_EXCEEDED",
                     quedan <= 0
                             ? "Ya generaste las " + tope + " imágenes de hoy. Mañana se reinicia."
-                            : "Hoy te quedan " + quedan + " imágenes y esta campaña necesita " + nuevas
+                            : "Hoy te quedan " + quedan + " imágenes y este contenido necesita " + nuevas
                                     + ". Usa menos fotos o inténtalo mañana.");
         }
         return (int) (quedan - nuevas);

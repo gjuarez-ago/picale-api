@@ -106,4 +106,31 @@ class EspecImagenTest {
         assertThat(ig.cumple(4000, 4000, 1_000_000)).isFalse();
         assertThat(ig.cumple(1440, 1440, 1_000_000)).isTrue();
     }
+
+    @Test
+    @DisplayName("una historia exige 9:16 aunque la red pida otra cosa en el feed")
+    void verticalParaHistorias() {
+        EspecImagen historia = EspecImagen.vertical(List.of(Platform.INSTAGRAM, Platform.FACEBOOK));
+
+        // Las verticales sirven, con un píxel de holgura...
+        assertThat(historia.cumple(1080, 1920, 1_000_000)).isTrue();
+        assertThat(historia.cumple(1080, 1919, 1_000_000)).isTrue();
+        // ...y lo que no es vertical, no. El 4:5 del feed no vale en una historia.
+        assertThat(historia.cumple(1080, 1350, 1_000_000)).isFalse();
+        assertThat(historia.cumple(1080, 1080, 1_000_000)).isFalse();
+        // Del feed solo se hereda el ancho y el peso máximos.
+        assertThat(historia.anchoMax()).isLessThanOrEqualTo(1080);
+        assertThat(historia.bytesMax()).isEqualTo(8L * 1024 * 1024);
+    }
+
+    @Test
+    @DisplayName("el objetivo de una historia es exactamente 9:16, no el borde del margen")
+    void objetivoExacto() {
+        EspecImagen historia = EspecImagen.vertical(List.of(Platform.INSTAGRAM));
+
+        assertThat(historia.proporcionFija()).isTrue();
+        assertThat(historia.ratioObjetivo(1.0)).isEqualTo(9.0 / 16.0);
+        assertThat(historia.ratioObjetivo(2.5)).isEqualTo(9.0 / 16.0);
+        assertThat(EspecImagen.de(Platform.INSTAGRAM).proporcionFija()).isFalse();
+    }
 }
