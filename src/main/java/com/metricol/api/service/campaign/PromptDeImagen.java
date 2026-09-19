@@ -109,7 +109,10 @@ final class PromptDeImagen {
                 .append("text (white on dark, dark on light). One consistent alignment. Easy to read on a phone, but ")
                 .append("RESTRAINED: all the text together, button included, takes no more than about a quarter of the ")
                 .append("image height, so the photo stays the protagonist. The BUTTON is a compact pill, no wider than ")
-                .append("about half of the text block, never a full-width bar.\n\n");
+                .append("about half of the text block, never a full-width bar. Approximate sizes: ")
+                .append(d.lienzo() == Lienzo.CUADRADO
+                        ? "headline lines about 60 px tall, subtitle about 32 px, button about 68 px tall.\n\n"
+                        : "headline lines about 76 px tall, subtitle about 40 px, button about 88 px tall.\n\n");
 
         if (d.paleta() != null && !d.paleta().isEmpty()) {
             t.append("COLORS: use exactly these brand colors, read from the logo, for panels, frames, the button and ")

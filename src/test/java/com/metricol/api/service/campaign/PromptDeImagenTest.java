@@ -96,6 +96,7 @@ class PromptDeImagenTest {
         assertThat(prompt)
                 .contains("no more than about a quarter of the image height")
                 .contains("never a full-width bar")
+                .contains("headline lines about 76 px tall")
                 .contains("the panel covers only about a quarter of the image")
                 .contains("about y=1150")
                 .contains("at most two short lines");
