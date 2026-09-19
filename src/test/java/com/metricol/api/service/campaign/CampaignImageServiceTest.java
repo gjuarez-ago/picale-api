@@ -3,6 +3,7 @@ package com.metricol.api.service.campaign;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.Mockito.clearInvocations;
 import static org.mockito.ArgumentMatchers.anyInt;
 import static org.mockito.ArgumentMatchers.anyList;
 import static org.mockito.ArgumentMatchers.anyLong;
@@ -149,6 +150,7 @@ class CampaignImageServiceTest {
                 List.of("Minimalista"),
                 "Cercano",
                 "Escríbenos",
+                null,
                 null);
     }
 
@@ -164,6 +166,7 @@ class CampaignImageServiceTest {
                 List.of("Minimalista"),
                 "Cercano",
                 "Escríbenos",
+                null,
                 null);
     }
 
@@ -482,6 +485,30 @@ class CampaignImageServiceTest {
                 .contains("HEADLINE: \"20% esta semana\"");
     }
 
+    @Test
+    @DisplayName("el llamado a la acción no va como botón en la imagen salvo que se pida")
+    void ctaEnLaImagenSoloSiSePide() throws Exception {
+        when(imagenes.generar(anyString(), anyString()))
+                .thenReturn(new Resultado(png(0x808080), 0, 0, "gpt-image-1.5"));
+
+        // Sin pedirlo (Escríbenos viaja igual como cta): la imagen sale limpia.
+        servicio.generar(usuario, peticion("post", List.of(), null));
+        ArgumentCaptor<String> limpia = ArgumentCaptor.forClass(String.class);
+        verify(imagenes).generar(limpia.capture(), anyString());
+        assertThat(limpia.getValue()).contains("NO button and NO call to action").doesNotContain("BUTTON:");
+
+        // Pidiéndolo, va con el texto que escribió la persona.
+        clearInvocations(imagenes);
+        CampaignImageRequest conBoton = new CampaignImageRequest(2,
+                new CampaignImageRequest.Format("post", "4:5", "1024x1536"), List.of(), null,
+                "Anuncia el 20% de descuento", "Vender", List.of("Minimalista"), "Cercano", "Escríbenos",
+                Boolean.TRUE, null);
+        servicio.generar(usuario, conBoton);
+        ArgumentCaptor<String> conCta = ArgumentCaptor.forClass(String.class);
+        verify(imagenes).generar(conCta.capture(), anyString());
+        assertThat(conCta.getValue()).contains("BUTTON: \"Escríbenos\"").doesNotContain("NO button");
+    }
+
     // -------------------------------------------------------------- carrusel
 
     @Test
@@ -749,7 +776,12 @@ class CampaignImageServiceTest {
         when(imagenes.editar(anyString(), anyList(), anyString()))
                 .thenReturn(new Resultado(png(0x808080), 1, 1, "gpt-image-1.5"));
 
-        CampaignImageResponse respuesta = servicio.generar(usuario, peticion("post", List.of(a, b), null));
+        // Con el botón pedido: sin pedirlo la imagen sale sin él (ver ctaEnLaImagenSoloSiSePide).
+        CampaignImageRequest conBoton = new CampaignImageRequest(2,
+                new CampaignImageRequest.Format("post", "4:5", "1024x1536"), List.of(a, b), null,
+                "Anuncia el 20% de descuento", "Vender", List.of("Minimalista"), "Cercano", "Escríbenos",
+                Boolean.TRUE, null);
+        CampaignImageResponse respuesta = servicio.generar(usuario, conBoton);
 
         ArgumentCaptor<String> prompt = ArgumentCaptor.forClass(String.class);
         @SuppressWarnings("unchecked")
@@ -894,6 +926,7 @@ class CampaignImageServiceTest {
                 List.of("Minimalista"),
                 "Cercano",
                 "Escríbenos",
+                null,
                 redes);
     }
 

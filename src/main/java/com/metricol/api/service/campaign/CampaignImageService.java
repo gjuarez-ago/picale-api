@@ -389,6 +389,10 @@ public class CampaignImageService {
             captionGeneral = textos.caption();
         }
 
+        // El botón solo va en la imagen si la persona lo pidió. Aunque el director sugiera uno, sin
+        // pedirlo la imagen sale limpia: el llamado a la acción ya va en el caption de cada red.
+        String ctaDeLaImagen = Boolean.TRUE.equals(peticion.ctaEnImagen()) ? ctaPropio : "";
+
         progreso.etapa("Creando las imágenes…");
 
         // Se piden TODAS las piezas de TODAS las versiones a la vez.
@@ -407,7 +411,7 @@ public class CampaignImageService {
                         ? armarPrompt(negocio, peticion, variante.lienzo(), i, p.piezasPorVariante(),
                                 referencias.size(), p.posicionLogo())
                         : PromptDeImagen.armar(new PromptDeImagen.Datos(variante.lienzo(), layout, negocio.nombre(),
-                                escena, titular, subtitulo, ctaPropio, paleta, referencias.size(), p.posicionLogo()));
+                                escena, titular, subtitulo, ctaDeLaImagen, paleta, referencias.size(), p.posicionLogo()));
                 if (primerPrompt == null) {
                     primerPrompt = prompt;
                 }
@@ -762,7 +766,7 @@ public class CampaignImageService {
         if (p.tone() != null && !p.tone().isBlank()) {
             t.append("Tone: ").append(p.tone().trim()).append("\n");
         }
-        if (p.cta() != null && !p.cta().isBlank()) {
+        if (Boolean.TRUE.equals(p.ctaEnImagen()) && p.cta() != null && !p.cta().isBlank()) {
             t.append("Call to action, as short text inside the image: \"").append(p.cta().trim()).append("\"\n");
         }
 
@@ -794,7 +798,9 @@ public class CampaignImageService {
         t.append("Never draw a logo, emblem or brand mark of any kind, and do not write the company's legal name ")
                 .append("suffix (such as S.A. de C.V.): the real logo is added separately. ")
                 .append("Any text must be in Spanish, LARGE, short and correctly spelled with proper accents ")
-                .append("(at most a headline, the city and one call to action); avoid small print. ")
+                .append(Boolean.TRUE.equals(p.ctaEnImagen())
+                        ? "(at most a headline, the city and one call to action); avoid small print. "
+                        : "(at most a headline and the city, and no button or call to action); avoid small print. ")
                 .append("No watermarks and no fake interface elements.");
         return t.toString();
     }

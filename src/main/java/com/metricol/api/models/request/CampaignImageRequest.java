@@ -26,6 +26,11 @@ public record CampaignImageRequest(
         @Size(max = 120) String tone,
         @Size(max = 200) String cta,
         /**
+         * Si el llamado a la acción también va como botón dentro de la imagen. Por omisión NO: la
+         * imagen sale limpia y el llamado va en el texto de cada red, que es donde funciona.
+         */
+        Boolean ctaEnImagen,
+        /**
          * Las redes donde va a publicarse (INSTAGRAM, FACEBOOK, LINKEDIN...). Con ellas se crea una
          * versión por cada proporción distinta. Sin ellas (la app anterior) sale una sola imagen.
          */

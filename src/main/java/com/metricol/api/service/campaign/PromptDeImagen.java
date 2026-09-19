@@ -93,7 +93,9 @@ final class PromptDeImagen {
                     .append("Never add fog, haze or glow effects.\n\n");
         }
 
-        t.append("LAYOUT: ").append(descripcion(d.layout(), d.lienzo())).append("\n\n");
+        // Sin botón no se nombra el botón en ningún lado: un prompt que lo menciona lo dibuja.
+        boolean conBoton = hay(d.cta());
+        t.append("LAYOUT: ").append(descripcion(d.layout(), d.lienzo(), conBoton)).append("\n\n");
 
         t.append("TEXT: render exactly these words, in Spanish, letter for letter and with their accents, ")
                 .append("and NO other words anywhere in the image.\n");
@@ -101,18 +103,25 @@ final class PromptDeImagen {
         if (hay(d.subtitulo())) {
             t.append("  SUBTITLE: \"").append(d.subtitulo()).append("\"\n");
         }
-        if (hay(d.cta())) {
+        if (conBoton) {
             t.append("  BUTTON: \"").append(d.cta()).append("\" (a pill-shaped button with the text only, no icon)\n");
+        } else {
+            t.append("There is NO button and NO call to action in this image: do not draw any button, pill, arrow ")
+                    .append("or \"contact us\" text. The call to action goes in the post's caption, not here.\n");
         }
         t.append("Typography: modern, bold, geometric sans-serif. The headline is the largest element (at most two ")
                 .append("short lines), the subtitle about 40% of its size. High contrast against whatever is behind each ")
                 .append("text (white on dark, dark on light). One consistent alignment. Easy to read on a phone, but ")
-                .append("RESTRAINED: all the text together, button included, takes no more than about a quarter of the ")
-                .append("image height, so the photo stays the protagonist. The BUTTON is a compact pill, no wider than ")
-                .append("about half of the text block, never a full-width bar. Approximate sizes: ")
+                .append("RESTRAINED: all the text together").append(conBoton ? ", button included," : "")
+                .append(" takes no more than about a quarter of the image height, so the photo stays the protagonist.")
+                .append(conBoton
+                        ? " The BUTTON is a compact pill, no wider than about half of the text block, never a "
+                                + "full-width bar."
+                        : "")
+                .append(" Approximate sizes: ")
                 .append(d.lienzo() == Lienzo.CUADRADO
-                        ? "headline lines about 60 px tall, subtitle about 32 px, button about 68 px tall.\n\n"
-                        : "headline lines about 76 px tall, subtitle about 40 px, button about 88 px tall.\n\n");
+                        ? "headline lines about 60 px tall, subtitle about 32 px" + (conBoton ? ", button about 68 px tall.\n\n" : ".\n\n")
+                        : "headline lines about 76 px tall, subtitle about 40 px" + (conBoton ? ", button about 88 px tall.\n\n" : ".\n\n"));
 
         if (d.paleta() != null && !d.paleta().isEmpty()) {
             t.append("COLORS: use exactly these brand colors, read from the logo, for panels, frames, the button and ")
@@ -179,23 +188,28 @@ final class PromptDeImagen {
         };
     }
 
-    private static String descripcion(Layout layout, Lienzo lienzo) {
-        int alturaBanda = lienzo == Lienzo.CUADRADO ? 780 : 1150;
+    private static String descripcion(Layout layout, Lienzo lienzo, boolean conBoton) {
+        // Sin botón la banda es aún más baja: solo lleva titular y subtítulo.
+        int alturaBanda = lienzo == Lienzo.CUADRADO ? (conBoton ? 780 : 830) : (conBoton ? 1150 : 1210);
         return switch (layout) {
             case PHOTO_BOTTOM_BAND -> "The hero photo fills the whole canvas, unchanged, and stays the "
                     + "protagonist: the panel covers only about a quarter of the image. A solid panel in the "
                     + "primary brand color, with softly rounded top corners, is anchored to the bottom and rises only "
                     + "to about y=" + alturaBanda + ". Inside the safe rectangle, left-aligned on the panel: a short "
-                    + "HEADLINE, the SUBTITLE under it, and a compact BUTTON below, with comfortable empty space "
-                    + "under the button.";
+                    + (conBoton
+                            ? "HEADLINE, the SUBTITLE under it, and a compact BUTTON below, with comfortable empty "
+                                    + "space under the button."
+                            : "HEADLINE and the SUBTITLE under it, with comfortable empty space below them.");
             case PHOTO_TOP_TITLE -> "The hero photo fills the whole canvas, unchanged, with only a soft dark "
                     + "gradient over the top third to hold the text (no fog, no blur). Inside the safe rectangle, "
-                    + "below the logo area: the HEADLINE, then the SUBTITLE. The BUTTON sits near the bottom of the "
-                    + "safe rectangle.";
+                    + "below the logo area: the HEADLINE, then the SUBTITLE."
+                    + (conBoton ? " The BUTTON sits near the bottom of the safe rectangle."
+                            : " Nothing else is written on the photo: its lower part stays completely clean.");
             case FRAMED_PHOTO -> "A solid background in the primary brand color fills the canvas. The hero photo "
                     + "sits in the middle inside a large rounded rectangle (its content unchanged and uncropped as "
-                    + "much as possible). The HEADLINE, in white, goes above the photo; the SUBTITLE and the BUTTON "
-                    + "go below it, all on the plain color.";
+                    + "much as possible). The HEADLINE, in white, goes above the photo; "
+                    + (conBoton ? "the SUBTITLE and the BUTTON go below it, all on the plain color."
+                            : "the SUBTITLE goes below it, on the plain color.");
         };
     }
 

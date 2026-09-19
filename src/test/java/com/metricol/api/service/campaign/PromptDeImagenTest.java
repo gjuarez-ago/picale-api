@@ -103,6 +103,27 @@ class PromptDeImagenTest {
     }
 
     @Test
+    @DisplayName("sin llamado a la acción no hay botón: ni escrito, ni en la composición, ni en los tamaños")
+    void sinBoton() {
+        for (Layout layout : Layout.values()) {
+            String prompt = PromptDeImagen.armar(new Datos(Lienzo.CUATRO_QUINTOS, layout, "CMRG", "s",
+                    "Montaje seguro", "Manzanillo", "", List.of("#0B2A5B"), 1, Posicion.TOP_LEFT));
+
+            assertThat(prompt).as(layout.name())
+                    .contains("There is NO button and NO call to action in this image")
+                    .doesNotContain("BUTTON:")
+                    .doesNotContain("The BUTTON")
+                    .doesNotContain("compact BUTTON")
+                    .doesNotContain("button included")
+                    .doesNotContain("button about");
+        }
+        // Y con botón, como siempre.
+        String conBoton = PromptDeImagen.armar(datos(Lienzo.CUATRO_QUINTOS, Layout.PHOTO_BOTTOM_BAND, 1, null));
+        assertThat(conBoton).contains("BUTTON: \"Escríbenos por WhatsApp\"").contains("compact BUTTON")
+                .doesNotContain("NO button");
+    }
+
+    @Test
     @DisplayName("cada composición se describe distinto")
     void composiciones() {
         String banda = PromptDeImagen.armar(datos(Lienzo.CUATRO_QUINTOS, Layout.PHOTO_BOTTOM_BAND, 1, null));
