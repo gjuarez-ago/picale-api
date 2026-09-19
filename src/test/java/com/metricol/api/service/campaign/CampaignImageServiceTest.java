@@ -475,10 +475,10 @@ class CampaignImageServiceTest {
         ArgumentCaptor<String> prompt = ArgumentCaptor.forClass(String.class);
         verify(imagenes).generar(prompt.capture(), anyString());
         assertThat(prompt.getValue())
-                .contains("x=64..960, y=200..1336")
+                .contains("x=64..960, y=277..1413")
                 .contains("letter for letter")
                 .contains("with their accents")
-                .contains("no small print")
+                .contains("Easy to read on a phone")
                 .contains("HEADLINE: \"20% esta semana\"");
     }
 

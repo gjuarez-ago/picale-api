@@ -36,6 +36,14 @@ final class RecorteDeImagen {
      * @param calidad de 0 a 1
      */
     static byte[] recortar(byte[] origen, int ratioAncho, int ratioAlto, float calidad) {
+        return recortar(origen, ratioAncho, ratioAlto, calidad, 0.5);
+    }
+
+    /**
+     * @param cortaArriba qué parte del recorte VERTICAL se toma de arriba: 0,5 es
+     *        parejo; 0,8 quita casi todo de arriba (para anuncios con el texto abajo)
+     */
+    static byte[] recortar(byte[] origen, int ratioAncho, int ratioAlto, float calidad, double cortaArriba) {
         BufferedImage imagen;
         try {
             imagen = ImageIO.read(new ByteArrayInputStream(origen));
@@ -58,7 +66,7 @@ final class RecorteDeImagen {
             altoFinal = (int) Math.round(ancho / objetivo);
         }
         int x = (ancho - anchoFinal) / 2;
-        int y = (alto - altoFinal) / 2;
+        int y = (int) Math.round((alto - altoFinal) * Math.max(0, Math.min(1, cortaArriba)));
 
         // RGB y sobre blanco: JPEG no tiene canal alfa y un PNG con
         // transparencia se guardaría con el fondo en negro.

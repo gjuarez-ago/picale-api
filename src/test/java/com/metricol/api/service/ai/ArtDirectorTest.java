@@ -186,14 +186,53 @@ class ArtDirectorTest {
     }
 
     @Test
-    @DisplayName("modelo no permitido o cualquier otro error: vacío, y la campaña sigue sin director")
+    @DisplayName("cualquier otro error: vacío, y la campaña sigue sin director")
     void falla() {
         servidor.expect(requestTo(URL))
-                .andRespond(withStatus(HttpStatus.FORBIDDEN).contentType(MediaType.APPLICATION_JSON)
-                        .body("{\"error\":{\"message\":\"Project does not have access to model gpt-5.5\"}}"));
+                .andRespond(withStatus(HttpStatus.INTERNAL_SERVER_ERROR).contentType(MediaType.APPLICATION_JSON)
+                        .body("{\"error\":{\"message\":\"boom\"}}"));
 
         assertThat(director.dirigir(contexto(List.of("https://cdn.test/a.jpg")))).isEmpty();
         verify(usos, never()).registrarDirector(anyString(), anyInt(), anyInt());
+    }
+
+    private static final String SIN_ACCESO =
+            "{\"error\":{\"message\":\"Project `proj_x` does not have access to model `gpt-5.5`\","
+                    + "\"code\":\"model_not_found\"}}";
+
+    @Test
+    @DisplayName("si el proyecto no tiene el modelo del director, sigue con el de texto: ningún director es peor")
+    void sinAccesoUsaElModeloDeTexto() {
+        props.setModel("gpt-4.1-mini");
+        servidor.expect(requestTo(URL))
+                .andExpect(content().string(containsString("\"model\":\"gpt-5.5\"")))
+                .andRespond(withStatus(HttpStatus.FORBIDDEN).contentType(MediaType.APPLICATION_JSON).body(SIN_ACCESO));
+        // El respaldo no razona: no se le manda reasoning_effort.
+        servidor.expect(requestTo(URL))
+                .andExpect(content().string(containsString("\"model\":\"gpt-4.1-mini\"")))
+                .andExpect(content().string(not(containsString("reasoning_effort"))))
+                .andRespond(withSuccess(respuesta(PLAN), MediaType.APPLICATION_JSON));
+        // La siguiente ya no pierde un intento en un 403 que se sabe que se repite.
+        servidor.expect(requestTo(URL))
+                .andExpect(content().string(containsString("\"model\":\"gpt-4.1-mini\"")))
+                .andRespond(withSuccess(respuesta(PLAN), MediaType.APPLICATION_JSON));
+
+        assertThat(director.dirigir(contexto(List.of("https://cdn.test/a.jpg")))).isPresent();
+        assertThat(director.dirigir(contexto(List.of("https://cdn.test/a.jpg")))).isPresent();
+        servidor.verify();
+        // El gasto del respaldo se cobra al precio del modelo de texto, no al del director.
+        verify(usos, never()).registrarDirector(anyString(), anyInt(), anyInt());
+    }
+
+    @Test
+    @DisplayName("sin acceso y sin modelo de respaldo, vacío: no hay a dónde caer")
+    void sinAccesoYSinRespaldo() {
+        props.setModel("");
+        servidor.expect(requestTo(URL))
+                .andRespond(withStatus(HttpStatus.FORBIDDEN).contentType(MediaType.APPLICATION_JSON).body(SIN_ACCESO));
+
+        assertThat(director.dirigir(contexto(List.of("https://cdn.test/a.jpg")))).isEmpty();
+        servidor.verify();
     }
 
     @Test

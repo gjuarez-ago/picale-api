@@ -428,7 +428,8 @@ public class CampaignImageService {
             VarianteGenerada generada;
             try {
                 List<Resultado> resultados = recogerEnOrden(envio.futuros());
-                generada = guardar(negocio, peticion, p, envio.variante(), resultados);
+                generada = guardar(negocio, peticion, p, envio.variante(), resultados,
+                        formato.secuencia ? 0.5 : layout.cortaArriba);
             } catch (RuntimeException ex) {
                 log.warn("Una versión del contenido falló ({}): {}", envio.variante().lienzo(), ex.getMessage());
                 generada = new VarianteGenerada(envio.variante().id(), envio.variante().lienzo(),
@@ -465,13 +466,13 @@ public class CampaignImageService {
      * se conserva nada a medias.
      */
     private VarianteGenerada guardar(Negocio negocio, CampaignImageRequest peticion, Preparado p, Variante variante,
-            List<Resultado> resultados) {
+            List<Resultado> resultados, double cortaArriba) {
         List<String> claves = new ArrayList<>();
         List<MediaAsset> nuevos = new ArrayList<>();
         try {
             for (int i = 0; i < resultados.size(); i++) {
                 byte[] jpeg = RecorteDeImagen.recortar(resultados.get(i).imagen(), variante.lienzo().ratioAncho,
-                        variante.lienzo().ratioAlto, 0.9f);
+                        variante.lienzo().ratioAlto, 0.9f, cortaArriba);
                 if (p.logo() != null) {
                     jpeg = ponerLogo(jpeg, p.logo(), p.posicionLogo(), variante.lienzo().historia());
                 }

@@ -69,6 +69,32 @@ class RecorteDeImagenTest {
     }
 
     @Test
+    @DisplayName("el recorte puede quitar casi todo de arriba: con el texto abajo, el botón no se corta")
+    void recortaDeDondeSobra() throws Exception {
+        // Rojo y<50, verde y<100, azul y<150. Cuadrado desde 100x150: se quitan 50 filas.
+        BufferedImage imagen = new BufferedImage(100, 150, BufferedImage.TYPE_INT_RGB);
+        for (int y = 0; y < 150; y++) {
+            int color = y < 50 ? 0xFF0000 : y < 100 ? 0x00FF00 : 0x0000FF;
+            for (int x = 0; x < 100; x++) {
+                imagen.setRGB(x, y, color);
+            }
+        }
+        ByteArrayOutputStream origen = new ByteArrayOutputStream();
+        ImageIO.write(imagen, "png", origen);
+
+        // 0,8: 40 filas de arriba y 10 de abajo -> se conservan las filas 40..139.
+        BufferedImage abajo = leer(RecorteDeImagen.recortar(origen.toByteArray(), 1, 1, 1f, 0.8));
+        assertThat(abajo.getHeight()).isEqualTo(100);
+        assertThat(abajo.getRGB(50, 95) & 0xFF).as("casi todo el azul se conserva").isGreaterThan(200);
+        assertThat(abajo.getRGB(50, 2) >> 16 & 0xFF).as("y todavía queda rojo arriba, poco").isGreaterThan(200);
+
+        // 0: todo de abajo -> filas 0..99, sin nada de azul.
+        BufferedImage arriba = leer(RecorteDeImagen.recortar(origen.toByteArray(), 1, 1, 1f, 0.0));
+        assertThat(arriba.getRGB(50, 95) & 0xFF).as("sin azul").isLessThan(60);
+        assertThat(arriba.getRGB(50, 2) >> 16 & 0xFF).isGreaterThan(200);
+    }
+
+    @Test
     @DisplayName("un PNG con transparencia sale sobre blanco, no en negro")
     void transparenciaSobreBlanco() throws Exception {
         BufferedImage resultado = leer(RecorteDeImagen.recortar(png(100, 100), 1, 1, 0.95f));

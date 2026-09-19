@@ -134,6 +134,13 @@ public class ArtDirector {
      */
     private volatile boolean razonamientoSoportado = true;
 
+    /**
+     * El modelo del director no está permitido en el proyecto de OpenAI: desde
+     * entonces se va directo al de respaldo, sin gastar un intento (y un segundo)
+     * en un 403 que se sabe que se repetirá.
+     */
+    private volatile boolean principalSinAcceso = false;
+
     @Autowired
     public ArtDirector(OpenAiProperties props, AiUsageRecorder usos) {
         this(props, usos, construirRestClient(props));
@@ -166,28 +173,31 @@ public class ArtDirector {
             return Optional.empty();
         }
         long inicio = System.currentTimeMillis();
+        String modelo = principalSinAcceso ? respaldo() : props.getDirectorModel();
         try {
-            String esfuerzo = props.getDirectorReasoningEffort();
-            boolean conEsfuerzo = razonamientoSoportado && esfuerzo != null && !esfuerzo.isBlank();
-
             Map<?, ?> respuesta;
             try {
-                respuesta = pedir(contexto, conEsfuerzo ? esfuerzo.trim() : null);
+                respuesta = pedirConReintentos(contexto, modelo);
             } catch (RestClientResponseException ex) {
-                if (conEsfuerzo && ex.getStatusCode().value() == 400
-                        && ex.getResponseBodyAsString().contains("reasoning_effort")) {
-                    log.warn("El modelo del director no acepta reasoning_effort: se sigue sin él. {}",
-                            recortar(ex.getResponseBodyAsString()));
-                    razonamientoSoportado = false;
-                    respuesta = pedir(contexto, null);
+                // El proyecto de OpenAI no tiene el modelo del director: es lo que pasó con
+                // gpt-5.5 y dejó al director apagado sin que nadie lo notara. Se sigue con el
+                // modelo de texto, que también ve fotos y devuelve JSON: un director menos
+                // capaz es mejor que ninguno, y ninguno es lo que produce anuncios genéricos.
+                if (!principalSinAcceso && sinAcceso(ex) && !respaldo().isBlank() && !respaldo().equals(modelo)) {
+                    principalSinAcceso = true;
+                    log.error("El proyecto de OpenAI no tiene acceso al modelo del director ({}). "
+                            + "Se usa {}. Arréglalo permitiéndolo en OpenAI o poniendo un modelo permitido en "
+                            + "OPENAI_DIRECTOR_MODEL.", modelo, respaldo());
+                    modelo = respaldo();
+                    respuesta = pedirConReintentos(contexto, modelo);
                 } else {
                     throw ex;
                 }
             }
 
-            anotarGasto(respuesta);
+            anotarGasto(respuesta, modelo);
             Optional<Brief> plan = leerPlan(respuesta, contexto.fotoUrls().size());
-            log.info("Director de arte ({}): {} ms, {}", props.getDirectorModel(),
+            log.info("Director de arte ({}): {} ms, {}", modelo,
                     System.currentTimeMillis() - inicio,
                     plan.map(b -> "layout=" + b.layout() + " heroe=" + b.fotoProtagonista())
                             .orElse("sin plan utilizable"));
@@ -202,7 +212,40 @@ public class ArtDirector {
         }
     }
 
-    private Map<?, ?> pedir(Contexto c, String esfuerzo) {
+    /** Se le puede pedir razonamiento solo al modelo del director: el de texto no razona y lo rechaza. */
+    private Map<?, ?> pedirConReintentos(Contexto contexto, String modelo) {
+        String esfuerzo = props.getDirectorReasoningEffort();
+        boolean esElDelDirector = modelo.equals(props.getDirectorModel());
+        boolean conEsfuerzo = esElDelDirector && razonamientoSoportado && esfuerzo != null && !esfuerzo.isBlank();
+        try {
+            return pedir(contexto, modelo, conEsfuerzo ? esfuerzo.trim() : null);
+        } catch (RestClientResponseException ex) {
+            if (conEsfuerzo && ex.getStatusCode().value() == 400
+                    && ex.getResponseBodyAsString().contains("reasoning_effort")) {
+                log.warn("El modelo del director no acepta reasoning_effort: se sigue sin él. {}",
+                        recortar(ex.getResponseBodyAsString()));
+                razonamientoSoportado = false;
+                return pedir(contexto, modelo, null);
+            }
+            throw ex;
+        }
+    }
+
+    /** OpenAI contesta 403 (o 404) con {@code model_not_found} cuando el proyecto no tiene el modelo. */
+    private static boolean sinAcceso(RestClientResponseException ex) {
+        int estado = ex.getStatusCode().value();
+        String cuerpo = ex.getResponseBodyAsString();
+        return (estado == 403 || estado == 404)
+                && (cuerpo.contains("model_not_found") || cuerpo.contains("does not have access"));
+    }
+
+    /** El modelo de texto de siempre, que ya está permitido en el proyecto. */
+    private String respaldo() {
+        String modelo = props.getModel();
+        return modelo == null ? "" : modelo.trim();
+    }
+
+    private Map<?, ?> pedir(Contexto c, String modelo, String esfuerzo) {
         List<Map<String, Object>> partes = new ArrayList<>();
         partes.add(Map.of("type", "text", "text", pedidoDelUsuario(c)));
         for (String url : c.fotoUrls()) {
@@ -215,7 +258,7 @@ public class ArtDirector {
         // rechazan la primera con cualquier valor que no sea el de fábrica, y
         // la segunda tiene otro nombre en ellos.
         Map<String, Object> cuerpo = new LinkedHashMap<>();
-        cuerpo.put("model", props.getDirectorModel());
+        cuerpo.put("model", modelo);
         cuerpo.put("messages", List.of(
                 Map.of("role", "system", "content", SISTEMA),
                 Map.of("role", "user", "content", partes)));
@@ -329,13 +372,19 @@ public class ArtDirector {
         return captions;
     }
 
-    private void anotarGasto(Map<?, ?> respuesta) {
+    private void anotarGasto(Map<?, ?> respuesta, String pedido) {
         try {
             if (respuesta != null && respuesta.get("usage") instanceof Map<?, ?> uso) {
                 Object modelo = respuesta.get("model");
-                usos.registrarDirector(
-                        modelo instanceof String nombre && !nombre.isBlank() ? nombre : props.getDirectorModel(),
-                        entero(uso.get("prompt_tokens")), entero(uso.get("completion_tokens")));
+                String nombre = modelo instanceof String n && !n.isBlank() ? n : pedido;
+                if (pedido.equals(props.getDirectorModel())) {
+                    usos.registrarDirector(nombre, entero(uso.get("prompt_tokens")),
+                            entero(uso.get("completion_tokens")));
+                } else {
+                    // El de respaldo es el modelo de texto: se cobra a SU precio, no al del director.
+                    usos.registrarDirectorConPrecioDeTexto(nombre, entero(uso.get("prompt_tokens")),
+                            entero(uso.get("completion_tokens")));
+                }
             }
         } catch (Exception ex) {
             // Perder una fila del reporte no debe tirar un plan que ya se pagó.

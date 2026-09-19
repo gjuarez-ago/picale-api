@@ -25,14 +25,21 @@ final class PromptDeImagen {
 
     /** Las composiciones que el director puede pedir. Los códigos son los de {@code ArtDirector.LAYOUTS}. */
     enum Layout {
-        PHOTO_BOTTOM_BAND("photo_bottom_band"),
-        PHOTO_TOP_TITLE("photo_top_title"),
-        FRAMED_PHOTO("framed_photo");
+        // Al pasar de 2:3 a 4:5 se quitan 256 px. Se quitan de donde SOBRA: con el texto abajo
+        // (banda inferior) casi todo sale de la foto de arriba, y al revés. Cortar parejo era lo
+        // que dejaba el botón a medias contra el borde de abajo.
+        PHOTO_BOTTOM_BAND("photo_bottom_band", 0.8),
+        PHOTO_TOP_TITLE("photo_top_title", 0.2),
+        FRAMED_PHOTO("framed_photo", 0.5);
 
         final String codigo;
 
-        Layout(String codigo) {
+        /** Qué parte del recorte vertical se toma de arriba (0 = todo de abajo, 1 = todo de arriba). */
+        final double cortaArriba;
+
+        Layout(String codigo, double cortaArriba) {
             this.codigo = codigo;
+            this.cortaArriba = cortaArriba;
         }
 
         static Layout de(String codigo) {
@@ -71,7 +78,7 @@ final class PromptDeImagen {
                         ? ". Square canvas of 1024x1024 pixels.\n\n"
                         : ". Portrait canvas of 1024x1536 pixels.\n\n");
 
-        t.append("SAFE AREA (critical): ").append(zonaSegura(d.lienzo())).append("\n\n");
+        t.append("SAFE AREA (critical): ").append(zonaSegura(d.lienzo(), d.layout())).append("\n\n");
 
         if (d.fotos() > 0) {
             t.append("PHOTO: Photo 1 is the hero and must appear large, complete and recognizable. ");
@@ -97,10 +104,12 @@ final class PromptDeImagen {
         if (hay(d.cta())) {
             t.append("  BUTTON: \"").append(d.cta()).append("\" (a pill-shaped button with the text only, no icon)\n");
         }
-        t.append("Typography: modern, bold, geometric sans-serif. The headline is the largest element (at most three ")
-                .append("lines), the subtitle about 40% of its size. High contrast against whatever is behind each ")
-                .append("text (white on dark, dark on light). One consistent alignment. All text large and easy to ")
-                .append("read on a phone; no small print.\n\n");
+        t.append("Typography: modern, bold, geometric sans-serif. The headline is the largest element (at most two ")
+                .append("short lines), the subtitle about 40% of its size. High contrast against whatever is behind each ")
+                .append("text (white on dark, dark on light). One consistent alignment. Easy to read on a phone, but ")
+                .append("RESTRAINED: all the text together, button included, takes no more than about a quarter of the ")
+                .append("image height, so the photo stays the protagonist. The BUTTON is a compact pill, no wider than ")
+                .append("about half of the text block, never a full-width bar.\n\n");
 
         if (d.paleta() != null && !d.paleta().isEmpty()) {
             t.append("COLORS: use exactly these brand colors, read from the logo, for panels, frames, the button and ")
@@ -111,7 +120,7 @@ final class PromptDeImagen {
         }
 
         if (d.logo() != null) {
-            t.append("LOGO: leave ").append(zonaLogo(d.logo(), d.lienzo()))
+            t.append("LOGO: leave ").append(zonaLogo(d.logo(), d.lienzo(), d.layout()))
                     .append(" completely clean (plain background, no text, no key subject): the business's real logo ")
                     .append("will be placed there afterwards. Do not draw any logo, emblem or brand mark anywhere.\n\n");
         } else {
@@ -129,8 +138,29 @@ final class PromptDeImagen {
         return t.toString();
     }
 
-    /** Lo que sobrevive al recorte y a la interfaz de la red, en píxeles del lienzo pedido. */
+    /**
+     * Cuántos píxeles se cortan arriba y abajo del lienzo de 1536 px al pasar a 4:5 ({@code [arriba, abajo]}).
+     * Los demás lienzos no cortan a lo alto.
+     */
+    static int[] cortesVerticales(Lienzo lienzo, Layout layout) {
+        if (lienzo != Lienzo.CUATRO_QUINTOS) {
+            return new int[] {0, 0};
+        }
+        int total = 1536 - 1280;
+        int arriba = (int) Math.round(total * layout.cortaArriba);
+        return new int[] {arriba, total - arriba};
+    }
+
+    /** Sin layout: recorte parejo, que es como se corta un carrusel. */
     static String zonaSegura(Lienzo lienzo) {
+        return zonaSegura(lienzo, Layout.FRAMED_PHOTO);
+    }
+
+    /** Lo que sobrevive al recorte y a la interfaz de la red, en píxeles del lienzo pedido. */
+    static String zonaSegura(Lienzo lienzo, Layout layout) {
+        int[] cortes = cortesVerticales(lienzo, layout);
+        int yMin = cortes[0] + 72;
+        int yMax = 1536 - cortes[1] - 72;
         return switch (lienzo) {
             case HISTORIA -> "The image is cut to 9:16 and shown under the app's own interface. Every letter, "
                     + "button, face and key object must lie completely inside the rectangle x=130..894, "
@@ -139,20 +169,22 @@ final class PromptDeImagen {
             case CUADRADO -> "The image is a 1:1 square shown as it is. Every letter, button, face and key object "
                     + "must lie completely inside the rectangle x=80..944, y=80..944. A panel or frame may run to "
                     + "the edges only as plain color, and never let any text touch an edge.";
-            case CUATRO_QUINTOS -> "The image is cut to 4:5, removing the top and bottom strips. Every letter, "
-                    + "button, face and key object must lie completely inside the rectangle x=64..960, "
-                    + "y=200..1336; the top 200 and bottom 200 pixels are cut or covered. A panel or frame may run "
+            case CUATRO_QUINTOS -> "The image is cut to 4:5: the top " + cortes[0] + " and the bottom "
+                    + cortes[1] + " pixels are cut. Every letter, button, face and key object must lie completely "
+                    + "inside the rectangle x=64..960, y=" + yMin + ".." + yMax + ". A panel or frame may run "
                     + "to the edges only as plain color, and never let any text touch an edge.";
         };
     }
 
     private static String descripcion(Layout layout, Lienzo lienzo) {
-        int alturaBanda = lienzo == Lienzo.CUADRADO ? 700 : 1000;
+        int alturaBanda = lienzo == Lienzo.CUADRADO ? 780 : 1150;
         return switch (layout) {
-            case PHOTO_BOTTOM_BAND -> "The hero photo fills the whole canvas, unchanged. A solid panel in the "
-                    + "primary brand color, with softly rounded top corners, is anchored to the bottom and rises to "
-                    + "about y=" + alturaBanda + ". Inside the safe rectangle, left-aligned on the panel: the HEADLINE, the "
-                    + "SUBTITLE under it, and the BUTTON at the bottom of the panel.";
+            case PHOTO_BOTTOM_BAND -> "The hero photo fills the whole canvas, unchanged, and stays the "
+                    + "protagonist: the panel covers only about a quarter of the image. A solid panel in the "
+                    + "primary brand color, with softly rounded top corners, is anchored to the bottom and rises only "
+                    + "to about y=" + alturaBanda + ". Inside the safe rectangle, left-aligned on the panel: a short "
+                    + "HEADLINE, the SUBTITLE under it, and a compact BUTTON below, with comfortable empty space "
+                    + "under the button.";
             case PHOTO_TOP_TITLE -> "The hero photo fills the whole canvas, unchanged, with only a soft dark "
                     + "gradient over the top third to hold the text (no fog, no blur). Inside the safe rectangle, "
                     + "below the logo area: the HEADLINE, then the SUBTITLE. The BUTTON sits near the bottom of the "
@@ -164,8 +196,14 @@ final class PromptDeImagen {
         };
     }
 
-    /** El rincón que se deja libre para el logo, en píxeles aproximados del lienzo. */
+    /** Sin layout: recorte parejo. */
     static String zonaLogo(Posicion posicion, Lienzo lienzo) {
+        return zonaLogo(posicion, lienzo, Layout.FRAMED_PHOTO);
+    }
+
+    /** El rincón que se deja libre para el logo, en píxeles aproximados del lienzo. */
+    static String zonaLogo(Posicion posicion, Lienzo lienzo, Layout layout) {
+        int[] cortes = cortesVerticales(lienzo, layout);
         int ancho = 440;
         int alto = 210;
         int x;
@@ -181,7 +219,9 @@ final class PromptDeImagen {
             }
             default -> {
                 x = posicion.izquierda() ? 40 : posicion.derecha() ? 550 : 292;
-                y = posicion.arriba() ? 165 : 1150;
+                // El logo se pega a 37 px del borde de ARRIBA (o a 48 del de abajo) de la imagen ya
+                // recortada; en el lienzo de 1536 eso cae después del corte de cada lado.
+                y = posicion.arriba() ? cortes[0] + 37 : 1536 - cortes[1] - 48 - alto;
             }
         }
         return "the area of about " + ancho + "x" + alto + " pixels " + (posicion.arriba() ? "at the top" : "at the bottom")

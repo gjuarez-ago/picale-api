@@ -80,6 +80,12 @@ public class AiUsageRecorder {
         guardar(AiOperacion.DIRECTOR_ARTE, modelo, tokensEntrada, tokensSalida, props.getDirectorPricing());
     }
 
+    /** El director de arte corriendo con el modelo de texto (respaldo): con el precio de ese modelo. */
+    @Transactional(propagation = Propagation.REQUIRES_NEW)
+    public void registrarDirectorConPrecioDeTexto(String modelo, int tokensEntrada, int tokensSalida) {
+        guardar(AiOperacion.DIRECTOR_ARTE, modelo, tokensEntrada, tokensSalida, props.getPricing());
+    }
+
     private void guardar(AiOperacion operacion, String modelo, int tokensEntrada, int tokensSalida,
             OpenAiProperties.Pricing precio) {
         repository.save(AiUsage.builder()

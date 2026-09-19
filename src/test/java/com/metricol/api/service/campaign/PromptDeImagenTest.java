@@ -49,9 +49,56 @@ class PromptDeImagenTest {
         String post = PromptDeImagen.armar(datos(Lienzo.CUATRO_QUINTOS, Layout.PHOTO_BOTTOM_BAND, 1, null));
         String historia = PromptDeImagen.armar(datos(Lienzo.HISTORIA, Layout.PHOTO_BOTTOM_BAND, 1, null));
 
-        assertThat(post).contains("x=64..960, y=200..1336").contains("4:5");
+        // Banda inferior: el texto va abajo, así que el recorte quita casi todo de ARRIBA.
+        assertThat(post).contains("the top 205 and the bottom 51 pixels are cut")
+                .contains("x=64..960, y=277..1413").contains("4:5");
         assertThat(historia).contains("x=130..894, y=240..1230").contains("9:16");
         assertThat(post).contains("1024x1536");
+    }
+
+    @Test
+    @DisplayName("el recorte a 4:5 se quita de donde sobra: cada composición corta distinto")
+    void recorteSegunLaComposicion() {
+        assertThat(PromptDeImagen.cortesVerticales(Lienzo.CUATRO_QUINTOS, Layout.PHOTO_BOTTOM_BAND))
+                .containsExactly(205, 51);
+        assertThat(PromptDeImagen.cortesVerticales(Lienzo.CUATRO_QUINTOS, Layout.PHOTO_TOP_TITLE))
+                .containsExactly(51, 205);
+        assertThat(PromptDeImagen.cortesVerticales(Lienzo.CUATRO_QUINTOS, Layout.FRAMED_PHOTO))
+                .containsExactly(128, 128);
+        // Los demás lienzos no cortan a lo alto.
+        assertThat(PromptDeImagen.cortesVerticales(Lienzo.HISTORIA, Layout.PHOTO_BOTTOM_BAND)).containsExactly(0, 0);
+        assertThat(PromptDeImagen.cortesVerticales(Lienzo.CUADRADO, Layout.PHOTO_BOTTOM_BAND)).containsExactly(0, 0);
+
+        String titulo = PromptDeImagen.armar(datos(Lienzo.CUATRO_QUINTOS, Layout.PHOTO_TOP_TITLE, 1, null));
+        String marco = PromptDeImagen.armar(datos(Lienzo.CUATRO_QUINTOS, Layout.FRAMED_PHOTO, 1, null));
+        assertThat(titulo).contains("y=123..1259");
+        // Parejo, como siempre: 200..1336.
+        assertThat(marco).contains("y=200..1336");
+    }
+
+    @Test
+    @DisplayName("el rincón del logo cae donde el recorte lo deja: cambia con la composición")
+    void logoSegunElRecorte() {
+        // Se pega a 37 px del borde de arriba de la imagen YA recortada: en el lienzo, después del corte.
+        assertThat(PromptDeImagen.zonaLogo(Posicion.TOP_LEFT, Lienzo.CUATRO_QUINTOS, Layout.PHOTO_BOTTOM_BAND))
+                .contains("y=242..452");
+        assertThat(PromptDeImagen.zonaLogo(Posicion.TOP_LEFT, Lienzo.CUATRO_QUINTOS, Layout.FRAMED_PHOTO))
+                .contains("y=165..375");
+        assertThat(PromptDeImagen.zonaLogo(Posicion.BOTTOM_LEFT, Lienzo.CUATRO_QUINTOS, Layout.PHOTO_TOP_TITLE))
+                .contains("y=1073..1283");
+    }
+
+    @Test
+    @DisplayName("el texto no se come la imagen: un cuarto a lo más, y el botón es una píldora compacta")
+    void textoContenido() {
+        String prompt = PromptDeImagen.armar(datos(Lienzo.CUATRO_QUINTOS, Layout.PHOTO_BOTTOM_BAND, 1, null));
+
+        assertThat(prompt)
+                .contains("no more than about a quarter of the image height")
+                .contains("never a full-width bar")
+                .contains("the panel covers only about a quarter of the image")
+                .contains("about y=1150")
+                .contains("at most two short lines");
     }
 
     @Test
@@ -150,7 +197,7 @@ class PromptDeImagenTest {
                 .contains("Square canvas of 1024x1024")
                 .contains("1:1 square")
                 .contains("x=80..944, y=80..944")
-                .contains("about y=700")
+                .contains("about y=780")
                 .doesNotContain("cut to 4:5");
         assertThat(PromptDeImagen.zonaLogo(Posicion.TOP_LEFT, Lienzo.CUADRADO)).contains("y=40..250");
         assertThat(PromptDeImagen.zonaLogo(Posicion.BOTTOM_RIGHT, Lienzo.CUADRADO)).contains("y=774..984");

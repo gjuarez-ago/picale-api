@@ -39,7 +39,7 @@ public class OpenAiProperties {
      * su decisión depende lo que cuesta cada imagen—. Tiene que estar permitido
      * en el proyecto de OpenAI.
      */
-    private String directorModel = "gpt-5.5";
+    private String directorModel = "gpt-5-mini";
 
     /**
      * Cuánto razona el director: {@code minimal}, {@code low}, {@code medium} o
