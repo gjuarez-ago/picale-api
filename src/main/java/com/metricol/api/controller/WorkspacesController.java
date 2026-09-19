@@ -51,7 +51,7 @@ public class WorkspacesController {
     @PostMapping
     public ResponseEntity<ApiResponse<MiWorkspaceResponse>> crear(
             @AuthenticationPrincipal User currentUser, @Valid @RequestBody WorkspaceCreateRequest request) {
-        return ResponseEntity.ok(ApiResponse.success(membresias.crear(currentUser, request.getName())));
+        return ResponseEntity.ok(ApiResponse.success(membresias.crear(currentUser, request)));
     }
 
     /**

@@ -18,6 +18,7 @@ import com.metricol.api.enums.Permission;
 import com.metricol.api.enums.Role;
 import com.metricol.api.exception.ResourceNotFoundException;
 import com.metricol.api.models.request.EspacioUpdateRequest;
+import com.metricol.api.models.request.WorkspaceCreateRequest;
 import com.metricol.api.models.response.AuthResponse;
 import com.metricol.api.models.response.MediaAssetResponse;
 import com.metricol.api.models.response.MiWorkspaceResponse;
@@ -129,6 +130,19 @@ public class WorkspaceMembershipService {
      */
     @Transactional
     public MiWorkspaceResponse crear(User actual, String nombre) {
+        WorkspaceCreateRequest solo = new WorkspaceCreateRequest();
+        solo.setName(nombre);
+        return crear(actual, solo);
+    }
+
+    /**
+     * Da de alta un cliente con los datos de su negocio. Solo el nombre es
+     * obligatorio; giro, ciudad, descripcion y objetivo son lo que la IA usa
+     * para escribir como el negocio, y se guardan si vienen.
+     */
+    @Transactional
+    public MiWorkspaceResponse crear(User actual, WorkspaceCreateRequest datos) {
+        String nombre = datos == null ? null : datos.getName();
         if (nombre == null || nombre.isBlank()) {
             throw new IllegalArgumentException("El espacio de trabajo necesita un nombre.");
         }
@@ -150,6 +164,10 @@ public class WorkspaceMembershipService {
 
         Workspace nuevo = workspaces.save(Workspace.builder()
                 .name(nombre.trim())
+                .giro(limpio(datos.getGiro()))
+                .ciudad(limpio(datos.getCiudad()))
+                .descripcion(limpio(datos.getDescripcion()))
+                .objetivo(datos.getObjetivo())
                 .organization(organizacion)
                 .build());
         // La membresía del creador, aunque administre la organización y ya
@@ -330,5 +348,14 @@ public class WorkspaceMembershipService {
 
     private static Role rolDe(User user) {
         return user.getRole() == null ? Role.ADMIN : user.getRole();
+    }
+
+    /** El texto sin espacios de más, o {@code null} si no quedó nada. */
+    private static String limpio(String valor) {
+        if (valor == null) {
+            return null;
+        }
+        String recortado = valor.strip();
+        return recortado.isEmpty() ? null : recortado;
     }
 }

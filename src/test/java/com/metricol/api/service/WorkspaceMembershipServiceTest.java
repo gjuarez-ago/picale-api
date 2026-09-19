@@ -18,9 +18,11 @@ import org.springframework.test.context.TestPropertySource;
 import com.metricol.api.entity.User;
 import com.metricol.api.entity.Workspace;
 import com.metricol.api.entity.WorkspaceMember;
+import com.metricol.api.enums.ObjetivoRedes;
 import com.metricol.api.enums.Permission;
 import com.metricol.api.enums.Role;
 import com.metricol.api.exception.ResourceNotFoundException;
+import com.metricol.api.models.request.WorkspaceCreateRequest;
 import com.metricol.api.models.response.AuthResponse;
 import com.metricol.api.models.response.MiWorkspaceResponse;
 import com.metricol.api.repository.UserRepository;
@@ -207,6 +209,46 @@ class WorkspaceMembershipServiceTest {
         assertThat(nuevo.activo()).isFalse();
         assertThat(miembros.existsByUserIdAndWorkspaceId(yo.getId(), nuevo.id())).isTrue();
         assertThat(activoDe(yo)).isEqualTo(mio.getId());
+    }
+
+    @Test
+    @DisplayName("crear un espacio guarda los datos del negocio, sin espacios de mas")
+    void creaConLosDatosDelNegocio() {
+        Workspace mio = workspace("Agencia");
+        User yo = usuario(mio);
+        darAcceso(yo, mio);
+
+        WorkspaceCreateRequest datos = new WorkspaceCreateRequest();
+        datos.setName("Tacos El Guero");
+        datos.setGiro("  Restaurante o cafeteria ");
+        datos.setCiudad("Manzanillo, Colima");
+        datos.setDescripcion("   ");
+        datos.setObjetivo(ObjetivoRedes.MAS_CLIENTES);
+
+        MiWorkspaceResponse nuevo = membresias.crear(yo, datos);
+        workspacesCreados.add(nuevo.id());
+
+        Workspace guardado = workspaces.findById(nuevo.id()).orElseThrow();
+        assertThat(guardado.getGiro()).isEqualTo("Restaurante o cafeteria");
+        assertThat(guardado.getCiudad()).isEqualTo("Manzanillo, Colima");
+        // Un texto en blanco no es un dato: queda vacio y no una linea sin nada.
+        assertThat(guardado.getDescripcion()).isNull();
+        assertThat(guardado.getObjetivo()).isEqualTo(ObjetivoRedes.MAS_CLIENTES);
+    }
+
+    @Test
+    @DisplayName("crear solo con el nombre sigue valiendo: el resto es opcional")
+    void creaSoloConElNombre() {
+        Workspace mio = workspace("Agencia");
+        User yo = usuario(mio);
+        darAcceso(yo, mio);
+
+        MiWorkspaceResponse nuevo = membresias.crear(yo, "Solo nombre");
+        workspacesCreados.add(nuevo.id());
+
+        Workspace guardado = workspaces.findById(nuevo.id()).orElseThrow();
+        assertThat(guardado.getGiro()).isNull();
+        assertThat(guardado.getObjetivo()).isNull();
     }
 
     @Test

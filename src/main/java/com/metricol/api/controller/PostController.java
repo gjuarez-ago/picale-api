@@ -89,12 +89,27 @@ public class PostController {
      * programada— y no solo que se esté guardando.
      */
     private void exigirPermisosDeGuardado(User currentUser, PostSaveRequest request) {
-        permisos.exigir(currentUser, Permission.POST_CREATE);
-        if (request.getScheduledAt() != null) {
-            permisos.exigir(currentUser, Permission.POST_SCHEDULE);
-        } else {
-            permisos.exigir(currentUser, Permission.POST_PUBLISH);
+        for (Permission permiso : permisosDeGuardado(request)) {
+            permisos.exigir(currentUser, permiso);
         }
+    }
+
+    /**
+     * Los permisos que pide guardar esto, segun lo que va a hacer.
+     *
+     * <p>Un borrador ({@code publishNow} en falso y sin fecha) no sale a
+     * ninguna red, asi que pide solo crear: quien redacta y deja todo listo
+     * sin poder publicar tambien puede guardar lo que lleva a medias. Salir ya
+     * pide publicar; dejarla programada, programar.
+     */
+    static List<Permission> permisosDeGuardado(PostSaveRequest request) {
+        if (request.getScheduledAt() != null) {
+            return List.of(Permission.POST_CREATE, Permission.POST_SCHEDULE);
+        }
+        if (request.isPublishNow()) {
+            return List.of(Permission.POST_CREATE, Permission.POST_PUBLISH);
+        }
+        return List.of(Permission.POST_CREATE);
     }
 
     /**
