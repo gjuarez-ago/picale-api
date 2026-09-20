@@ -70,6 +70,16 @@ app:
     # workspace —que es nuevo en cada arranque, porque H2 vive en memoria—
     # las redes conectadas se perderian de vista en el siguiente reinicio.
     upload-post-profile: pulso-dev
+  # Cobros con Stripe (ver StripeProperties). Sin llaves = cobros apagados: la app
+  # funciona igual y no se le cobra a nadie.
+  # SOLO llaves de prueba (sk_test_). Para recibir avisos en local hace falta
+  # `stripe listen --forward-to localhost:8087/api/v1/billing/webhook`, que da su
+  # propio whsec_. StripeModeGuard no deja arrancar con una llave real.
+  # Los productos y precios NO se crean a mano: la API crea los productos en
+  # Stripe al vender y el monto sale de la tabla billing_settings.
+  stripe:
+    secret-key: ${STRIPE_SECRET_KEY:}
+    webhook-secret: ${STRIPE_WEBHOOK_SECRET:}
 
 server:
   port: 8087

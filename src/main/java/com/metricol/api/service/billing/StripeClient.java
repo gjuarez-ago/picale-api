@@ -78,19 +78,70 @@ public class StripeClient {
     }
 
     /**
+     * Cuánto se cobra y por qué producto. El monto viaja EN LÍNEA (no hay un
+     * {@code price_...} que crear a mano en Stripe): sale de la tabla de ajustes
+     * y lo conserva cada suscripción con el importe con el que nació.
+     *
+     * @param producto el {@code prod_...} (o id fijo) del catálogo de Stripe
+     * @param centavos en la unidad menor de la moneda (34900 = $349.00)
+     * @param mensual {@code true} = suscripción mensual (una licencia); {@code false} = pago único (un paquete)
+     */
+    public record Tarifa(String producto, long centavos, String moneda, boolean mensual) {
+    }
+
+    private static void poner(Map<String, String> campos, String prefijo, Tarifa tarifa) {
+        campos.put(prefijo + "[price_data][currency]", tarifa.moneda().toLowerCase());
+        campos.put(prefijo + "[price_data][product]", tarifa.producto());
+        campos.put(prefijo + "[price_data][unit_amount]", String.valueOf(tarifa.centavos()));
+        if (tarifa.mensual()) {
+            campos.put(prefijo + "[price_data][recurring][interval]", "month");
+        }
+    }
+
+    /**
+     * Crea el producto del catálogo si todavía no existe, con un id fijo.
+     *
+     * <p>Con id fijo, «buscar o crear» es «pedirlo y, si no está, crearlo»: sin
+     * búsquedas —que en Stripe tardan en reflejar lo recién creado— y sin poder
+     * acabar con dos productos para lo mismo. Es lo que hace el catálogo de
+     * Vivento, y por lo mismo nadie tiene que crear productos a mano.
+     */
+    public void asegurarProducto(String id, String nombre, String descripcion) {
+        exigirDisponible();
+        try {
+            rest.get().uri("/products/" + id)
+                    .header("Authorization", "Bearer " + props.getSecretKey().strip())
+                    .retrieve().body(String.class);
+            return; // ya existe
+        } catch (RestClientResponseException ex) {
+            if (ex.getStatusCode().value() != 404) {
+                throw fallo("/products/" + id, ex);
+            }
+        }
+        Map<String, String> campos = new LinkedHashMap<>();
+        campos.put("id", id);
+        campos.put("name", nombre);
+        if (descripcion != null && !descripcion.isBlank()) {
+            campos.put("description", descripcion);
+        }
+        post("/products", campos, null);
+        log.info("Producto {} creado en Stripe", id);
+    }
+
+    /**
      * Una compra que se paga en la página de Stripe.
      *
-     * @param suscripcion {@code true} = suscripción (una licencia); {@code false} = pago único (un paquete)
      * @param datos lo que Stripe devuelve tal cual en el aviso: qué se compró y para quién. Con una
      *        suscripción también se copia a la suscripción, para que sus avisos lo traigan.
      * @return la dirección a la que se manda a la persona
      */
-    public String crearCompra(String cliente, String precio, boolean suscripcion, Map<String, String> datos,
+    public String crearCompra(String cliente, Tarifa tarifa, Map<String, String> datos,
             String urlExito, String urlCancelado, String llaveDeRepeticion) {
+        boolean suscripcion = tarifa.mensual();
         Map<String, String> campos = new LinkedHashMap<>();
         campos.put("mode", suscripcion ? "subscription" : "payment");
         campos.put("customer", cliente);
-        campos.put("line_items[0][price]", precio);
+        poner(campos, "line_items[0]", tarifa);
         campos.put("line_items[0][quantity]", "1");
         campos.put("success_url", urlExito);
         campos.put("cancel_url", urlCancelado);
@@ -122,13 +173,23 @@ public class StripeClient {
         return post("/subscriptions/" + suscripcion, campos, null);
     }
 
-    public JsonNode obtenerSuscripcion(String suscripcion) {
-        return get("/subscriptions/" + suscripcion);
+    /**
+     * Cambia el precio de una suscripción para sus PRÓXIMAS renovaciones: lo ya
+     * cobrado no se toca ni se prorratea. Se usa cuando un negocio adicional pasa
+     * a ser el primero de su organización.
+     */
+    public JsonNode cambiarPrecio(String suscripcion, Tarifa tarifa) {
+        JsonNode actual = obtenerSuscripcion(suscripcion);
+        String articulo = texto(actual.path("items").path("data").path(0), "id");
+        Map<String, String> campos = new LinkedHashMap<>();
+        campos.put("items[0][id]", articulo);
+        poner(campos, "items[0]", tarifa);
+        campos.put("proration_behavior", "none");
+        return post("/subscriptions/" + suscripcion, campos, null);
     }
 
-    /** El precio (monto, moneda, ciclo) tal como está en Stripe: es la única verdad del monto. */
-    public JsonNode obtenerPrecio(String precio) {
-        return get("/prices/" + precio);
+    public JsonNode obtenerSuscripcion(String suscripcion) {
+        return get("/subscriptions/" + suscripcion);
     }
 
     // ------------------------------------------------------------------

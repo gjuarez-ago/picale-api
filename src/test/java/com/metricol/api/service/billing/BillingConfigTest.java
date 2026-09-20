@@ -21,7 +21,6 @@ import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 
-import com.metricol.api.config.StripeProperties;
 import com.metricol.api.entity.BillingSetting;
 import com.metricol.api.entity.CreditPack;
 import com.metricol.api.repository.BillingSettingRepository;
@@ -32,7 +31,6 @@ class BillingConfigTest {
 
     private BillingSettingRepository ajustes;
     private CreditPackRepository paquetes;
-    private StripeProperties stripe;
     private BillingConfig config;
 
     /** La tabla de mentira. */
@@ -42,8 +40,7 @@ class BillingConfigTest {
     void preparar() {
         ajustes = mock(BillingSettingRepository.class);
         paquetes = mock(CreditPackRepository.class);
-        stripe = new StripeProperties();
-        config = new BillingConfig(ajustes, paquetes, stripe);
+        config = new BillingConfig(ajustes, paquetes);
 
         when(ajustes.findAll()).thenAnswer(i -> new ArrayList<>(tabla.values()));
         when(ajustes.findById(anyString())).thenAnswer(i -> Optional.ofNullable(tabla.get((String) i.getArgument(0))));
@@ -77,12 +74,12 @@ class BillingConfigTest {
         poner(BillingConfig.HABILITADO, "true");
         poner(BillingConfig.DIAS_PRUEBA_REGISTRO, "30");
         poner(BillingConfig.CREDITOS_MENSUALES, "20");
-        poner(BillingConfig.PRECIO_LICENCIA, "price_abc123");
+        poner(BillingConfig.LISTA_LICENCIA, "39900");
 
         assertThat(config.habilitado()).isTrue();
         assertThat(config.diasDePruebaAlRegistrarse()).isEqualTo(30);
         assertThat(config.creditosMensuales()).isEqualTo(20);
-        assertThat(config.precioDeLicencia()).isEqualTo("price_abc123");
+        assertThat(config.listaDeLicencia()).isEqualTo(39900);
     }
 
     @Test
@@ -122,7 +119,7 @@ class BillingConfigTest {
         config.sembrar();
 
         assertThat(config.diasDeGracia()).as("no se pisa").isEqualTo(3);
-        assertThat(tabla).containsKeys(BillingConfig.HABILITADO, BillingConfig.MONEDA, BillingConfig.PRECIO_LICENCIA,
+        assertThat(tabla).containsKeys(BillingConfig.HABILITADO, BillingConfig.MONEDA, BillingConfig.LISTA_LICENCIA,
                 BillingConfig.DIAS_PRUEBA_REGISTRO, BillingConfig.DIAS_PRUEBA_EXISTENTES,
                 BillingConfig.CREDITOS_MENSUALES);
         // Arrancan apagados: encender los cobros es una decisión, no un efecto del despliegue.
@@ -130,23 +127,90 @@ class BillingConfigTest {
     }
 
     @Test
-    @DisplayName("el precio de la licencia se siembra desde STRIPE_PRICE_WORKSPACE si está")
-    void semillaDelPrecio() {
-        stripe.setPriceWorkspace("price_desde_env");
+    @DisplayName("siembra los precios (349 y 249) y los días de aviso")
+    void preciosDeLista() {
         when(paquetes.count()).thenReturn(0L);
-
         config.sembrar();
 
-        assertThat(tabla.get(BillingConfig.PRECIO_LICENCIA).getValor()).isEqualTo("price_desde_env");
+        assertThat(config.listaDeLicencia()).isEqualTo(34900);
+        assertThat(config.listaDeAdicional()).isEqualTo(24900);
+        assertThat(config.diasDeAviso()).isEqualTo(5);
+        assertThat(tabla).containsKeys(BillingConfig.LISTA_LICENCIA, BillingConfig.LISTA_ADICIONAL, BillingConfig.DIAS_DE_AVISO);
+        // Los precios ya no son ids de Stripe: la API crea los productos y manda el monto.
+        assertThat(tabla.keySet()).noneMatch(k -> k.contains("stripe_price"));
     }
 
     @Test
-    @DisplayName("siembra tres paquetes de créditos, apagados y sin precio, solo la primera vez")
+    @DisplayName("por omisión los precios ya incluyen el IVA, y es un ajuste que se puede cambiar")
+    void ivaIncluido() {
+        when(paquetes.count()).thenReturn(0L);
+        config.sembrar();
+        assertThat(config.impuestoIncluido()).isTrue();
+        assertThat(tabla).containsKey(BillingConfig.IVA_INCLUIDO);
+
+        config.guardar(BillingConfig.IVA_INCLUIDO, "false");
+        assertThat(config.impuestoIncluido()).isFalse();
+    }
+
+    @Test
+    @DisplayName("un precio en pesos en vez de centavos («349») se rechaza al guardarlo: saldría a $3.49")
+    void precioEnPesosSeRechaza() {
+        poner(BillingConfig.LISTA_LICENCIA, "34900");
+
+        assertThatThrownBy(() -> config.guardar(BillingConfig.LISTA_LICENCIA, "349"))
+                .isInstanceOf(IllegalArgumentException.class)
+                .hasMessageContaining("34900");
+        assertThatThrownBy(() -> config.guardar(BillingConfig.LISTA_ADICIONAL, "249"))
+                .isInstanceOf(IllegalArgumentException.class);
+        assertThatThrownBy(() -> config.guardar(BillingConfig.LISTA_LICENCIA, "trescientos"))
+                .isInstanceOf(IllegalArgumentException.class);
+        assertThat(config.listaDeLicencia()).as("no se pisó con el valor malo").isEqualTo(34900);
+
+        config.guardar(BillingConfig.LISTA_LICENCIA, " 39900 ");
+        assertThat(config.listaDeLicencia()).isEqualTo(39900);
+    }
+
+    @Test
+    @DisplayName("los demás ajustes también se validan: booleanos, moneda, días y créditos")
+    void otrosAjustes() {
+        poner(BillingConfig.HABILITADO, "false");
+        assertThatThrownBy(() -> config.guardar(BillingConfig.HABILITADO, "si"))
+                .isInstanceOf(IllegalArgumentException.class);
+        assertThatThrownBy(() -> config.guardar(BillingConfig.MONEDA, "pesos"))
+                .isInstanceOf(IllegalArgumentException.class);
+        assertThatThrownBy(() -> config.guardar(BillingConfig.DIAS_GRACIA, "-1"))
+                .isInstanceOf(IllegalArgumentException.class);
+        assertThatThrownBy(() -> config.guardar(BillingConfig.DIAS_PRUEBA_REGISTRO, "9999"))
+                .isInstanceOf(IllegalArgumentException.class);
+        assertThatThrownBy(() -> config.guardar(BillingConfig.CREDITOS_MENSUALES, "cinco"))
+                .isInstanceOf(IllegalArgumentException.class);
+        assertThat(config.habilitado()).isFalse();
+
+        poner(BillingConfig.MONEDA, "mxn");
+        config.guardar(BillingConfig.MONEDA, "USD");
+        assertThat(config.moneda()).isEqualTo("usd");
+    }
+
+    @Test
+    @DisplayName("un precio de lista mal escrito no rompe: se usa el de siempre")
+    void precioDeListaMalEscrito() {
+        poner(BillingConfig.LISTA_LICENCIA, "trescientos");
+        poner(BillingConfig.LISTA_ADICIONAL, "-5");
+        assertThat(config.listaDeLicencia()).isEqualTo(34900);
+        assertThat(config.listaDeAdicional()).isZero();
+    }
+
+    @Test
+    @DisplayName("siembra tres paquetes de créditos, apagados y con su precio de lista, solo la primera vez")
     void paquetesIniciales() {
         when(paquetes.count()).thenReturn(0L);
         config.sembrar();
 
-        verify(paquetes, times(3)).save(any(CreditPack.class));
+        org.mockito.ArgumentCaptor<CreditPack> guardados = org.mockito.ArgumentCaptor.forClass(CreditPack.class);
+        verify(paquetes, times(3)).save(guardados.capture());
+        assertThat(guardados.getAllValues()).extracting(CreditPack::getCredits).containsExactly(10, 25, 50);
+        assertThat(guardados.getAllValues()).extracting(CreditPack::getPriceMinor).containsExactly(7900, 17900, 32900);
+        assertThat(guardados.getAllValues()).allMatch(p -> !p.isActive());
 
         when(paquetes.count()).thenReturn(3L);
         config.sembrar();
@@ -154,11 +218,11 @@ class BillingConfigTest {
     }
 
     @Test
-    @DisplayName("solo se venden los paquetes encendidos y con precio de Stripe")
+    @DisplayName("solo se venden los paquetes encendidos y con precio")
     void paquetesEnVenta() {
-        CreditPack listo = CreditPack.builder().code("A").credits(10).stripePriceId("price_1").active(true).build();
-        CreditPack apagado = CreditPack.builder().code("B").credits(25).stripePriceId("price_2").active(false).build();
-        CreditPack sinPrecio = CreditPack.builder().code("C").credits(50).stripePriceId("").active(true).build();
+        CreditPack listo = CreditPack.builder().code("A").credits(10).priceMinor(7900).active(true).build();
+        CreditPack apagado = CreditPack.builder().code("B").credits(25).priceMinor(17900).active(false).build();
+        CreditPack sinPrecio = CreditPack.builder().code("C").credits(50).active(true).build();
         when(paquetes.findAllByOrderBySortOrderAscCreditsAsc()).thenReturn(List.of(listo, apagado, sinPrecio));
 
         assertThat(config.paquetesEnVenta()).containsExactly(listo);

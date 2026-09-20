@@ -39,6 +39,16 @@ app:
   # A donde vuelve el navegador despues de conectar una red en upload-post.com.
   # Sin default: si apunta a localhost, el usuario acaba en una pagina muerta.
   base-url: ${APP_BASE_URL}
+  # Cobros con Stripe (ver StripeProperties). Sin llaves = cobros apagados: la app
+  # funciona igual y no se le cobra a nadie.
+  # Llaves de ESTE ambiente, solo en el .env.vps del servidor (este repositorio puede
+  # ser publico): sk_live_ y whsec_ del webhook de produccion. Con una sk_test_ el
+  # dinero es de mentira; el modo lo dice la propia llave.
+  # Los productos y precios NO se crean a mano: la API crea los productos en
+  # Stripe al vender y el monto sale de la tabla billing_settings.
+  stripe:
+    secret-key: ${STRIPE_SECRET_KEY:}
+    webhook-secret: ${STRIPE_WEBHOOK_SECRET:}
 
 # Cadena larga y aleatoria, propia de este entorno. Cambiarla invalida todas
 # las sesiones abiertas.

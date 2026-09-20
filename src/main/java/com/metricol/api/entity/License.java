@@ -75,6 +75,15 @@ public class License {
     private boolean cancelAtPeriodEnd = false;
 
     /**
+     * Esta suscripción se cobra al precio de un negocio ADICIONAL (no al del
+     * plan). Sirve para que, si termina la licencia que llevaba el precio
+     * completo, otra tome su lugar (ver {@link com.metricol.api.service.billing.LicensePricingService}).
+     */
+    @Builder.Default
+    @Column(nullable = false, columnDefinition = "boolean default false")
+    private boolean pricedAsExtra = false;
+
+    /**
      * El workspace lo archivó el proceso de vencimientos (no la persona). Solo
      * esos se restauran solos al pagar: uno que alguien archivó a propósito se
      * queda como está.

@@ -157,17 +157,19 @@ public class StripeEventProcessor {
         }
 
         LocalDateTime finDePeriodo = finDePeriodoDe(suscripcion);
+        // Con qué precio se vendió: sirve para saber quién lleva el precio completo (LicensePricingService).
+        boolean comoAdicional = "extra".equals(datos.path("tier").asText(""));
 
         UUID workspaceId = uuid(datos.path("workspace_id").asText(""));
         if (workspaceId != null) {
-            return activarLicenciaDeUnEspacio(workspaceId, organizacionId, suscripcion, finDePeriodo);
+            return activarLicenciaDeUnEspacio(workspaceId, organizacionId, suscripcion, finDePeriodo, comoAdicional);
         }
-        return crearEspacioConLicencia(datos, organizacionId, suscripcion, finDePeriodo);
+        return crearEspacioConLicencia(datos, organizacionId, suscripcion, finDePeriodo, comoAdicional);
     }
 
     /** El espacio ya existía (en prueba, o archivado por falta de pago): se le pone su suscripción. */
     private Resultado activarLicenciaDeUnEspacio(UUID workspaceId, UUID organizacionId, String suscripcion,
-            LocalDateTime finDePeriodo) {
+            LocalDateTime finDePeriodo, boolean comoAdicional) {
         Optional<Workspace> encontrado = workspaces.findById(workspaceId);
         if (encontrado.isEmpty() || encontrado.get().getOrganization() == null
                 || !encontrado.get().getOrganization().getId().equals(organizacionId)) {
@@ -176,14 +178,14 @@ public class StripeEventProcessor {
         }
         License licencia = licencias.findByWorkspaceId(workspaceId).orElseGet(() -> License.builder()
                 .organizationId(organizacionId).workspaceId(workspaceId).status(LicenseStatus.ACTIVE).build());
-        activar(licencia, suscripcion, finDePeriodo);
+        activar(licencia, suscripcion, finDePeriodo, comoAdicional);
         restaurarSiLoArchivoElBarrido(licencia, encontrado.get());
         return Resultado.PROCESADO;
     }
 
     /** Un espacio nuevo: nace ahora que se pagó, con los datos del negocio que se contaron al comprar. */
     private Resultado crearEspacioConLicencia(JsonNode datos, UUID organizacionId, String suscripcion,
-            LocalDateTime finDePeriodo) {
+            LocalDateTime finDePeriodo, boolean comoAdicional) {
         UUID compradorId = uuid(datos.path("user_id").asText(""));
         String nombre = datos.path("name").asText("").trim();
         if (compradorId == null || nombre.isEmpty()) {
@@ -200,7 +202,7 @@ public class StripeEventProcessor {
 
         Workspace nuevo = membresias.crearParaLicencia(organizacionId, compradorId, peticion);
         activar(License.builder().organizationId(organizacionId).workspaceId(nuevo.getId())
-                .status(LicenseStatus.ACTIVE).build(), suscripcion, finDePeriodo);
+                .status(LicenseStatus.ACTIVE).build(), suscripcion, finDePeriodo, comoAdicional);
         return Resultado.PROCESADO;
     }
 
@@ -312,8 +314,9 @@ public class StripeEventProcessor {
     // Piezas
     // ------------------------------------------------------------------
 
-    private void activar(License licencia, String suscripcion, LocalDateTime finDePeriodo) {
+    private void activar(License licencia, String suscripcion, LocalDateTime finDePeriodo, boolean comoAdicional) {
         licencia.setStatus(LicenseStatus.ACTIVE);
+        licencia.setPricedAsExtra(comoAdicional);
         licencia.setStripeSubscriptionId(suscripcion);
         licencia.setCurrentPeriodEnd(finDePeriodo);
         licencia.setGraceUntil(null);

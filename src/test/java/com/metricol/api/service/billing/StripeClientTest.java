@@ -80,7 +80,11 @@ class StripeClientTest {
         servidor.expect(requestTo(BASE + "/checkout/sessions"))
                 .andExpect(content().string(containsString("mode=subscription")))
                 .andExpect(content().string(containsString("customer=cus_1")))
-                .andExpect(content().string(containsString("line_items%5B0%5D%5Bprice%5D=price_lic")))
+                // El monto viaja en línea, con el producto del catálogo: no hay price_... que crear a mano.
+                .andExpect(content().string(containsString("line_items%5B0%5D%5Bprice_data%5D%5Bproduct%5D=picale_licencia")))
+                .andExpect(content().string(containsString("line_items%5B0%5D%5Bprice_data%5D%5Bunit_amount%5D=34900")))
+                .andExpect(content().string(containsString("line_items%5B0%5D%5Bprice_data%5D%5Bcurrency%5D=mxn")))
+                .andExpect(content().string(containsString("line_items%5B0%5D%5Bprice_data%5D%5Brecurring%5D%5Binterval%5D=month")))
                 .andExpect(content().string(containsString("line_items%5B0%5D%5Bquantity%5D=1")))
                 .andExpect(content().string(containsString("metadata%5Bkind%5D=license")))
                 // Los avisos de la suscripción (renovaciones) también tienen que traer de quién es.
@@ -89,8 +93,8 @@ class StripeClientTest {
                 .andRespond(withSuccess("{\"id\":\"cs_1\",\"url\":\"https://checkout.stripe.com/c/pay/cs_1\"}",
                         MediaType.APPLICATION_JSON));
 
-        String url = cliente.crearCompra("cus_1", "price_lic", true, datos, "https://x/ok?s={CHECKOUT_SESSION_ID}",
-                "https://x/no", null);
+        String url = cliente.crearCompra("cus_1", new StripeClient.Tarifa("picale_licencia", 34900, "MXN", true), datos,
+                "https://x/ok?s={CHECKOUT_SESSION_ID}", "https://x/no", null);
 
         assertThat(url).isEqualTo("https://checkout.stripe.com/c/pay/cs_1");
         servidor.verify();
@@ -101,12 +105,14 @@ class StripeClientTest {
     void compraDePaquete() {
         servidor.expect(requestTo(BASE + "/checkout/sessions"))
                 .andExpect(content().string(containsString("mode=payment")))
+                .andExpect(content().string(containsString("line_items%5B0%5D%5Bprice_data%5D%5Bunit_amount%5D=7900")))
+                .andExpect(content().string(not(containsString("recurring"))))
                 .andExpect(content().string(containsString("metadata%5Bkind%5D=pack")))
                 .andExpect(content().string(not(containsString("subscription_data"))))
                 .andRespond(withSuccess("{\"url\":\"https://checkout.stripe.com/c/pay/cs_2\"}", MediaType.APPLICATION_JSON));
 
-        String url = cliente.crearCompra("cus_1", "price_pack", false, Map.of("kind", "pack"), "https://x/ok",
-                "https://x/no", null);
+        String url = cliente.crearCompra("cus_1", new StripeClient.Tarifa("picale_paquete_pack_10", 7900, "mxn", false),
+                Map.of("kind", "pack"), "https://x/ok", "https://x/no", null);
 
         assertThat(url).endsWith("cs_2");
     }
@@ -128,6 +134,36 @@ class StripeClientTest {
     }
 
     @Test
+    @DisplayName("cambiar el precio de una suscripción cambia su artículo, sin prorratear lo ya cobrado")
+    void cambiarPrecio() {
+        servidor.expect(requestTo(BASE + "/subscriptions/sub_1"))
+                .andExpect(method(HttpMethod.GET))
+                .andRespond(withSuccess("{\"id\":\"sub_1\",\"items\":{\"data\":[{\"id\":\"si_9\"}]}}", MediaType.APPLICATION_JSON));
+        servidor.expect(requestTo(BASE + "/subscriptions/sub_1"))
+                .andExpect(method(HttpMethod.POST))
+                .andExpect(content().string(containsString("items%5B0%5D%5Bid%5D=si_9")))
+                .andExpect(content().string(containsString("items%5B0%5D%5Bprice_data%5D%5Bproduct%5D=picale_licencia")))
+                .andExpect(content().string(containsString("items%5B0%5D%5Bprice_data%5D%5Bunit_amount%5D=34900")))
+                .andExpect(content().string(containsString("items%5B0%5D%5Bprice_data%5D%5Brecurring%5D%5Binterval%5D=month")))
+                .andExpect(content().string(containsString("proration_behavior=none")))
+                .andRespond(withSuccess("{\"id\":\"sub_1\"}", MediaType.APPLICATION_JSON));
+
+        assertThat(cliente.cambiarPrecio("sub_1", new StripeClient.Tarifa("picale_licencia", 34900, "mxn", true)).path("id").asText()).isEqualTo("sub_1");
+        servidor.verify();
+    }
+
+    @Test
+    @DisplayName("si la suscripción no trae artículos no se intenta cambiar nada")
+    void cambiarPrecioSinArticulos() {
+        servidor.expect(requestTo(BASE + "/subscriptions/sub_1"))
+                .andRespond(withSuccess("{\"id\":\"sub_1\",\"items\":{\"data\":[]}}", MediaType.APPLICATION_JSON));
+
+        assertThatThrownBy(() -> cliente.cambiarPrecio("sub_1", new StripeClient.Tarifa("picale_licencia", 34900, "mxn", true)))
+                .isInstanceOf(IllegalStateException.class);
+        servidor.verify();
+    }
+
+    @Test
     @DisplayName("el portal se abre para el cliente y regresa a donde se le diga")
     void portal() {
         servidor.expect(requestTo(BASE + "/billing_portal/sessions"))
@@ -139,17 +175,54 @@ class StripeClientTest {
     }
 
     @Test
-    @DisplayName("leer un precio y una suscripción son GET con la llave")
+    @DisplayName("leer una suscripción es un GET con la llave")
     void lecturas() {
-        servidor.expect(requestTo(BASE + "/prices/price_1"))
+        servidor.expect(requestTo(BASE + "/subscriptions/sub_1"))
                 .andExpect(method(HttpMethod.GET))
                 .andExpect(header("Authorization", "Bearer sk_test_secretisima"))
-                .andRespond(withSuccess("{\"unit_amount\":29900,\"currency\":\"mxn\"}", MediaType.APPLICATION_JSON));
-        servidor.expect(requestTo(BASE + "/subscriptions/sub_1"))
                 .andRespond(withSuccess("{\"status\":\"active\"}", MediaType.APPLICATION_JSON));
 
-        assertThat(cliente.obtenerPrecio("price_1").path("unit_amount").asLong()).isEqualTo(29900);
         assertThat(cliente.obtenerSuscripcion("sub_1").path("status").asText()).isEqualTo("active");
+    }
+
+    @Test
+    @DisplayName("un producto que ya existe no se vuelve a crear")
+    void productoQueYaExiste() {
+        servidor.expect(requestTo(BASE + "/products/picale_licencia"))
+                .andExpect(method(HttpMethod.GET))
+                .andRespond(withSuccess("{\"id\":\"picale_licencia\"}", MediaType.APPLICATION_JSON));
+
+        cliente.asegurarProducto("picale_licencia", "Pícale · Licencia", "Todo incluido");
+        servidor.verify(); // y ningún POST: no se esperaba
+    }
+
+    @Test
+    @DisplayName("un producto que no existe se crea con su id fijo, su nombre y su descripción")
+    void productoNuevo() {
+        servidor.expect(requestTo(BASE + "/products/picale_licencia"))
+                .andRespond(withStatus(HttpStatus.NOT_FOUND).contentType(MediaType.APPLICATION_JSON)
+                        .body("{\"error\":{\"code\":\"resource_missing\"}}"));
+        servidor.expect(requestTo(BASE + "/products"))
+                .andExpect(method(HttpMethod.POST))
+                .andExpect(content().string(containsString("id=picale_licencia")))
+                .andExpect(content().string(containsString("name=")))
+                .andExpect(content().string(containsString("description=")))
+                .andRespond(withSuccess("{\"id\":\"picale_licencia\"}", MediaType.APPLICATION_JSON));
+
+        cliente.asegurarProducto("picale_licencia", "Pícale · Licencia", "Todo incluido");
+        servidor.verify();
+    }
+
+    @Test
+    @DisplayName("cualquier otro fallo al buscar el producto (llave inválida, Stripe caído) no se toma por «no existe»")
+    void productoFalloRealNoCrea() {
+        servidor.expect(requestTo(BASE + "/products/picale_licencia"))
+                .andRespond(withStatus(HttpStatus.UNAUTHORIZED).contentType(MediaType.APPLICATION_JSON)
+                        .body("{\"error\":{\"message\":\"Invalid API Key\"}}"));
+
+        assertThatThrownBy(() -> cliente.asegurarProducto("picale_licencia", "X", null))
+                .isInstanceOf(IllegalStateException.class);
+        servidor.verify(); // no hubo POST
     }
 
     @Test
@@ -159,7 +232,8 @@ class StripeClientTest {
                 .andRespond(withStatus(HttpStatus.BAD_REQUEST).contentType(MediaType.APPLICATION_JSON)
                         .body("{\"error\":{\"message\":\"No such price: 'price_x'\"}}"));
 
-        assertThatThrownBy(() -> cliente.crearCompra("cus_1", "price_x", true, Map.of(), "https://x/ok", "https://x/no", null))
+        assertThatThrownBy(() -> cliente.crearCompra("cus_1", new StripeClient.Tarifa("picale_licencia", 34900, "mxn", true), Map.of(),
+                "https://x/ok", "https://x/no", null))
                 .isInstanceOf(IllegalStateException.class)
                 .hasMessageContaining("Inténtalo de nuevo")
                 .satisfies(ex -> assertThat(ex.getMessage()).doesNotContain("sk_test").doesNotContain("price_x"));
@@ -171,7 +245,8 @@ class StripeClientTest {
         servidor.expect(requestTo(BASE + "/checkout/sessions"))
                 .andRespond(withSuccess("{\"id\":\"cs_1\"}", MediaType.APPLICATION_JSON));
 
-        assertThatThrownBy(() -> cliente.crearCompra("cus_1", "price_1", true, Map.of(), "https://x/ok", "https://x/no", null))
+        assertThatThrownBy(() -> cliente.crearCompra("cus_1", new StripeClient.Tarifa("picale_licencia", 34900, "mxn", true), Map.of(),
+                "https://x/ok", "https://x/no", null))
                 .isInstanceOf(IllegalStateException.class)
                 .hasMessageContaining("url");
     }

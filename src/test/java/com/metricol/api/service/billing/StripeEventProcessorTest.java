@@ -158,6 +158,22 @@ class StripeEventProcessorTest {
     }
 
     @Test
+    @DisplayName("la licencia recuerda si se vendió al precio adicional: sin etiqueta o con «base» es precio completo")
+    void recuerdaElNivelDePrecio() {
+        Workspace nuevo = workspace();
+        when(membresias.crearParaLicencia(eq(org.getId()), eq(comprador), any(WorkspaceCreateRequest.class)))
+                .thenReturn(nuevo);
+
+        enviar("evt_1", "checkout.session.completed", sesionDeLicenciaNueva("paid"));
+        assertThat(guardadas.get(0).isPricedAsExtra()).isFalse();
+
+        guardadas.clear();
+        String extra = sesionDeLicenciaNueva("paid").replace("\"kind\":\"license\"", "\"kind\":\"license\",\"tier\":\"extra\"");
+        enviar("evt_2", "checkout.session.completed", extra);
+        assertThat(guardadas.get(0).isPricedAsExtra()).isTrue();
+    }
+
+    @Test
     @DisplayName("una compra pagada crea el espacio con los datos del negocio y su licencia activa")
     void licenciaNuevaPagada() {
         Workspace nuevo = workspace();

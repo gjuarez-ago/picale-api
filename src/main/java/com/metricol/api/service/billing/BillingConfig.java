@@ -14,7 +14,6 @@ import org.springframework.context.event.EventListener;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
-import com.metricol.api.config.StripeProperties;
 import com.metricol.api.entity.BillingSetting;
 import com.metricol.api.entity.CreditPack;
 import com.metricol.api.repository.BillingSettingRepository;
@@ -42,7 +41,18 @@ public class BillingConfig {
 
     public static final String HABILITADO = "billing.enabled";
     public static final String MONEDA = "billing.currency";
-    public static final String PRECIO_LICENCIA = "billing.license.stripe_price_id";
+    /**
+     * Los precios YA incluyen el IVA (el cliente paga exactamente lo que ve). Solo dice cómo se
+     * escribe en pantalla («IVA incluido» o «más IVA»); no cambia lo que se cobra ni activa
+     * ningún cálculo de impuestos en Stripe.
+     */
+    public static final String IVA_INCLUIDO = "billing.tax_included";
+    /** Cuántos días antes de que termine una prueba (o una licencia que no se renueva) se avisa en el panel. */
+    public static final String DIAS_DE_AVISO = "billing.warn_days";
+    /** Precio del primer negocio, en la unidad menor (34900 = $349.00). Es lo que se cobra y lo que enseña la página de planes. */
+    public static final String LISTA_LICENCIA = "billing.list.license_minor";
+    /** Precio de cada negocio adicional. */
+    public static final String LISTA_ADICIONAL = "billing.list.extra_minor";
     public static final String DIAS_PRUEBA_REGISTRO = "billing.trial_days.signup";
     public static final String DIAS_PRUEBA_EXISTENTES = "billing.trial_days.existing";
     public static final String DIAS_GRACIA = "billing.grace_days";
@@ -52,15 +62,13 @@ public class BillingConfig {
 
     private final BillingSettingRepository ajustes;
     private final CreditPackRepository paquetes;
-    private final StripeProperties stripe;
 
     private volatile Map<String, String> cache = Map.of();
     private volatile Instant cargado = Instant.EPOCH;
 
-    public BillingConfig(BillingSettingRepository ajustes, CreditPackRepository paquetes, StripeProperties stripe) {
+    public BillingConfig(BillingSettingRepository ajustes, CreditPackRepository paquetes) {
         this.ajustes = ajustes;
         this.paquetes = paquetes;
-        this.stripe = stripe;
     }
 
     // ------------------------------------------------------------------
@@ -77,9 +85,31 @@ public class BillingConfig {
         return texto(MONEDA, "mxn");
     }
 
-    /** El {@code price_...} de Stripe con el que se cobra una licencia nueva. */
-    public String precioDeLicencia() {
-        return texto(PRECIO_LICENCIA, "");
+    /** ¿Los precios ya traen el IVA? Por omisión sí: es lo que ve y paga el cliente. */
+    public boolean impuestoIncluido() {
+        return booleano(IVA_INCLUIDO, true);
+    }
+
+    /** Cuántos días antes del final se avisa en el panel. */
+    public int diasDeAviso() {
+        return Math.max(0, entero(DIAS_DE_AVISO, 5));
+    }
+
+    /**
+     * Lo mínimo que se acepta como precio: $10.00, que es también lo mínimo que Stripe cobra en pesos. Sobre
+     * todo protege de escribir «349» en vez de «34900»: el precio va en centavos, y un error así no se nota
+     * hasta que alguien paga $3.49.
+     */
+    public static final int PRECIO_MINIMO = 1000;
+
+    /** Precio del primer negocio, en la unidad menor de la moneda. Es lo que se cobra y lo que ve el público. */
+    public int listaDeLicencia() {
+        return Math.max(0, entero(LISTA_LICENCIA, 34900));
+    }
+
+    /** Precio de cada negocio adicional. */
+    public int listaDeAdicional() {
+        return Math.max(0, entero(LISTA_ADICIONAL, 24900));
     }
 
     /** Días gratis para quien se registra. */
@@ -139,10 +169,61 @@ public class BillingConfig {
     public void guardar(String clave, String valor) {
         BillingSetting fila = ajustes.findById(clave)
                 .orElseThrow(() -> new IllegalArgumentException("No existe el ajuste \"" + clave + "\"."));
-        fila.setValor(valor == null ? "" : valor.trim());
+        fila.setValor(validar(clave, valor == null ? "" : valor.trim()));
         fila.setUpdatedAt(LocalDateTime.now());
         ajustes.save(fila);
         invalidar();
+    }
+
+    /**
+     * Rechaza lo que no puede ser un valor de ese ajuste. Un ajuste mal escrito no debe llegar a cobrarse:
+     * se prefiere un error claro al guardarlo a un precio absurdo (o un cobro apagado) descubierto después.
+     */
+    static String validar(String clave, String valor) {
+        switch (clave) {
+            case HABILITADO, IVA_INCLUIDO -> {
+                if (!valor.equals("true") && !valor.equals("false")) {
+                    throw new IllegalArgumentException("El ajuste \"" + clave + "\" es true o false.");
+                }
+            }
+            case MONEDA -> {
+                if (!valor.matches("[A-Za-z]{3}")) {
+                    throw new IllegalArgumentException("La moneda son tres letras, como \"mxn\".");
+                }
+                return valor.toLowerCase();
+            }
+            case LISTA_LICENCIA, LISTA_ADICIONAL -> {
+                int centavos = entero(clave, valor);
+                if (centavos < PRECIO_MINIMO) {
+                    throw new IllegalArgumentException("El precio va en centavos y no baja de " + PRECIO_MINIMO
+                            + " ($10.00): $349.00 se escribe 34900.");
+                }
+            }
+            case DIAS_PRUEBA_REGISTRO, DIAS_PRUEBA_EXISTENTES, DIAS_GRACIA, DIAS_DE_AVISO -> {
+                int dias = entero(clave, valor);
+                if (dias < 0 || dias > 365) {
+                    throw new IllegalArgumentException("El ajuste \"" + clave + "\" son días, de 0 a 365.");
+                }
+            }
+            case CREDITOS_MENSUALES -> {
+                int creditos = entero(clave, valor);
+                if (creditos < 0 || creditos > 1000) {
+                    throw new IllegalArgumentException("Los créditos al mes van de 0 a 1000.");
+                }
+            }
+            default -> {
+                // Un ajuste que aún no conocemos se guarda tal cual.
+            }
+        }
+        return valor;
+    }
+
+    private static int entero(String clave, String valor) {
+        try {
+            return Integer.parseInt(valor);
+        } catch (NumberFormatException ex) {
+            throw new IllegalArgumentException("El ajuste \"" + clave + "\" es un número entero.");
+        }
     }
 
     public void invalidar() {
@@ -203,8 +284,14 @@ public class BillingConfig {
         s.put(HABILITADO, new String[] { "false",
                 "Enciende los cobros. false = todo funciona como siempre: sin licencias, sin creditos, sin archivar." });
         s.put(MONEDA, new String[] { "mxn", "Moneda de las licencias y los paquetes (la de los precios de Stripe)." });
-        s.put(PRECIO_LICENCIA, new String[] { stripe.getPriceWorkspace() == null ? "" : stripe.getPriceWorkspace(),
-                "price_... de Stripe de la licencia mensual de un workspace. El monto se cambia en Stripe." });
+        s.put(IVA_INCLUIDO, new String[] { "true",
+                "Los precios ya incluyen el IVA (el cliente paga lo que ve). Solo cambia el texto en pantalla: 'IVA incluido' o 'mas IVA'." });
+        s.put(LISTA_LICENCIA, new String[] { "34900",
+                "Precio mensual del primer negocio, en centavos (34900 = 349.00). Es lo que se cobra y lo que ensena la pagina de planes; quien ya esta suscrito conserva el que pago al entrar." });
+        s.put(LISTA_ADICIONAL, new String[] { "24900",
+                "Precio mensual de cada negocio adicional, en centavos. Igual al del primero = sin descuento por adicional." });
+        s.put(DIAS_DE_AVISO, new String[] { "5",
+                "Dias antes de que termine una prueba o una licencia que no se renueva para empezar a avisar en el panel." });
         s.put(DIAS_PRUEBA_REGISTRO, new String[] { "14", "Dias gratis al registrarse. 0 = sin prueba." });
         s.put(DIAS_PRUEBA_EXISTENTES, new String[] { "30",
                 "Dias gratis para los workspaces que ya existian al encender los cobros." });
@@ -217,17 +304,23 @@ public class BillingConfig {
         if (paquetes.count() > 0) {
             return;
         }
-        // Apagados y sin precio: se venden cuando se les pone un price_ de Stripe y se encienden.
+        // Apagados: se venden cuando se encienden (Stripe no necesita nada previo: la API crea el producto).
+        // Precios pensados sobre el costo de una generacion (unos 2.4 pesos entre director de arte
+        // e imagenes) mas la comision de Stripe: cerca de 60 % de margen y con descuento por volumen.
         int orden = 1;
-        for (int creditos : new int[] { 10, 25, 50 }) {
+        String[] nombres = { "Arranque", "Constante", "A tope" };
+        int[] creditos = { 10, 25, 50 };
+        int[] precios = { 7900, 17900, 32900 };
+        for (int i = 0; i < creditos.length; i++) {
             paquetes.save(CreditPack.builder()
-                    .code("PACK_" + creditos)
-                    .name(creditos + " creditos de imagen")
-                    .credits(creditos)
+                    .code("PACK_" + creditos[i])
+                    .name(nombres[i])
+                    .credits(creditos[i])
+                    .priceMinor(precios[i])
                     .active(false)
                     .sortOrder(orden++)
                     .build());
         }
-        log.info("Paquetes de creditos sembrados (apagados, sin precio)");
+        log.info("Paquetes de creditos sembrados (apagados)");
     }
 }

@@ -1,23 +1,17 @@
 package com.metricol.api.service.billing;
 
-import java.time.Duration;
-import java.time.Instant;
 import java.time.LocalDateTime;
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
-import java.util.concurrent.ConcurrentHashMap;
 import java.util.Optional;
 import java.util.UUID;
 
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
-import com.fasterxml.jackson.databind.JsonNode;
 import com.metricol.api.config.StripeProperties;
 import com.metricol.api.entity.CreditPack;
 import com.metricol.api.entity.License;
@@ -34,6 +28,7 @@ import com.metricol.api.models.response.BillingSummaryResponse.LicenseView;
 import com.metricol.api.models.response.BillingSummaryResponse.Pack;
 import com.metricol.api.models.response.BillingSummaryResponse.Price;
 import com.metricol.api.models.response.BillingSummaryResponse.WorkspaceBilling;
+import com.metricol.api.models.response.PlansResponse;
 import com.metricol.api.repository.CreditPackRepository;
 import com.metricol.api.repository.OrganizationRepository;
 import com.metricol.api.repository.WorkspaceRepository;
@@ -52,9 +47,6 @@ import com.metricol.api.service.OrganizationService;
 @Service
 public class BillingService {
 
-    private static final Logger log = LoggerFactory.getLogger(BillingService.class);
-    private static final Duration VIGENCIA_DEL_PRECIO = Duration.ofMinutes(10);
-
     private final BillingConfig config;
     private final StripeProperties stripeProps;
     private final StripeClient stripe;
@@ -64,18 +56,14 @@ public class BillingService {
     private final OrganizationRepository organizacionesRepo;
     private final WorkspaceRepository workspaces;
     private final CreditPackRepository paquetes;
+    private final StripeProductCatalog catalogo;
     private final String urlDelSitio;
-
-    /** Los precios leídos de Stripe, con la hora en que se leyeron. */
-    private record PrecioLeido(Price precio, Instant leido) {
-    }
-
-    private final Map<String, PrecioLeido> precios = new ConcurrentHashMap<>();
 
     public BillingService(BillingConfig config, StripeProperties stripeProps, StripeClient stripe,
             LicenseService licencias, CreditService creditos, OrganizationService organizaciones,
             OrganizationRepository organizacionesRepo, WorkspaceRepository workspaces,
-            CreditPackRepository paquetes, @Value("${app.web-url:https://picale.click}") String urlDelSitio) {
+            CreditPackRepository paquetes, StripeProductCatalog catalogo,
+            @Value("${app.web-url:https://picale.click}") String urlDelSitio) {
         this.config = config;
         this.stripeProps = stripeProps;
         this.stripe = stripe;
@@ -85,6 +73,7 @@ public class BillingService {
         this.organizacionesRepo = organizacionesRepo;
         this.workspaces = workspaces;
         this.paquetes = paquetes;
+        this.catalogo = catalogo;
         this.urlDelSitio = urlDelSitio.replaceAll("/+$", "");
     }
 
@@ -95,7 +84,8 @@ public class BillingService {
     @Transactional
     public BillingSummaryResponse resumen(User usuario) {
         if (!config.habilitado()) {
-            return new BillingSummaryResponse(false, null, config.moneda(), null, null, List.of(), List.of());
+            return new BillingSummaryResponse(false, null, config.moneda(), config.impuestoIncluido(),
+                    config.diasDeAviso(), null, null, false, null, List.of(), List.of());
         }
         Organization organizacion = organizaciones.deLaSesion(usuario);
         UUID espacioId = usuario.getWorkspace().getId();
@@ -117,9 +107,24 @@ public class BillingService {
         }
 
         List<Pack> packs = config.paquetesEnVenta().stream()
-                .map(p -> new Pack(p.getCode(), p.getName(), p.getCredits(), precio(p.getStripePriceId()))).toList();
+                .map(p -> new Pack(p.getCode(), p.getName(), p.getCredits(),
+                        new Price(p.getPriceMinor(), config.moneda(), "one_time")))
+                .toList();
         String modo = stripeProps.modo() == StripeProperties.Modo.APAGADO ? null : stripeProps.modo().name();
-        return new BillingSummaryResponse(true, modo, config.moneda(), precio(config.precioDeLicencia()), actual, todas, packs);
+        return new BillingSummaryResponse(true, modo, config.moneda(), config.impuestoIncluido(), config.diasDeAviso(),
+                new Price(config.listaDeLicencia(), config.moneda(), "month"),
+                new Price(config.listaDeAdicional(), config.moneda(), "month"),
+                esAdicional(organizacion.getId(), null), actual, todas, packs);
+    }
+
+    /** Lo que enseña la página pública de planes. Sale de los ajustes: no lleva sesión ni datos de nadie. */
+    public PlansResponse planes() {
+        List<PlansResponse.CreditPackPlan> packs = paquetes.findAllByOrderBySortOrderAscCreditsAsc().stream()
+                .filter(p -> p.isActive() && p.getPriceMinor() != null && p.getPriceMinor() > 0 && p.getCredits() > 0)
+                .map(p -> new PlansResponse.CreditPackPlan(p.getCode(), p.getName(), p.getCredits(), p.getPriceMinor()))
+                .toList();
+        return new PlansResponse(config.moneda(), config.impuestoIncluido(), config.diasDePruebaAlRegistrarse(), config.creditosMensuales(),
+                config.diasDeGracia(), config.listaDeLicencia(), config.listaDeAdicional(), packs);
     }
 
     // ------------------------------------------------------------------
@@ -148,7 +153,9 @@ public class BillingService {
         if (datos.getObjetivo() != null) {
             compra.put("objetivo", datos.getObjetivo().name());
         }
-        return iniciarCompra(organizacion, usuario, config.precioDeLicencia(), true, compra);
+        boolean adicional = esAdicional(organizacion.getId(), null);
+        compra.put("tier", adicional ? "extra" : "base");
+        return iniciarCompra(organizacion, usuario, tarifaDeLicencia(adicional), compra);
     }
 
     /** Ponerle licencia a un espacio que ya existe: uno en prueba, o uno que se archivó por falta de pago. */
@@ -172,7 +179,9 @@ public class BillingService {
         compra.put("organization_id", organizacion.getId().toString());
         compra.put("user_id", usuario.getId().toString());
         compra.put("workspace_id", espacio.getId().toString());
-        return iniciarCompra(organizacion, usuario, config.precioDeLicencia(), true, compra);
+        boolean adicional = esAdicional(organizacion.getId(), workspaceId);
+        compra.put("tier", adicional ? "extra" : "base");
+        return iniciarCompra(organizacion, usuario, tarifaDeLicencia(adicional), compra);
     }
 
     /** Un paquete suelto de créditos para un espacio. */
@@ -193,7 +202,9 @@ public class BillingService {
         compra.put("user_id", usuario.getId().toString());
         compra.put("workspace_id", espacio.getId().toString());
         compra.put("pack_code", paquete.getCode());
-        return iniciarCompra(organizacion, usuario, paquete.getStripePriceId(), false, compra);
+        return iniciarCompra(organizacion, usuario,
+                new StripeClient.Tarifa(catalogo.productoDePaquete(paquete), paquete.getPriceMinor(), config.moneda(), false),
+                compra);
     }
 
     // ------------------------------------------------------------------
@@ -244,15 +255,38 @@ public class BillingService {
     // Piezas
     // ------------------------------------------------------------------
 
-    private String iniciarCompra(Organization organizacion, User usuario, String precio, boolean suscripcion,
-            Map<String, String> datos) {
-        if (precio == null || precio.isBlank()) {
+    /**
+     * ¿El próximo negocio de esta organización es un ADICIONAL? Lo es cuando ya
+     * hay otro con licencia pagada y vigente. Una prueba no cuenta (no paga), ni
+     * una licencia terminada; y el espacio por el que se pregunta tampoco, para
+     * que renovar el primero no lo cobre como adicional de sí mismo.
+     */
+    private boolean esAdicional(UUID organizacionId, UUID excluirEspacio) {
+        return licencias.deLaOrganizacion(organizacionId).stream()
+                .filter(l -> excluirEspacio == null || !excluirEspacio.equals(l.getWorkspaceId()))
+                .anyMatch(l -> l.getStripeSubscriptionId() != null
+                        && (l.getStatus() == LicenseStatus.ACTIVE || l.getStatus() == LicenseStatus.PAST_DUE));
+    }
+
+    /**
+     * Cuánto y por qué producto se cobra una licencia: el precio del plan, o el
+     * adicional. El monto sale de los ajustes en el servidor, nunca de la
+     * petición, y el producto lo crea la API en Stripe la primera vez.
+     */
+    private StripeClient.Tarifa tarifaDeLicencia(boolean adicional) {
+        int centavos = adicional ? config.listaDeAdicional() : config.listaDeLicencia();
+        if (centavos <= 0) {
             throw new IllegalStateException("Falta configurar el precio en los ajustes de cobros.");
         }
+        return new StripeClient.Tarifa(catalogo.productoDeLicencia(adicional), centavos, config.moneda(), true);
+    }
+
+    private String iniciarCompra(Organization organizacion, User usuario, StripeClient.Tarifa tarifa,
+            Map<String, String> datos) {
         String cliente = clienteDe(organizacion, usuario);
         String exito = urlDelSitio + "/panel/facturacion?compra=ok&session_id={CHECKOUT_SESSION_ID}";
         String cancelado = urlDelSitio + "/panel/facturacion?compra=cancelada";
-        return stripe.crearCompra(cliente, precio, suscripcion, datos, exito, cancelado, null);
+        return stripe.crearCompra(cliente, tarifa, datos, exito, cancelado, null);
     }
 
     /** El cliente de Stripe de la organización; se crea la primera vez que compra. */
@@ -291,28 +325,6 @@ public class BillingService {
     private static void poner(Map<String, String> mapa, String clave, String valor) {
         if (valor != null && !valor.isBlank()) {
             mapa.put(clave, valor.trim());
-        }
-    }
-
-    /** El precio tal como está en Stripe, con una caché corta: es un dato que casi no cambia. */
-    private Price precio(String id) {
-        if (id == null || id.isBlank() || !stripe.disponible()) {
-            return null;
-        }
-        PrecioLeido guardado = precios.get(id);
-        if (guardado != null && Duration.between(guardado.leido(), Instant.now()).compareTo(VIGENCIA_DEL_PRECIO) < 0) {
-            return guardado.precio();
-        }
-        try {
-            JsonNode precio = stripe.obtenerPrecio(id);
-            Price leido = new Price(precio.path("unit_amount").asLong(0), precio.path("currency").asText(""),
-                    precio.path("recurring").path("interval").asText(""));
-            precios.put(id, new PrecioLeido(leido, Instant.now()));
-            return leido;
-        } catch (RuntimeException ex) {
-            log.warn("No se pudo leer el precio {} de Stripe: {}", id, ex.getMessage());
-            // Mejor un precio un poco viejo que ninguno.
-            return guardado == null ? null : guardado.precio();
         }
     }
 }

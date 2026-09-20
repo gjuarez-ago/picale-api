@@ -18,9 +18,11 @@ public class LicenseSweepWorker {
     private static final Logger log = LoggerFactory.getLogger(LicenseSweepWorker.class);
 
     private final LicenseService licencias;
+    private final LicensePricingService precios;
 
-    public LicenseSweepWorker(LicenseService licencias) {
+    public LicenseSweepWorker(LicenseService licencias, LicensePricingService precios) {
         this.licencias = licencias;
+        this.precios = precios;
     }
 
     @Scheduled(fixedDelayString = "${app.billing.sweep-delay-ms:600000}", initialDelayString = "${app.billing.sweep-initial-delay-ms:120000}")
@@ -30,6 +32,11 @@ public class LicenseSweepWorker {
         } catch (Exception ex) {
             // Un fallo aquí no debe tumbar nada: se reintenta en el siguiente ciclo.
             log.warn("Falló el barrido de licencias: {}", ex.toString());
+        }
+        try {
+            precios.reconciliar();
+        } catch (Exception ex) {
+            log.warn("Falló el ajuste de precios de licencias: {}", ex.toString());
         }
     }
 }

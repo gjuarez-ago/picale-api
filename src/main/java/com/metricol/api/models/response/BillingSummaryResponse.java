@@ -14,8 +14,16 @@ public record BillingSummaryResponse(
         /** «PRUEBA» o «REAL»: con cuál modo de Stripe se está hablando. Nulo si no hay cobros. */
         String mode,
         String currency,
-        /** El precio de una licencia, tal como está en Stripe. Nulo si no se pudo leer. */
+        /** Los precios ya incluyen el IVA. */
+        boolean taxIncluded,
+        /** Cuántos días antes del final conviene avisar en pantalla (de los ajustes: cambiarlo no requiere desplegar). */
+        int warnDays,
+        /** El precio mensual del primer negocio. */
         Price licensePrice,
+        /** El precio de cada negocio adicional. Igual al anterior si solo hay un precio configurado. */
+        Price extraLicensePrice,
+        /** Con {@code true}, el próximo espacio que se pague cuesta el precio adicional (ya hay uno pagado). */
+        boolean nextLicenseIsExtra,
         /** El espacio en el que se está trabajando. */
         WorkspaceBilling workspace,
         /** Todas las licencias de la organización. Solo para quien la administra; si no, vacío. */
@@ -46,7 +54,7 @@ public record BillingSummaryResponse(
     public record Credits(int monthly, int pack, int total, LocalDateTime monthlyExpiresAt) {
     }
 
-    /** Un paquete de créditos; {@code price} es el de Stripe (nulo si no se pudo leer). */
+    /** Un paquete de créditos y lo que cuesta. */
     public record Pack(String code, String name, int credits, Price price) {
     }
 }

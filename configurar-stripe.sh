@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # Configura los cobros con Stripe en la VM api-videos-prod.
 #
-# Pone STRIPE_SECRET_KEY, STRIPE_WEBHOOK_SECRET y STRIPE_PRICE_WORKSPACE en
+# Pone STRIPE_SECRET_KEY y STRIPE_WEBHOOK_SECRET en
 # ~/metricol.api/.env.vps, recrea el contenedor para que las lea y comprueba que
 # llegaron (y en que modo: prueba o real).
 #
@@ -14,20 +14,17 @@
 # confirmacion aparte.
 #
 # Antes de correrlo, en https://dashboard.stripe.com (con "Modo de prueba"):
-#   1. Product catalog > Add product: "Espacio de trabajo", precio recurrente
-#      mensual. Copia el id del precio (price_...).
-#   2. Developers > API keys: copia la clave secreta (sk_test_...).
-#   3. Developers > Webhooks > Add endpoint:
+#   1. Developers > API keys: copia la clave secreta (sk_test_...).
+#      Los productos y precios NO se crean a mano: la API crea los productos la
+#      primera vez que vende algo, y el monto sale de la tabla billing_settings.
+#   2. Developers > Webhooks > Add endpoint:
 #        URL:     https://picale.rodtech.cloud/api/v1/billing/webhook
 #        Eventos: checkout.session.completed, customer.subscription.updated,
 #                 customer.subscription.deleted, invoice.paid,
 #                 invoice.payment_failed
 #      Copia el "Signing secret" (whsec_...).
-#   4. Settings > Billing > Customer portal: activalo, para que cada quien
+#   3. Settings > Billing > Customer portal: activalo, para que cada quien
 #      cambie su tarjeta o cancele sin escribirnos.
-#
-# Nota: hoy la API todavia no tiene el codigo que cobra (ni el endpoint del
-# webhook): estas variables solo dejan lista la configuracion.
 #
 # Uso:   bash configurar-stripe.sh
 # Cada dato se puede omitir con Enter para dejar el que ya haya en la VM.
@@ -63,13 +60,7 @@ if [ -n "$WEBHOOK" ] && ! [[ "$WEBHOOK" =~ ^whsec_[A-Za-z0-9]{16,}$ ]]; then
   exit 1
 fi
 
-read -r -p "Id del precio del espacio (price_...; Enter = dejar el actual): " PRECIO
-if [ -n "$PRECIO" ] && ! [[ "$PRECIO" =~ ^price_[A-Za-z0-9]{8,}$ ]]; then
-  echo "ERROR: el id no tiene el formato de un precio de Stripe (price_...)." >&2
-  exit 1
-fi
-
-if [ -z "$CLAVE$WEBHOOK$PRECIO" ]; then
+if [ -z "$CLAVE$WEBHOOK" ]; then
   echo "No hay nada que cambiar."
   exit 0
 fi
@@ -81,7 +72,6 @@ chmod 600 "$TMP"
 {
   [ -n "$CLAVE" ] && printf 'STRIPE_SECRET_KEY=%s\n' "$CLAVE"
   [ -n "$WEBHOOK" ] && printf 'STRIPE_WEBHOOK_SECRET=%s\n' "$WEBHOOK"
-  [ -n "$PRECIO" ] && printf 'STRIPE_PRICE_WORKSPACE=%s\n' "$PRECIO"
   true
 } > "$TMP"
 unset CLAVE WEBHOOK
@@ -134,7 +124,6 @@ sudo docker exec metricol-api sh -c '
     echo \"STRIPE_SECRET_KEY:      definida (modo \$modo)\"
   else echo \"STRIPE_SECRET_KEY:      VACIA (cobros apagados)\"; fi
   if [ -n \"\$STRIPE_WEBHOOK_SECRET\" ]; then echo \"STRIPE_WEBHOOK_SECRET:  definido\"; else echo \"STRIPE_WEBHOOK_SECRET:  VACIO\"; fi
-  echo \"STRIPE_PRICE_WORKSPACE: \${STRIPE_PRICE_WORKSPACE:-VACIO}\"
 '
 "
 

@@ -43,13 +43,6 @@ public class StripeProperties {
      */
     private String webhookSecret = "";
 
-    /**
-     * El precio mensual de un espacio de trabajo ({@code price_...}). Es un id y
-     * no un monto: el monto, la moneda y el ciclo se cambian en Stripe sin
-     * tocar el codigo.
-     */
-    private String priceWorkspace = "";
-
     /** Donde vive la API de Stripe. Cambia solo en las pruebas. */
     private String apiBaseUrl = "https://api.stripe.com/v1";
 

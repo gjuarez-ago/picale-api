@@ -62,6 +62,8 @@ public class SecurityConfig {
                         .requestMatchers("/api/v1/ops/**").permitAll()
                         // Stripe no tiene sesión: cada aviso se autentica con su firma (ver StripeWebhookVerifier).
                         .requestMatchers("/api/v1/billing/webhook").permitAll()
+                        // Los precios de lista son públicos: los enseña la página de planes a quien aún no tiene cuenta.
+                        .requestMatchers(org.springframework.http.HttpMethod.GET, "/api/v1/billing/plans").permitAll()
                         .anyRequest().authenticated())
                 .headers(headers -> headers.frameOptions(frame -> frame.sameOrigin()))
                 .exceptionHandling(handling -> handling

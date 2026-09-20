@@ -18,10 +18,10 @@ import lombok.Setter;
 /**
  * Un paquete de créditos de imagen que se compra suelto.
  *
- * <p>El monto no vive aquí: es el del precio de Stripe ({@code stripePriceId}),
- * así un cambio de precio se hace en Stripe y no hay dos verdades. Aquí solo
- * están cuántos créditos trae, cómo se llama y si se ofrece hoy. Editable en la
- * base sin desplegar.
+ * <p>{@code priceMinor} es el precio: lo que se cobra (viaja en línea a Stripe, que
+ * tiene un producto por paquete creado por la API) y lo que enseña la página de
+ * planes. Aquí también están cuántos créditos trae, cómo se llama y si se ofrece
+ * hoy. Editable en la base sin desplegar.
  */
 @Entity
 @Table(name = "credit_packs")
@@ -46,9 +46,9 @@ public class CreditPack {
     @Column(nullable = false)
     private int credits;
 
-    /** El {@code price_...} de Stripe. Vacío = todavía no se puede vender. */
-    @Column(length = 80)
-    private String stripePriceId;
+    /** Precio en la unidad menor de la moneda (7900 = $79.00). Nulo = no se vende ni se enseña. */
+    @Column
+    private Integer priceMinor;
 
     @Builder.Default
     @Column(nullable = false)
@@ -62,8 +62,8 @@ public class CreditPack {
     @Column(nullable = false)
     private LocalDateTime updatedAt = LocalDateTime.now();
 
-    /** Se puede vender: está encendido y tiene con qué cobrarse. */
+    /** Se puede vender: está encendido y tiene precio. */
     public boolean vendible() {
-        return active && stripePriceId != null && !stripePriceId.isBlank() && credits > 0;
+        return active && priceMinor != null && priceMinor > 0 && credits > 0;
     }
 }

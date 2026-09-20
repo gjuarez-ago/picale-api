@@ -32,6 +32,15 @@ app:
     allowed-origins: ${CORS_ALLOWED_ORIGINS}
   # A donde vuelve el navegador despues de conectar una red en upload-post.com.
   base-url: ${APP_BASE_URL}
+  # Cobros con Stripe (ver StripeProperties). Sin llaves = cobros apagados: la app
+  # funciona igual y no se le cobra a nadie.
+  # SOLO llaves de prueba (sk_test_) y el whsec_ del webhook de QA, que es otro
+  # endpoint y por eso otro secreto. StripeModeGuard no deja arrancar con una real.
+  # Los productos y precios NO se crean a mano: la API crea los productos en
+  # Stripe al vender y el monto sale de la tabla billing_settings.
+  stripe:
+    secret-key: ${STRIPE_SECRET_KEY:}
+    webhook-secret: ${STRIPE_WEBHOOK_SECRET:}
 
 # El secreto de QA es propio: compartirlo con prod haria que un token de aqui
 # valiera alla.

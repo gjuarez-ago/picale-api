@@ -51,14 +51,14 @@ public class OpsBillingController {
     }
 
     /** Lo que se puede cambiar de un paquete. Lo que no viene, no se toca. */
-    public record CambioDePaquete(String name, Integer credits, String stripePriceId, Boolean active,
+    public record CambioDePaquete(String name, Integer credits, Integer priceMinor, Boolean active,
             Integer sortOrder) {
     }
 
-    public record PaqueteVista(String code, String name, int credits, String stripePriceId, boolean active,
+    public record PaqueteVista(String code, String name, int credits, Integer priceMinor, boolean active,
             boolean vendible, int sortOrder) {
         static PaqueteVista de(CreditPack p) {
-            return new PaqueteVista(p.getCode(), p.getName(), p.getCredits(), p.getStripePriceId(), p.isActive(),
+            return new PaqueteVista(p.getCode(), p.getName(), p.getCredits(), p.getPriceMinor(), p.isActive(),
                     p.vendible(), p.getSortOrder());
         }
     }
@@ -104,8 +104,13 @@ public class OpsBillingController {
             }
             paquete.setCredits(cambio.credits());
         }
-        if (cambio.stripePriceId() != null) {
-            paquete.setStripePriceId(cambio.stripePriceId().isBlank() ? null : cambio.stripePriceId().trim());
+        if (cambio.priceMinor() != null) {
+            // 0 lo quita; cualquier otro valor va en centavos y no baja del mínimo (349.00 se escribe 34900).
+            if (cambio.priceMinor() < 0 || (cambio.priceMinor() > 0 && cambio.priceMinor() < BillingConfig.PRECIO_MINIMO)) {
+                throw new IllegalArgumentException("El precio va en centavos y no baja de " + BillingConfig.PRECIO_MINIMO
+                        + " ($10.00): $79.00 se escribe 7900. Usa 0 para quitarlo.");
+            }
+            paquete.setPriceMinor(cambio.priceMinor() == 0 ? null : cambio.priceMinor());
         }
         if (cambio.active() != null) {
             paquete.setActive(cambio.active());

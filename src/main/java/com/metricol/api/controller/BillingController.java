@@ -16,6 +16,7 @@ import com.metricol.api.models.request.WorkspaceCreateRequest;
 import com.metricol.api.models.response.ApiResponse;
 import com.metricol.api.models.response.BillingSummaryResponse;
 import com.metricol.api.models.response.BillingSummaryResponse.LicenseView;
+import com.metricol.api.models.response.PlansResponse;
 import com.metricol.api.service.billing.BillingService;
 
 import jakarta.validation.Valid;
@@ -43,6 +44,12 @@ public class BillingController {
     }
 
     public record CreditCheckoutRequest(@NotBlank String packCode, UUID workspaceId) {
+    }
+
+    /** Precios y paquetes para la página pública de planes. Sin sesión: no lleva datos de nadie. */
+    @GetMapping("/plans")
+    public ResponseEntity<ApiResponse<PlansResponse>> planes() {
+        return ResponseEntity.ok(ApiResponse.success(billing.planes()));
     }
 
     @GetMapping("/summary")
