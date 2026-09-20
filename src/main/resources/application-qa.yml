@@ -25,6 +25,15 @@ spring:
         format_sql: true
         dialect: ${DB_DIALECT:org.hibernate.dialect.PostgreSQLDialect}
 
+  # Correo saliente (Resend por SMTP). Sin llave los codigos quedan en el log.
+  # El usuario SMTP de Resend es literalmente "resend". Los topes y el TLS son
+  # iguales en todos los ambientes y viven en application.properties.
+  mail:
+    host: ${MAIL_HOST:smtp.resend.com}
+    port: ${MAIL_PORT:587}
+    username: ${MAIL_USERNAME:resend}
+    password: ${MAIL_PASSWORD:}
+
 # Desde donde se puede llamar a esta API. El default de application.properties
 # abre localhost y los tuneles de ngrok, que en QA ya no aplica.
 app:
@@ -41,6 +50,25 @@ app:
   stripe:
     secret-key: ${STRIPE_SECRET_KEY:}
     webhook-secret: ${STRIPE_WEBHOOK_SECRET:}
+
+  # El sitio web publico (Angular), que NO es lo mismo que base-url: aquella es
+  # donde vive el puente de regreso a la app movil. Esta es donde estan las
+  # pantallas que se abren desde un correo, como aceptar una invitacion.
+  web-url: ${WEB_URL:https://picale.click}
+  # Llave de los endpoints de operacion (/api/v1/ops/**), en la cabecera
+  # X-Ops-Key. Vacia = esos endpoints contestan 404, como si no existieran.
+  ops:
+    api-key: ${OPS_API_KEY:}
+  # Cuenta de demostracion para la revision de Google Play (DemoAccountInitializer).
+  # Vacias = no se crea nada. No lleva la de produccion: QA no debe crear la cuenta que revisa Google.
+  demo:
+    email: ${DEMO_ACCOUNT_EMAIL:}
+    password: ${DEMO_ACCOUNT_PASSWORD:}
+    organization: ${DEMO_ACCOUNT_ORGANIZATION:Picale HUB}
+  # Solo la direccion del remitente; el nombre visible ("Picale") lo pone
+  # EmailService. Tiene que ser de un dominio verificado en Resend.
+  mail:
+    from: ${MAIL_FROM:notificaciones@picale.rodtech.cloud}
 
 # El secreto de QA es propio: compartirlo con prod haria que un token de aqui
 # valiera alla.
@@ -65,11 +93,42 @@ uploadpost:
   api-key: ${UPLOAD_POST_API_KEY:}
   base-url: ${UPLOAD_POST_BASE_URL:https://api.upload-post.com/api}
 
-# Sugerencias de texto. Sin llave la aplicacion levanta igual y solo la IA
-# queda apagada (OpenAiProperties.isConfigured).
+# OpenAI: texto de las publicaciones y campañas de imagen. Sin llave la aplicacion
+# levanta igual y solo la IA queda apagada (OpenAiProperties.isConfigured).
+# Usa una llave propia de QA, no la de produccion.
+# Los precios son dolares por millon de tokens y con ellos se calcula el costo de
+# cada llamada en ai_usage; en 0 se cuentan los tokens pero el costo sale en cero.
+# Si se cambia de modelo hay que cambiar tambien su precio.
 openai:
   api-key: ${OPENAI_API_KEY:}
   model: ${OPENAI_API_MODEL:gpt-4o-mini}
+  pricing:
+    input-usd-per-million: ${OPENAI_PRICING_INPUT_PER_1M_USD:0}
+    output-usd-per-million: ${OPENAI_PRICING_OUTPUT_PER_1M_USD:0}
+  # Imagenes de campana (POST /campaign-images/generate). El modelo debe estar
+  # permitido en el proyecto de OpenAI.
+  image-model: ${OPENAI_IMAGE_MODEL:gpt-image-1.5}
+  # Fidelidad a las fotos de referencia (high/low; vacio = no se manda).
+  image-input-fidelity: ${OPENAI_IMAGE_INPUT_FIDELITY:high}
+  # Director de arte: mira las fotos y arma el plan. Si falla o tarda mas de lo
+  # indicado, la campana sigue sin el con el prompt de siempre.
+  director-model: ${OPENAI_DIRECTOR_MODEL:gpt-5-mini}
+  director-reasoning-effort: ${OPENAI_DIRECTOR_REASONING_EFFORT:low}
+  director-timeout-seconds: ${OPENAI_DIRECTOR_TIMEOUT_SECONDS:25}
+  director-pricing:
+    input-usd-per-million: ${OPENAI_DIRECTOR_PRICING_INPUT_PER_1M_USD:0}
+    output-usd-per-million: ${OPENAI_DIRECTOR_PRICING_OUTPUT_PER_1M_USD:0}
+  image-pricing:
+    input-usd-per-million: ${OPENAI_IMAGE_PRICING_INPUT_PER_1M_USD:0}
+    output-usd-per-million: ${OPENAI_IMAGE_PRICING_OUTPUT_PER_1M_USD:0}
+
+# Entrar con Google. Va el client id del cliente WEB, NO el de Android (el token
+# viene dirigido al cliente web: es su audience). El mismo valor va en la app
+# como serverClientId. Vacio = login con Google apagado; entrar con correo y
+# contrasena sigue igual.
+google:
+  oauth:
+    client-id: ${GOOGLE_OAUTH_CLIENT_ID:}
 
 server:
   port: ${PORT:8080}

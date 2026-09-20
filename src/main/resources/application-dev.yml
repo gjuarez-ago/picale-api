@@ -44,12 +44,30 @@ spring:
         # que cambiar tambien DB_DIALECT.
         dialect: ${DB_DIALECT:org.hibernate.dialect.H2Dialect}
 
-# Las llaves (JWT, R2, OpenAI, upload-post) llegan del .env de la raiz, que
-# application.properties importa como `optional:file:./.env[.properties]`.
-# Ahi tienen defaults vacios y cada integracion se apaga sola si le falta la
-# suya, en vez de tumbar el arranque.
+  # Correo saliente (Resend por SMTP). Sin llave los codigos de recuperacion no salen: quedan en el log (EmailService), que basta para desarrollo.
+  # El usuario SMTP de Resend es literalmente "resend". Los topes y el TLS son
+  # iguales en todos los ambientes y viven en application.properties.
+  mail:
+    host: ${MAIL_HOST:smtp.resend.com}
+    port: ${MAIL_PORT:587}
+    username: ${MAIL_USERNAME:resend}
+    password: ${MAIL_PASSWORD:}
+
+# Las llaves (JWT, R2, OpenAI, upload-post, correo, Google, Stripe) llegan del .env
+# de la raiz, que application.properties importa como
+# `optional:file:./.env[.properties]`. Aqui tienen defaults vacios y cada
+# integracion se apaga sola si le falta la suya, en vez de tumbar el arranque.
+# Cada ambiente declara las suyas en su propio archivo: application-qa.yml y
+# application-prod.yml. Nada de esto vive ya en application.properties.
 
 app:
+  # Desde donde se puede llamar a esta API: localhost y los tuneles de ngrok.
+  cors:
+    allowed-origins: "${CORS_ALLOWED_ORIGINS:http://localhost:*,https://*.ngrok-free.app,https://*.ngrok-free.dev,https://*.ngrok.app,https://*.ngrok.io}"
+  # A donde vuelve el navegador despues de conectar una red en upload-post.com.
+  # En desarrollo es el tunel de ngrok que sirve el build web (ver dev-server.js
+  # de metricol_app).
+  base-url: ${APP_BASE_URL:http://localhost:5050}
   # La cuenta con la que entrar en desarrollo, sembrada al arrancar por
   # DevDataSeeder si no existe. Se escribe aqui —y no solo como default en el
   # codigo— para que se encuentre leyendo la configuracion, que es donde se
@@ -80,6 +98,84 @@ app:
   stripe:
     secret-key: ${STRIPE_SECRET_KEY:}
     webhook-secret: ${STRIPE_WEBHOOK_SECRET:}
+
+  # El sitio web publico (Angular), que NO es lo mismo que base-url: aquella es
+  # donde vive el puente de regreso a la app movil. Esta es donde estan las
+  # pantallas que se abren desde un correo, como aceptar una invitacion.
+  web-url: ${WEB_URL:http://localhost:4200}
+  # Llave de los endpoints de operacion (/api/v1/ops/**), en la cabecera
+  # X-Ops-Key. Vacia = esos endpoints contestan 404, como si no existieran.
+  ops:
+    api-key: ${OPS_API_KEY:}
+  # Cuenta de demostracion para la revision de Google Play (DemoAccountInitializer).
+  # Vacias = no se crea nada. Solo tiene sentido en el servidor de produccion.
+  demo:
+    email: ${DEMO_ACCOUNT_EMAIL:}
+    password: ${DEMO_ACCOUNT_PASSWORD:}
+    organization: ${DEMO_ACCOUNT_ORGANIZATION:Picale HUB}
+  # Solo la direccion del remitente; el nombre visible ("Picale") lo pone
+  # EmailService. Tiene que ser de un dominio verificado en Resend.
+  mail:
+    from: ${MAIL_FROM:notificaciones@picale.rodtech.cloud}
+
+# Cadena larga y aleatoria. El default sirve SOLO para desarrollo: en qa y prod
+# no lo hay y el arranque falla si falta.
+jwt:
+  secret: ${JWT_SECRET:metricol-dev-secret-key-change-me-please-32bytes}
+  expiration-days: ${JWT_EXPIRATION_DAYS:15}
+
+# Medios de las publicaciones. Sin bucket no se puede subir una foto, pero la
+# aplicacion levanta igual.
+cloudflare:
+  r2:
+    endpoint: ${CLOUDFLARE_R2_ENDPOINT:}
+    access-key: ${CLOUDFLARE_R2_ACCESS_KEY_ID:}
+    secret-key: ${CLOUDFLARE_R2_SECRET_ACCESS_KEY:}
+    bucket: ${CLOUDFLARE_R2_BUCKET_NAME:}
+    public-url: ${CLOUDFLARE_R2_PUBLIC_URL:}
+
+# Publicacion real en redes (upload-post.com). Sin llave, conectar una red avisa
+# que no esta configurado (UploadPostProperties.isConfigured).
+uploadpost:
+  api-key: ${UPLOAD_POST_API_KEY:}
+  base-url: ${UPLOAD_POST_BASE_URL:https://api.upload-post.com/api}
+
+# OpenAI: texto de las publicaciones y campañas de imagen. Sin llave la aplicacion
+# levanta igual y solo la IA queda apagada (OpenAiProperties.isConfigured).
+# En desarrollo conviene una llave de un proyecto aparte, con tope de gasto.
+# Los precios son dolares por millon de tokens y con ellos se calcula el costo de
+# cada llamada en ai_usage; en 0 se cuentan los tokens pero el costo sale en cero.
+# Si se cambia de modelo hay que cambiar tambien su precio.
+openai:
+  api-key: ${OPENAI_API_KEY:}
+  model: ${OPENAI_API_MODEL:gpt-4o-mini}
+  pricing:
+    input-usd-per-million: ${OPENAI_PRICING_INPUT_PER_1M_USD:0}
+    output-usd-per-million: ${OPENAI_PRICING_OUTPUT_PER_1M_USD:0}
+  # Imagenes de campana (POST /campaign-images/generate). El modelo debe estar
+  # permitido en el proyecto de OpenAI.
+  image-model: ${OPENAI_IMAGE_MODEL:gpt-image-1.5}
+  # Fidelidad a las fotos de referencia (high/low; vacio = no se manda).
+  image-input-fidelity: ${OPENAI_IMAGE_INPUT_FIDELITY:high}
+  # Director de arte: mira las fotos y arma el plan. Si falla o tarda mas de lo
+  # indicado, la campana sigue sin el con el prompt de siempre.
+  director-model: ${OPENAI_DIRECTOR_MODEL:gpt-5-mini}
+  director-reasoning-effort: ${OPENAI_DIRECTOR_REASONING_EFFORT:low}
+  director-timeout-seconds: ${OPENAI_DIRECTOR_TIMEOUT_SECONDS:25}
+  director-pricing:
+    input-usd-per-million: ${OPENAI_DIRECTOR_PRICING_INPUT_PER_1M_USD:0}
+    output-usd-per-million: ${OPENAI_DIRECTOR_PRICING_OUTPUT_PER_1M_USD:0}
+  image-pricing:
+    input-usd-per-million: ${OPENAI_IMAGE_PRICING_INPUT_PER_1M_USD:0}
+    output-usd-per-million: ${OPENAI_IMAGE_PRICING_OUTPUT_PER_1M_USD:0}
+
+# Entrar con Google. Va el client id del cliente WEB, NO el de Android (el token
+# viene dirigido al cliente web: es su audience). El mismo valor va en la app
+# como serverClientId. Vacio = login con Google apagado; entrar con correo y
+# contrasena sigue igual.
+google:
+  oauth:
+    client-id: ${GOOGLE_OAUTH_CLIENT_ID:}
 
 server:
   port: 8087
