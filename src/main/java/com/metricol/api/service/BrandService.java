@@ -53,15 +53,16 @@ public class BrandService {
     public BrandResponse guardar(User usuario, BrandRequest pedido) {
         Workspace w = buscar(usuario);
 
-        // Los del negocio, con la regla de siempre: nulo = no lo toques; vacío = bórralo.
+        // Los del negocio, con la regla de siempre: nulo = no lo toques; vacío = bórralo. Salvo el
+        // giro y la descripción, que son parte del perfil obligatorio: no se pueden dejar vacíos.
         if (pedido.getGiro() != null) {
-            w.setGiro(texto(pedido.getGiro(), 120));
+            w.setGiro(obligatorio(pedido.getGiro(), 120, "El giro"));
         }
         if (pedido.getCiudad() != null) {
             w.setCiudad(texto(pedido.getCiudad(), 120));
         }
         if (pedido.getDescripcion() != null) {
-            w.setDescripcion(texto(pedido.getDescripcion(), 500));
+            w.setDescripcion(obligatorio(pedido.getDescripcion(), 500, "La descripción del negocio"));
         }
         if (pedido.getObjetivo() != null) {
             w.setObjetivo(pedido.getObjetivo());
@@ -118,6 +119,15 @@ public class BrandService {
             return null;
         }
         return limpio.length() > max ? limpio.substring(0, max).strip() : limpio;
+    }
+
+    /** Como {@link #texto} pero sin admitir vacío: es parte del perfil obligatorio del negocio. */
+    static String obligatorio(String valor, int max, String cual) {
+        String limpio = texto(valor, max);
+        if (limpio == null) {
+            throw new IllegalArgumentException(cual + " no puede quedar vacío: es parte del perfil obligatorio del negocio.");
+        }
+        return limpio;
     }
 
     /** Solo tonos que existen, sin repetir, hasta tres. Uno desconocido es un error, no un descarte silencioso. */

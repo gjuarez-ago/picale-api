@@ -27,4 +27,11 @@ public class WorkspaceResponse {
     private String descripcion;
 
     private ObjetivoRedes objetivo;
+
+    /**
+     * ¿Está completo el perfil obligatorio del negocio (nombre, giro,
+     * descripción y objetivo)? La app móvil y la web deciden con esto si dejan
+     * entrar o piden completarlo primero.
+     */
+    private boolean profileComplete;
 }

@@ -145,6 +145,23 @@ public class Workspace {
         return archivedAt != null;
     }
 
+    /**
+     * ¿Tiene el perfil de negocio que hace falta para trabajar? Nombre, giro,
+     * descripción y objetivo. La ciudad no cuenta: es opcional.
+     *
+     * <p>Es la regla de la web y de la app móvil, y vive AQUÍ para que las dos
+     * lean la misma respuesta. Sin esto cada una la calculaba por su cuenta y
+     * bastaba que una se desactualizara para que el mismo espacio fuera
+     * «completo» en la computadora e «incompleto» en el teléfono.
+     */
+    public boolean perfilCompleto() {
+        return lleno(name) && lleno(giro) && lleno(descripcion) && objetivo != null;
+    }
+
+    private static boolean lleno(String s) {
+        return s != null && !s.isBlank();
+    }
+
     @CreationTimestamp
     private LocalDateTime createdAt;
 }

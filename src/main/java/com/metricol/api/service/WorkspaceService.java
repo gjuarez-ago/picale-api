@@ -63,6 +63,7 @@ public class WorkspaceService {
                 .ciudad(workspace.getCiudad())
                 .descripcion(workspace.getDescripcion())
                 .objetivo(workspace.getObjetivo())
+                .profileComplete(workspace.perfilCompleto())
                 .build();
     }
 
