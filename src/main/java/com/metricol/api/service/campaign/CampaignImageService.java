@@ -43,6 +43,7 @@ import com.metricol.api.service.ai.AiUsageRecorder;
 import com.metricol.api.service.billing.CreditService;
 import com.metricol.api.service.ai.ArtDirector;
 import com.metricol.api.service.ai.EspecTexto;
+import com.metricol.api.service.ai.MarcaDelNegocio;
 import com.metricol.api.service.ai.OpenAiClient;
 import com.metricol.api.service.ai.OpenAiImageClient;
 import com.metricol.api.service.ai.OpenAiImageClient.Referencia;
@@ -173,10 +174,18 @@ public class CampaignImageService {
      * tocar el {@code Workspace} de la petición: es una entidad ligada a una
      * sesión de base de datos que ya se cerró.
      */
-    record Negocio(UUID id, String nombre, String giro, String ciudad, String descripcion, String objetivo) {
+    record Negocio(UUID id, String nombre, String giro, String ciudad, String descripcion, String objetivo,
+            MarcaDelNegocio marca) {
+
+        /** Sin perfil de marca: lo que se sabía antes de que existiera. */
+        Negocio(UUID id, String nombre, String giro, String ciudad, String descripcion, String objetivo) {
+            this(id, nombre, giro, ciudad, descripcion, objetivo, MarcaDelNegocio.VACIA);
+        }
+
         static Negocio de(Workspace w) {
             return new Negocio(w.getId(), w.getName(), w.getGiro(), w.getCiudad(), w.getDescripcion(),
-                    w.getObjetivo() == null ? null : w.getObjetivo().name());
+                    w.getObjetivo() == null ? null : w.getObjetivo().name(),
+                    MarcaDelNegocio.de(w.getBrandProfile()));
         }
     }
 
@@ -725,7 +734,8 @@ public class CampaignImageService {
                 captionsAnteriores(),
                 formato.name().toLowerCase(Locale.ROOT),
                 fotoUrls,
-                redes);
+                redes,
+                negocio.marca());
     }
 
     /**
@@ -787,6 +797,19 @@ public class CampaignImageService {
         t.append(".\n");
         if (negocio.descripcion() != null && !negocio.descripcion().isBlank()) {
             t.append("About the business: ").append(negocio.descripcion().trim()).append("\n");
+        }
+        MarcaDelNegocio marca = negocio.marca() == null ? MarcaDelNegocio.VACIA : negocio.marca();
+        if (MarcaDelNegocio.hay(marca.queVende())) {
+            t.append("What it sells or highlights: ").append(marca.queVende().trim()).append("\n");
+        }
+        if (MarcaDelNegocio.hay(marca.publico())) {
+            t.append("Audience: ").append(marca.publico().trim()).append("\n");
+        }
+        if (!marca.personalidadEn().isEmpty()) {
+            t.append("Brand personality: ").append(marca.personalidadEn()).append("\n");
+        }
+        if (MarcaDelNegocio.hay(marca.evitar())) {
+            t.append("Avoid: ").append(marca.evitar().trim()).append("\n");
         }
         if (p.objective() != null && !p.objective().isBlank()) {
             t.append("Goal of the post: ").append(p.objective().trim()).append("\n");
@@ -862,6 +885,23 @@ public class CampaignImageService {
             }
             if (negocio.ciudad() != null && !negocio.ciudad().isBlank()) {
                 usuario.append("Ciudad: ").append(negocio.ciudad().trim()).append("\n");
+            }
+            MarcaDelNegocio marca = negocio.marca() == null ? MarcaDelNegocio.VACIA : negocio.marca();
+            if (MarcaDelNegocio.hay(marca.queVende())) {
+                usuario.append("Que vende o que destaca: ").append(marca.queVende().trim()).append("\n");
+            }
+            if (MarcaDelNegocio.hay(marca.publico())) {
+                usuario.append("A quien le habla: ").append(marca.publico().trim()).append("\n");
+            }
+            if (!marca.personalidadEs().isEmpty()) {
+                usuario.append("Como suena su marca (escribe asi): ").append(marca.personalidadEs()).append("\n");
+            }
+            if (MarcaDelNegocio.hay(marca.evitar())) {
+                usuario.append("Nunca digas ni hagas esto: ").append(marca.evitar().trim()).append("\n");
+            }
+            if (marca.hayContacto()) {
+                usuario.append("Como contactarlo (usa solo estos datos, y solo si el llamado a la accion los pide): ")
+                        .append(marca.contactoEs()).append("\n");
             }
             usuario.append("Lo que se quiere comunicar: ").append(porDefecto).append("\n");
             if (p.objective() != null && !p.objective().isBlank()) {

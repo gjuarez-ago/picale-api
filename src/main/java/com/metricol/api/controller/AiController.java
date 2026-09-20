@@ -28,6 +28,7 @@ import com.metricol.api.models.response.CaptionSuggestionResponse;
 import com.metricol.api.models.response.ComposeResponse;
 import com.metricol.api.service.ai.Ajuste;
 import com.metricol.api.service.ai.CaptionCopywriter;
+import com.metricol.api.service.ai.MarcaDelNegocio;
 import com.metricol.api.service.ai.Redactor;
 import com.metricol.api.service.ai.VisorDeMedios;
 
@@ -167,6 +168,7 @@ public class AiController {
                 workspace.getGiro(),
                 workspace.getCiudad(),
                 workspace.getDescripcion(),
-                workspace.getObjetivo());
+                workspace.getObjetivo(),
+                MarcaDelNegocio.de(workspace.getBrandProfile()));
     }
 }

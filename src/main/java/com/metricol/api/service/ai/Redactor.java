@@ -148,7 +148,13 @@ public class Redactor {
             String giro,
             String ciudad,
             String descripcion,
-            ObjetivoRedes objetivo) {
+            ObjetivoRedes objetivo,
+            MarcaDelNegocio marca) {
+
+        /** Sin perfil de marca: lo que se sabía antes de que existiera. */
+        public Negocio(String nombre, String giro, String ciudad, String descripcion, ObjetivoRedes objetivo) {
+            this(nombre, giro, ciudad, descripcion, objetivo, MarcaDelNegocio.VACIA);
+        }
 
         /** Cuando no se sabe nada del negocio. */
         public static final Negocio DESCONOCIDO = new Negocio(null, null, null, null, null);
@@ -350,6 +356,18 @@ public class Redactor {
             sb.append("- Lo que busca con sus redes: ")
                     .append(negocio.objetivo().getInstruccion())
                     .append('\n');
+        }
+
+        MarcaDelNegocio marca = negocio.marca() == null ? MarcaDelNegocio.VACIA : negocio.marca();
+        agregar(sb, "Que vende o que destaca", marca.queVende());
+        agregar(sb, "A quien le habla", marca.publico());
+        agregar(sb, "Como suena su marca (escribe asi)", marca.personalidadEs());
+        agregar(sb, "Nunca digas ni hagas esto", marca.evitar());
+        if (marca.hayContacto()) {
+            // Los datos van con su limite pegado: se usan cuando la publicacion invita a escribir o visitar, y
+            // no se inventan otros.
+            sb.append("- Como contactarlo (usa SOLO estos datos, y solo si el texto invita a escribir o visitar): ")
+                    .append(marca.contactoEs()).append('\n');
         }
         return sb.toString();
     }

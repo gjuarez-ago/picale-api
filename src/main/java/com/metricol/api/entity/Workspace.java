@@ -6,6 +6,7 @@ import java.util.UUID;
 
 import org.hibernate.annotations.CreationTimestamp;
 
+import com.metricol.api.entity.converter.BrandProfileConverter;
 import com.metricol.api.entity.converter.StringSetConverter;
 import com.metricol.api.enums.ObjetivoRedes;
 
@@ -85,6 +86,15 @@ public class Workspace {
     /** Que busca conseguir. Ver {@link ObjetivoRedes}. */
     @Enumerated(EnumType.STRING)
     private ObjetivoRedes objetivo;
+
+    /**
+     * El resto de lo que la IA debe saber de la marca: qué vende, a quién le
+     * habla, cómo suena, qué evitar y cómo contactarla. Ver {@link BrandProfile}.
+     * Nulo = todavía no lo contó.
+     */
+    @Convert(converter = BrandProfileConverter.class)
+    @Column(name = "brand_profile", length = 4000)
+    private BrandProfile brandProfile;
 
     /**
      * El color de su inicial cuando no hay logotipo.

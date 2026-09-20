@@ -67,7 +67,16 @@ public class ArtDirector {
             List<String> captionsAnteriores,
             String formato,
             List<String> fotoUrls,
-            List<String> redes) {
+            List<String> redes,
+            MarcaDelNegocio marca) {
+
+        /** Sin perfil de marca: lo que se sabía antes de que existiera. */
+        public Contexto(String negocio, String giro, String ciudad, String descripcion, String objetivoNegocio,
+                String idea, String objetivoCampana, String tono, String estilo, String cta, List<String> paleta,
+                List<String> captionsAnteriores, String formato, List<String> fotoUrls, List<String> redes) {
+            this(negocio, giro, ciudad, descripcion, objetivoNegocio, idea, objetivoCampana, tono, estilo, cta, paleta,
+                    captionsAnteriores, formato, fotoUrls, redes, MarcaDelNegocio.VACIA);
+        }
     }
 
     /**
@@ -291,6 +300,23 @@ public class ArtDirector {
         }
         if (hay(c.objetivoNegocio())) {
             t.append("What the business wants from social media: ").append(c.objetivoNegocio().trim()).append("\n");
+        }
+        MarcaDelNegocio marca = c.marca() == null ? MarcaDelNegocio.VACIA : c.marca();
+        if (hay(marca.queVende())) {
+            t.append("What the business sells or highlights: ").append(marca.queVende().trim()).append("\n");
+        }
+        if (hay(marca.publico())) {
+            t.append("Who it speaks to: ").append(marca.publico().trim()).append("\n");
+        }
+        if (!marca.personalidadEn().isEmpty()) {
+            t.append("Brand personality (write and compose in this voice): ").append(marca.personalidadEn()).append("\n");
+        }
+        if (hay(marca.evitar())) {
+            t.append("Never say or do this: ").append(marca.evitar().trim()).append("\n");
+        }
+        if (marca.hayContacto()) {
+            t.append("Contact details (use them ONLY inside the captions and only if the call to action needs them; ")
+                    .append("NEVER draw them as text in the image): ").append(marca.contactoEs()).append("\n");
         }
         t.append("Format: ").append(valor(c.formato(), "post")).append("\n");
         t.append("What this post must communicate (the owner's own words): ").append(valor(c.idea(), "")).append("\n");
