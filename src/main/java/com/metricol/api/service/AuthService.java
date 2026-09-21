@@ -114,6 +114,8 @@ public class AuthService {
         organizaciones.crearPara(user, workspace, workspace.getName());
         // Con los cobros encendidos, empieza su prueba gratis (con sus créditos).
         licencias.iniciarPruebaAlRegistrarse(workspace);
+        // La bienvenida, sin contraseña: quien se registra con formulario ya la conoce.
+        correo.enviarBienvenida(user.getEmail(), user.getName(), false);
 
         return sesionPara(user);
     }
@@ -219,6 +221,8 @@ public class AuthService {
         licencias.iniciarPruebaAlRegistrarse(workspace);
 
         log.info("Cuenta creada desde Google: {}", email);
+        // La bienvenida, sin contraseña: no tiene ninguna, y el correo le dice cómo ponerse una si la quiere.
+        correo.enviarBienvenida(nuevo.getEmail(), nuevo.getName(), true);
         return sesionPara(nuevo);
     }
 

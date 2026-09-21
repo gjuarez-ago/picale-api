@@ -51,6 +51,10 @@ class AuthServiceGoogleTest {
     @MockBean
     private GoogleTokenVerifier googleVerifier;
 
+    /** Doblado: lo que se comprueba es CUÁNDO se manda la bienvenida, no el envío. */
+    @MockBean
+    private com.metricol.api.service.auth.EmailService correoDeLaPlataforma;
+
     private String correo;
 
     @BeforeEach
@@ -82,6 +86,45 @@ class AuthServiceGoogleTest {
         assertThat(sesion.getEmail()).isEqualTo(correo);
         assertThat(sesion.getWorkspaceName()).isEqualTo("Tacos de Ana");
         assertThat(userRepository.findByEmail(correo)).isPresent();
+    }
+
+    @Test
+    void registrarseConGoogleLeMandaLaBienvenidaSinContrasena() {
+        GoogleRegisterRequest peticion = new GoogleRegisterRequest();
+        peticion.setIdToken("token");
+        peticion.setName("Ana Pérez");
+
+        authService.registerWithGoogle(peticion);
+
+        // Una sola vez, con su nombre y avisando que entró con Google. Ningún parámetro puede ser una contraseña.
+        org.mockito.Mockito.verify(correoDeLaPlataforma).enviarBienvenida(correo, "Ana Pérez", true);
+    }
+
+    @Test
+    void entrarConGoogleConUnaCuentaQueYaExisteNoVuelveAMandarLaBienvenida() {
+        GoogleRegisterRequest peticion = new GoogleRegisterRequest();
+        peticion.setIdToken("token");
+        peticion.setName("Ana Pérez");
+        authService.registerWithGoogle(peticion);
+        org.mockito.Mockito.clearInvocations(correoDeLaPlataforma);
+
+        authService.registerWithGoogle(peticion); // la misma cuenta: entra, no se registra de nuevo
+
+        org.mockito.Mockito.verify(correoDeLaPlataforma, org.mockito.Mockito.never())
+                .enviarBienvenida(org.mockito.ArgumentMatchers.anyString(), org.mockito.ArgumentMatchers.any(), org.mockito.ArgumentMatchers.anyBoolean());
+    }
+
+    @Test
+    void registrarseConFormularioTambienMandaLaBienvenida() {
+        com.metricol.api.models.request.RegisterRequest peticion = new com.metricol.api.models.request.RegisterRequest();
+        peticion.setName("Luis Soto");
+        peticion.setEmail("form-" + UUID.randomUUID() + "@ejemplo.test");
+        peticion.setPassword("secreta123");
+        peticion.setWorkspaceName("Tacos de Luis");
+
+        authService.register(peticion);
+
+        org.mockito.Mockito.verify(correoDeLaPlataforma).enviarBienvenida(peticion.getEmail(), "Luis Soto", false);
     }
 
     @Test

@@ -59,10 +59,13 @@ app:
     secret-key: ${STRIPE_SECRET_KEY:}
     webhook-secret: ${STRIPE_WEBHOOK_SECRET:}
 
+  # OJO: el default es el dominio que hoy SIRVE el sitio (picale.rodtech.cloud). Antes era picale.click, que
+  # todavia no resuelve: las invitaciones y el regreso de Stripe apuntaban a una pagina muerta. Cuando
+  # picale.click este vivo, se cambia con la variable WEB_URL, sin tocar el codigo.
   # El sitio web publico (Angular), que NO es lo mismo que base-url: aquella es
   # donde vive el puente de regreso a la app movil. Esta es donde estan las
   # pantallas que se abren desde un correo, como aceptar una invitacion.
-  web-url: ${WEB_URL:https://picale.click}
+  web-url: ${WEB_URL:https://picale.rodtech.cloud}
   # Llave de los endpoints de operacion (/api/v1/ops/**), en la cabecera
   # X-Ops-Key. Vacia = esos endpoints contestan 404, como si no existieran.
   ops:

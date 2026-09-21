@@ -132,7 +132,7 @@ class ConfiguracionPorAmbienteTest {
         assertThat(dev.getProperty("jwt.secret")).isNotBlank();
 
         StandardEnvironment prod = entorno("prod", OBLIGATORIAS);
-        assertThat(prod.getProperty("app.web-url")).isEqualTo("https://picale.click");
+        assertThat(prod.getProperty("app.web-url")).isEqualTo("https://picale.rodtech.cloud");
         assertThat(prod.getProperty("app.cors.allowed-origins")).isEqualTo("https://picale.click").doesNotContain("localhost");
         assertThat(prod.getProperty("jwt.secret")).isEqualTo("un-secreto-largo-de-prueba-de-32-bytes!!");
     }
