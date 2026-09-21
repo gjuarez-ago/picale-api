@@ -35,8 +35,12 @@ ZONA="us-central1-a"
 PROYECTO="cmrg-505321"
 
 # ---------------------------------------------------------------- datos
-read -r -s -p "Clave secreta (sk_test_... / sk_live_...; Enter = dejar la actual): " CLAVE
+read -r -s -p "Clave secreta (sk_test_... / sk_live_... / rk_...; Enter = dejar la actual): " CLAVE
 echo
+# Desde PowerShell (Git Bash en Windows) la lectura oculta puede traer un retorno de carro al
+# final: no es parte de la llave y romperia la validacion de abajo (y un Enter solo pareceria
+# una llave escrita).
+CLAVE="$(printf '%s' "$CLAVE" | tr -d '\r')"
 if [ -n "$CLAVE" ]; then
   if ! [[ "$CLAVE" =~ ^(sk|rk)_(test|live)_[A-Za-z0-9]{20,}$ ]]; then
     echo "ERROR: la clave no tiene el formato de Stripe (sk_test_... / sk_live_...)." >&2
@@ -46,6 +50,7 @@ if [ -n "$CLAVE" ]; then
     echo
     echo "ATENCION: es una clave REAL. Con ella los cobros son de verdad."
     read -r -p "Escribe SI para continuar: " CONFIRMA
+    CONFIRMA="$(printf '%s' "$CONFIRMA" | tr -d '\r')"
     if [ "$CONFIRMA" != "SI" ]; then
       echo "Cancelado. Prueba primero con la clave sk_test_."
       exit 1
@@ -55,6 +60,7 @@ fi
 
 read -r -s -p "Secreto del webhook (whsec_...; Enter = dejar el actual): " WEBHOOK
 echo
+WEBHOOK="$(printf '%s' "$WEBHOOK" | tr -d '\r')"
 if [ -n "$WEBHOOK" ] && ! [[ "$WEBHOOK" =~ ^whsec_[A-Za-z0-9]{16,}$ ]]; then
   echo "ERROR: el secreto no tiene el formato de Stripe (whsec_...)." >&2
   exit 1
