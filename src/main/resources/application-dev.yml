@@ -116,7 +116,7 @@ app:
   # Solo la direccion del remitente; el nombre visible ("Picale") lo pone
   # EmailService. Tiene que ser de un dominio verificado en Resend.
   mail:
-    from: ${MAIL_FROM:notificaciones@picale.rodtech.cloud}
+    from: ${MAIL_FROM:notificaciones@rodtech.cloud}
 
 # Cadena larga y aleatoria. El default sirve SOLO para desarrollo: en qa y prod
 # no lo hay y el arranque falla si falta.

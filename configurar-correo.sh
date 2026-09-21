@@ -22,7 +22,7 @@ set -euo pipefail
 VM="api-videos-prod"
 ZONA="us-central1-a"
 PROYECTO="cmrg-505321"
-REMITENTE_POR_DEFECTO="notificaciones@picale.rodtech.cloud"
+REMITENTE_POR_DEFECTO="notificaciones@rodtech.cloud"
 
 # ---------------------------------------------------------------- datos
 DE="${MAIL_FROM:-}"

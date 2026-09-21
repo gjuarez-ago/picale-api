@@ -68,7 +68,7 @@ app:
   # Solo la direccion del remitente; el nombre visible ("Picale") lo pone
   # EmailService. Tiene que ser de un dominio verificado en Resend.
   mail:
-    from: ${MAIL_FROM:notificaciones@picale.rodtech.cloud}
+    from: ${MAIL_FROM:notificaciones@rodtech.cloud}
 
 # El secreto de QA es propio: compartirlo con prod haria que un token de aqui
 # valiera alla.

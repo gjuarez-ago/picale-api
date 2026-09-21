@@ -79,7 +79,7 @@ app:
   # Solo la direccion del remitente; el nombre visible ("Picale") lo pone
   # EmailService. Tiene que ser de un dominio verificado en Resend.
   mail:
-    from: ${MAIL_FROM:notificaciones@picale.rodtech.cloud}
+    from: ${MAIL_FROM:notificaciones@rodtech.cloud}
 
 # Cadena larga y aleatoria, propia de este entorno. Cambiarla invalida todas
 # las sesiones abiertas.

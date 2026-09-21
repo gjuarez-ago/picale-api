@@ -181,7 +181,7 @@ class ConfiguracionPorAmbienteTest {
             assertThat(env.getProperty("spring.mail.host")).as(perfil).isEqualTo("smtp.resend.com");
             assertThat(env.getProperty("spring.mail.port")).as(perfil).isEqualTo("587");
             assertThat(env.getProperty("spring.mail.username")).as(perfil).isEqualTo("resend");
-            assertThat(env.getProperty("app.mail.from")).as(perfil).isEqualTo("notificaciones@picale.rodtech.cloud");
+            assertThat(env.getProperty("app.mail.from")).as(perfil).isEqualTo("notificaciones@rodtech.cloud");
             assertThat(env.getProperty("spring.mail.properties.mail.smtp.starttls.required")).as(perfil).isEqualTo("true");
         }
     }
