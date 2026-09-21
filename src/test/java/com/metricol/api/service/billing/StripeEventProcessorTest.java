@@ -5,6 +5,7 @@ import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyInt;
 import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.ArgumentMatchers.eq;
+import static org.mockito.Mockito.doThrow;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.times;
@@ -344,6 +345,104 @@ class StripeEventProcessorTest {
         assertThat(l.getCurrentPeriodEnd()).isEqualTo(FIN);
         assertThat(l.getGraceUntil()).isNull();
         verify(creditos).otorgarMensuales(w.getId(), 5, FIN, "inv:in_9");
+    }
+
+    // ---------------------------------------------------------------- contratar en plena prueba: los días y los créditos se suman
+
+    private static String facturaDe(String id, String suscripcion, String motivo) {
+        return "{\"id\":\"" + id + "\",\"subscription\":\"" + suscripcion + "\",\"billing_reason\":\"" + motivo
+                + "\",\"lines\":{\"data\":[{\"period\":{\"end\":" + FIN_EN_SEGUNDOS + "}}]}}";
+    }
+
+    private License licenciaEnPruebaYaComprada(Workspace w, int diasQueQuedan) {
+        License l = License.builder().organizationId(org.getId()).workspaceId(w.getId()).status(LicenseStatus.ACTIVE)
+                .stripeSubscriptionId("sub_1").currentPeriodEnd(FIN)
+                .trialEndsAt(LocalDateTime.now().plusDays(diasQueQuedan).plusHours(2)).build();
+        licencias.save(l);
+        return l;
+    }
+
+    @Test
+    @DisplayName("contratar con 3 días de prueba: los días se suman al mes pagado, y en Stripe la próxima cobranza se corre")
+    void losDiasDePruebaSeSuman() {
+        Workspace w = workspace();
+        License l = licenciaEnPruebaYaComprada(w, 3); // quedan 3 días y un poco: se cuentan 4
+        when(creditos.saldo(w.getId())).thenReturn(new CreditService.Saldo(0, 0, null));
+
+        assertThat(enviar("evt_1", "invoice.paid", facturaDe("in_1", "sub_1", "subscription_create"))).isEqualTo(Resultado.PROCESADO);
+
+        verify(stripe).extenderHasta("sub_1", FIN.plusDays(4));
+        assertThat(l.getCurrentPeriodEnd()).isEqualTo(FIN.plusDays(4));
+        assertThat(l.getTrialEndsAt()).as("la prueba ya se aprovechó: no se vuelve a sumar").isNull();
+        assertThat(l.getStatus()).isEqualTo(LicenseStatus.ACTIVE);
+    }
+
+    @Test
+    @DisplayName("los créditos de la prueba que sobraban se SUMAN a los 5 del mes, y vencen con el periodo ya alargado")
+    void losCreditosDePruebaSeSuman() {
+        Workspace w = workspace();
+        licenciaEnPruebaYaComprada(w, 3);
+        when(creditos.saldo(w.getId())).thenReturn(new CreditService.Saldo(3, 0, null));
+
+        enviar("evt_1", "invoice.paid", facturaDe("in_1", "sub_1", "subscription_create"));
+
+        verify(creditos).otorgarMensuales(w.getId(), 5 + 3, FIN.plusDays(4), "inv:in_1");
+    }
+
+    @Test
+    @DisplayName("sin prueba de por medio no se suma nada: se renueva como siempre")
+    void sinPruebaNoSeSumaNada() {
+        Workspace w = workspace();
+        License l = licenciaPagada(w, "sub_1", LicenseStatus.ACTIVE);
+
+        enviar("evt_1", "invoice.paid", facturaDe("in_9", "sub_1", "subscription_cycle"));
+
+        verify(stripe, never()).extenderHasta(anyString(), any());
+        assertThat(l.getCurrentPeriodEnd()).isEqualTo(FIN);
+        verify(creditos).otorgarMensuales(w.getId(), 5, FIN, "inv:in_9");
+    }
+
+    @Test
+    @DisplayName("una prueba que ya se había acabado no suma días ni créditos")
+    void unaPruebaVencidaNoSuma() {
+        Workspace w = workspace();
+        License l = licenciaEnPruebaYaComprada(w, 3);
+        l.setTrialEndsAt(LocalDateTime.now().minusDays(1));
+
+        enviar("evt_1", "invoice.paid", facturaDe("in_1", "sub_1", "subscription_create"));
+
+        verify(stripe, never()).extenderHasta(anyString(), any());
+        verify(creditos).otorgarMensuales(w.getId(), 5, FIN, "inv:in_1");
+    }
+
+    @Test
+    @DisplayName("si Stripe no acepta sumar los días se pide reintento y NO se aplica nada a medias")
+    void siStripeFallaSePideReintento() {
+        Workspace w = workspace();
+        License l = licenciaEnPruebaYaComprada(w, 3);
+        when(creditos.saldo(w.getId())).thenReturn(new CreditService.Saldo(3, 0, null));
+        doThrow(new IllegalStateException("Stripe no contesta")).when(stripe).extenderHasta(anyString(), any());
+
+        assertThat(enviar("evt_1", "invoice.paid", facturaDe("in_1", "sub_1", "subscription_create"))).isEqualTo(Resultado.REINTENTAR);
+
+        assertThat(l.getTrialEndsAt()).as("la prueba sigue sin gastarse: al reintentar se calcula igual").isNotNull();
+        assertThat(l.getCurrentPeriodEnd()).isEqualTo(FIN);
+        verify(creditos, never()).otorgarMensuales(any(), anyInt(), any(), anyString());
+        assertThat(eventosGuardados).as("no se marca como procesado").isEmpty();
+    }
+
+    @Test
+    @DisplayName("la factura de $0 con que Stripe marca los días sumados NO renueva ni da créditos (pisaría los arrastrados)")
+    void laFacturaDeCambioDeSuscripcionSeIgnora() {
+        Workspace w = workspace();
+        License l = licenciaEnPruebaYaComprada(w, 3);
+        l.setTrialEndsAt(null);
+        l.setCurrentPeriodEnd(FIN.plusDays(4));
+
+        assertThat(enviar("evt_2", "invoice.paid", facturaDe("in_2", "sub_1", "subscription_update"))).isEqualTo(Resultado.PROCESADO);
+
+        assertThat(l.getCurrentPeriodEnd()).isEqualTo(FIN.plusDays(4));
+        verify(creditos, never()).otorgarMensuales(any(), anyInt(), any(), anyString());
     }
 
     @Test

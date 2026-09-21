@@ -134,6 +134,22 @@ class StripeClientTest {
     }
 
     @Test
+    @DisplayName("sumar días gratis mueve el fin de la prueba de una suscripción ya pagada, sin prorratear")
+    void extenderHasta() {
+        java.time.LocalDateTime hasta = java.time.LocalDateTime.of(2026, 11, 20, 12, 0);
+        long segundos = hasta.atZone(java.time.ZoneId.systemDefault()).toEpochSecond();
+        servidor.expect(requestTo(BASE + "/subscriptions/sub_1"))
+                .andExpect(method(HttpMethod.POST))
+                .andExpect(content().string(containsString("trial_end=" + segundos)))
+                .andExpect(content().string(containsString("proration_behavior=none")))
+                .andExpect(header("Idempotency-Key", "extender-sub_1-" + segundos))
+                .andRespond(withSuccess("{\"id\":\"sub_1\",\"status\":\"trialing\"}", MediaType.APPLICATION_JSON));
+
+        assertThat(cliente.extenderHasta("sub_1", hasta).path("status").asText()).isEqualTo("trialing");
+        servidor.verify();
+    }
+
+    @Test
     @DisplayName("cambiar el precio de una suscripción cambia su artículo, sin prorratear lo ya cobrado")
     void cambiarPrecio() {
         servidor.expect(requestTo(BASE + "/subscriptions/sub_1"))

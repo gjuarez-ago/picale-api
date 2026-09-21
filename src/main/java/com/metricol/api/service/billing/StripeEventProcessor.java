@@ -1,5 +1,6 @@
 package com.metricol.api.service.billing;
 
+import java.time.Duration;
 import java.time.Instant;
 import java.time.LocalDateTime;
 import java.time.ZoneId;
@@ -239,21 +240,61 @@ public class StripeEventProcessor {
         }
         License licencia = encontrada.get();
 
+        // Una factura de «cambio de suscripción» (por ejemplo la de $0 con que Stripe marca los días
+        // gratis que le sumamos abajo) no es un mes pagado: no renueva ni da créditos, o el cambio
+        // pisaría los créditos que se acaban de arrastrar.
+        if ("subscription_update".equals(factura.path("billing_reason").asText(""))) {
+            return Resultado.PROCESADO;
+        }
+
         LocalDateTime fin = finDePeriodoDeLaFactura(factura);
         if (fin == null) {
             fin = finDePeriodoDe(suscripcion);
         }
+
+        // Contrató en plena prueba: los días que le quedaban y los créditos que no usó SE SUMAN a lo
+        // que acaba de pagar, en vez de perderse. Solo pasa con la primera factura, porque al usarlo
+        // se borra el fin de la prueba.
+        int diasDePrueba = diasQueQuedabanDePrueba(licencia);
+        int creditosDePrueba = 0;
+        if (diasDePrueba > 0) {
+            creditosDePrueba = creditos.saldo(licencia.getWorkspaceId()).mensuales();
+            LocalDateTime conDias = fin.plusDays(diasDePrueba);
+            try {
+                stripe.extenderHasta(suscripcion, conDias);
+            } catch (RuntimeException ex) {
+                // Antes de tocar nada: al reintentar, todo se vuelve a calcular igual.
+                log.error("No se pudieron sumar los días de prueba a {}: {}", suscripcion, ex.getMessage());
+                return Resultado.REINTENTAR;
+            }
+            fin = conDias;
+        }
+
         licencia.setStatus(LicenseStatus.ACTIVE);
         licencia.setCurrentPeriodEnd(fin);
         licencia.setGraceUntil(null);
+        if (diasDePrueba > 0) {
+            licencia.setTrialEndsAt(null);
+        }
         licencia.setUpdatedAt(LocalDateTime.now());
         licencias.save(licencia);
 
-        // Los créditos del mes: se reinician con cada factura pagada, no se acumulan.
-        creditos.otorgarMensuales(licencia.getWorkspaceId(), config.creditosMensuales(), fin,
+        // Los créditos del mes: se reinician con cada factura pagada, no se acumulan entre meses. La
+        // única excepción son los de la prueba que sobraban al contratar: esos se suman a los del mes.
+        creditos.otorgarMensuales(licencia.getWorkspaceId(), config.creditosMensuales() + creditosDePrueba, fin,
                 "inv:" + factura.path("id").asText(""));
         workspaces.findById(licencia.getWorkspaceId()).ifPresent(w -> restaurarSiLoArchivoElBarrido(licencia, w));
         return Resultado.PROCESADO;
+    }
+
+    /** Cuántos días de prueba le quedaban a esta licencia al pagar (0 si no estaba en prueba o ya se le había acabado). */
+    private static int diasQueQuedabanDePrueba(License licencia) {
+        LocalDateTime fin = licencia.getTrialEndsAt();
+        LocalDateTime ahora = LocalDateTime.now();
+        if (fin == null || !fin.isAfter(ahora)) {
+            return 0;
+        }
+        return (int) Math.ceil(Duration.between(ahora, fin).toMinutes() / (60.0 * 24));
     }
 
     private Resultado cobroFallido(JsonNode factura) {

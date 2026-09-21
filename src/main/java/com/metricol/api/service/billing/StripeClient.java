@@ -1,5 +1,7 @@
 package com.metricol.api.service.billing;
 
+import java.time.LocalDateTime;
+import java.time.ZoneId;
 import java.util.LinkedHashMap;
 import java.util.Map;
 
@@ -186,6 +188,22 @@ public class StripeClient {
         poner(campos, "items[0]", tarifa);
         campos.put("proration_behavior", "none");
         return post("/subscriptions/" + suscripcion, campos, null);
+    }
+
+    /**
+     * Suma días gratis a una suscripción que YA se pagó: la próxima cobranza pasa a {@code hasta}.
+     *
+     * <p>Se usa cuando alguien contrata en plena prueba: se le cobra el primer mes, y los días de
+     * prueba que le quedaban se agregan al final en vez de perderse. En Stripe eso es mover el fin
+     * de la prueba de la suscripción ({@code trial_end}); sin prorrateo, porque lo ya cobrado no se
+     * devuelve ni se recalcula. Repetirlo con la misma fecha no cambia nada.
+     */
+    public JsonNode extenderHasta(String suscripcion, LocalDateTime hasta) {
+        long segundos = hasta.atZone(ZoneId.systemDefault()).toEpochSecond();
+        Map<String, String> campos = new LinkedHashMap<>();
+        campos.put("trial_end", String.valueOf(segundos));
+        campos.put("proration_behavior", "none");
+        return post("/subscriptions/" + suscripcion, campos, "extender-" + suscripcion + "-" + segundos);
     }
 
     public JsonNode obtenerSuscripcion(String suscripcion) {

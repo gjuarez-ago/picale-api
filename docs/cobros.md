@@ -10,6 +10,13 @@ cobros apagados la aplicación se comporta como siempre: nadie paga, nadie se ar
   adicional**: precio menor (hoy $249). Los precios **incluyen el IVA**.
 - **Prueba gratis** de 14 días, sin tarjeta, para todos: al registrarse y también para los
   espacios que ya existían al encender los cobros. Pasados los 14 días, a pagar.
+- **Contratar en plena prueba SUMA, no reemplaza.** Si alguien paga con días de prueba por delante,
+  esos días se suman al final del mes que pagó, y los créditos de imagen que le sobraban se suman
+  a los 5 del mes. En Stripe se hace moviendo el fin de la prueba de la suscripción (`trial_end`,
+  sin prorrateo) cuando llega la primera factura pagada; la de $0 que Stripe genera por ese cambio
+  (`billing_reason=subscription_update`) se ignora para no reiniciar los créditos. **Probar en modo de
+  prueba de Stripe antes de encender los cobros reales**: contratar con N días por delante y comprobar
+  que la próxima cobranza cae N días después del mes pagado.
 - **Créditos de imagen**: 1 crédito = 1 generación (con todas sus versiones). La licencia trae
   5 al mes (no se acumulan, terminan con el periodo). Los **paquetes** (10 / 25 / 50) no vencen.
   Si una generación no produce ninguna versión, el crédito se devuelve.
