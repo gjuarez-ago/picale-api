@@ -40,6 +40,10 @@ read -r -s -p "Contrasena de la cuenta (no se muestra): " CLAVE
 echo
 read -r -s -p "Repitela: " CLAVE2
 echo
+# Desde PowerShell (Git Bash en Windows) la lectura oculta puede traer un retorno de carro
+# al final: no es parte de la contrasena y romperia la validacion de abajo.
+CLAVE="$(printf '%s' "$CLAVE" | tr -d '\r')"
+CLAVE2="$(printf '%s' "$CLAVE2" | tr -d '\r')"
 if [ "$CLAVE" != "$CLAVE2" ]; then
   echo "ERROR: las dos contrasenas no coinciden." >&2
   exit 1

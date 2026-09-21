@@ -38,6 +38,8 @@ fi
 
 read -r -s -p "Llave de Resend (empieza con re_; no se muestra): " LLAVE
 echo
+# Desde PowerShell (Git Bash en Windows) la lectura oculta puede traer un retorno de carro al final.
+LLAVE="$(printf '%s' "$LLAVE" | tr -d '\r')"
 # Solo letras, numeros y guion bajo: lo que Resend emite, y lo que hace seguro
 # escribirla en el .env sin escapar nada.
 if ! [[ "$LLAVE" =~ ^re_[A-Za-z0-9_]{16,}$ ]]; then
