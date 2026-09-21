@@ -1,7 +1,7 @@
 # Cuenta raíz (la de la casa)
 
 La cuenta con la que Pícale se usa a sí mismo: **sin límites ni vigencia** y con la **marca de Pícale**
-ya llena. Es una organización aparte (`Super Admin`) que nace al arrancar la API.
+ya llena. Es una organización aparte (`PICALE HUB`) que nace al arrancar la API.
 
 ## Qué significa «sin límites ni vigencia»
 
@@ -30,12 +30,12 @@ Reutiliza la cuenta de demostración (`DemoAccountInitializer`), con variables *
 ```
 DEMO_ACCOUNT_EMAIL=demo@picale.click
 DEMO_ACCOUNT_PASSWORD=<la contraseña>
-DEMO_ACCOUNT_ORGANIZATION=Super Admin
+DEMO_ACCOUNT_ORGANIZATION=PICALE HUB
 DEMO_ACCOUNT_ROOT=true
 ```
 
 Al arrancar, si esa cuenta **no existe**, se registra como cualquiera (mismo `AuthService.register`),
-su negocio se llama **Pícale**, su organización **Super Admin**, se enciende la bandera y se llena la
+su negocio se llama **Pícale**, su organización **PICALE HUB**, se enciende la bandera y se llena la
 marca. Si ya existe no se toca (ni contraseña ni bandera), así que reiniciar es seguro.
 
 Sin `DEMO_ACCOUNT_ROOT=true` la cuenta demo funciona como siempre (la de Google Play).
@@ -54,5 +54,5 @@ solo (`ddl-auto=update`). Es un cambio de esquema: hacer antes un respaldo de la
 
 ## Para quitarlo
 
-Apagar la bandera a mano en la base (`update organizations set sin_limites=false where name='Super Admin'`)
+Apagar la bandera a mano en la base (`update organizations set sin_limites=false where name='PICALE HUB'`)
 la devuelve al régimen normal.
