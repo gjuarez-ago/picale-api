@@ -49,10 +49,17 @@ if [ "$CLAVE" != "$CLAVE2" ]; then
   exit 1
 fi
 unset CLAVE2
-# Minimo 6 (lo que exige la app). Solo caracteres que no se rompen al escribirlos en el
-# .env ni en el sed de la VM: nada de comillas, barras, &, $, # ni espacios.
-if ! [[ "$CLAVE" =~ ^[A-Za-z0-9._@%+=:,-]{6,72}$ ]]; then
-  echo "ERROR: la contrasena debe tener de 6 a 72 caracteres, solo letras, numeros y . _ @ % + = : , -" >&2
+# Minimo 6 (lo que exige la app). Se admiten letras, numeros y . _ @ % + = : , - ! $ * ^ ~ ? #
+# Quedan fuera las comillas, la barra invertida, la barra vertical, &, el espacio y el acento
+# grave: romperian el sed de la VM o el propio .env.
+# Un $ es seguro porque la contrasena se guarda ENTRE COMILLAS SIMPLES (ver mas abajo): sin
+# ellas, Docker Compose leeria "$cd" como una variable y se comeria parte de la contrasena.
+# La expresion va en una variable con comillas simples: dentro de [[ ]] el shell leeria "$*" como
+# parametro y se la comeria.
+PATRON='^[A-Za-z0-9._@%+=:,!$*^~?#-]{6,72}$'
+if ! [[ "$CLAVE" =~ $PATRON ]]; then
+  echo "ERROR: la contrasena debe tener de 6 a 72 caracteres: letras, numeros y . _ @ % + = : , - ! \$ * ^ ~ ? #" >&2
+  echo "       (no se admiten comillas, barras, &, espacios ni acento grave)" >&2
   exit 1
 fi
 
@@ -62,7 +69,8 @@ trap 'rm -f "$TMP"' EXIT
 chmod 600 "$TMP"
 {
   printf 'DEMO_ACCOUNT_EMAIL=%s\n' "$CORREO"
-  printf 'DEMO_ACCOUNT_PASSWORD=%s\n' "$CLAVE"
+  # Entre comillas simples: literal para Docker Compose, con o sin $ adentro.
+  printf "DEMO_ACCOUNT_PASSWORD='%s'\n" "$CLAVE"
   printf 'DEMO_ACCOUNT_ORGANIZATION=%s\n' "$ORGANIZACION"
   printf 'DEMO_ACCOUNT_ROOT=true\n'
 } > "$TMP"
