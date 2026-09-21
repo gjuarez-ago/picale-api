@@ -16,6 +16,7 @@ import org.springframework.boot.DefaultApplicationArguments;
 import com.metricol.api.models.request.RegisterRequest;
 import com.metricol.api.repository.UserRepository;
 import com.metricol.api.service.AuthService;
+import com.metricol.api.service.CuentaRaizService;
 
 /**
  * La cuenta de demostración corre en cada arranque de producción, así que se
@@ -26,6 +27,7 @@ class DemoAccountInitializerTest {
 
     private final AuthService auth = mock(AuthService.class);
     private final UserRepository usuarios = mock(UserRepository.class);
+    private final CuentaRaizService raiz = mock(CuentaRaizService.class);
 
     @Test
     @DisplayName("Sin correo o sin contraseña no crea nada")
@@ -53,6 +55,7 @@ class DemoAccountInitializerTest {
 
         correr("Demo@Picale.Click", "clave-segura");
 
+        verify(raiz, never()).convertir(any(), any());
         ArgumentCaptor<RegisterRequest> registro = ArgumentCaptor.forClass(RegisterRequest.class);
         verify(auth).register(registro.capture());
         assertThat(registro.getValue().getEmail()).isEqualTo("demo@picale.click");
@@ -70,9 +73,38 @@ class DemoAccountInitializerTest {
         // Llegar aquí sin excepción es la prueba.
     }
 
+    @Test
+    @DisplayName("Cuenta raíz: nace como Pícale y se vuelve la de la casa (sin límites, con su marca)")
+    void laCuentaRaiz() throws Exception {
+        when(usuarios.existsByEmail("demo@picale.click")).thenReturn(false);
+
+        correr("Demo@Picale.Click", "clave-segura", "Super Admin", true);
+
+        ArgumentCaptor<RegisterRequest> registro = ArgumentCaptor.forClass(RegisterRequest.class);
+        verify(auth).register(registro.capture());
+        assertThat(registro.getValue().getEmail()).isEqualTo("demo@picale.click");
+        assertThat(registro.getValue().getWorkspaceName()).isEqualTo("Pícale");
+        verify(raiz).convertir("demo@picale.click", "Super Admin");
+    }
+
+    @Test
+    @DisplayName("Cuenta raíz: si la cuenta ya existe no se toca, y por tanto tampoco se le quitan ni se le ponen límites")
+    void laRaizQueYaExisteNoSeToca() throws Exception {
+        when(usuarios.existsByEmail("demo@picale.click")).thenReturn(true);
+
+        correr("demo@picale.click", "clave-segura", "Super Admin", true);
+
+        verify(auth, never()).register(any());
+        verify(raiz, never()).convertir(any(), any());
+    }
+
     private void correr(String email, String password) throws Exception {
+        correr(email, password, "Picale HUB", false);
+    }
+
+    private void correr(String email, String password, String organizacion, boolean esRaiz) throws Exception {
         ApplicationRunner runner = new DemoAccountInitializer()
-                .crearCuentaDeDemostracion(auth, usuarios, email, password, "Picale HUB");
+                .crearCuentaDeDemostracion(auth, raiz, usuarios, email, password, organizacion, esRaiz);
         runner.run(new DefaultApplicationArguments());
     }
 }

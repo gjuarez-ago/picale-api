@@ -1,5 +1,6 @@
 package com.metricol.api.service.publishing;
 
+import com.metricol.api.service.CuentaSinLimites;
 import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.util.ArrayList;
@@ -58,6 +59,7 @@ public class PublishQuotaService {
     private final GlobalUsageRows filasGlobales;
     private final PostTargetRepository destinos;
     private final LimitesConfigurables limites;
+    private final CuentaSinLimites sinLimites;
 
     public PublishQuotaService(
             DailyPublishUsageRepository repository,
@@ -65,7 +67,9 @@ public class PublishQuotaService {
             GlobalPublishUsageRepository global,
             GlobalUsageRows filasGlobales,
             PostTargetRepository destinos,
-            LimitesConfigurables limites) {
+            LimitesConfigurables limites,
+            CuentaSinLimites sinLimites) {
+        this.sinLimites = sinLimites;
         this.repository = repository;
         this.filas = filas;
         this.global = global;
@@ -95,6 +99,10 @@ public class PublishQuotaService {
      */
     @Transactional
     public Reserva reservar(UUID workspaceId, Platform platform) {
+        if (sinLimites.deWorkspace(workspaceId)) {
+            // La cuenta de la casa no gasta cupo, ni el suyo ni el global de los demás.
+            return Reserva.OK;
+        }
         LocalDate hoy = LocalDate.now();
         Integer tope = limites.cuotaDiaria(platform);
 
@@ -128,6 +136,9 @@ public class PublishQuotaService {
      */
     @Transactional
     public void devolver(UUID workspaceId, Platform platform) {
+        if (sinLimites.deWorkspace(workspaceId)) {
+            return; // No reservó nada: devolver restaría un hueco que es de otros.
+        }
         LocalDate hoy = LocalDate.now();
         repository.devolver(workspaceId, platform, hoy);
         if (limites.cuotaGlobalDiaria() > 0) {
@@ -143,10 +154,11 @@ public class PublishQuotaService {
             usados.put(fila.getPlatform(), fila.getUsed());
         }
 
+        boolean sinTope = sinLimites.deWorkspace(workspaceId);
         List<Estado> estados = new ArrayList<>();
         for (Platform platform : Platform.values()) {
             int usado = usados.getOrDefault(platform, 0);
-            estados.add(new Estado(platform, usado, limites.cuotaDiaria(platform)));
+            estados.add(new Estado(platform, usado, sinTope ? null : limites.cuotaDiaria(platform)));
         }
         return estados;
     }

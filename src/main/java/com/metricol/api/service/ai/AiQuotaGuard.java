@@ -1,5 +1,6 @@
 package com.metricol.api.service.ai;
 
+import com.metricol.api.service.CuentaSinLimites;
 import java.time.LocalDate;
 import java.util.UUID;
 
@@ -32,8 +33,11 @@ public class AiQuotaGuard {
     private final AiUsageRepository usos;
     private final LimitesConfigurables limites;
     private final TenantIdentifierResolver tenants;
+    private final CuentaSinLimites sinLimites;
 
-    public AiQuotaGuard(AiUsageRepository usos, LimitesConfigurables limites, TenantIdentifierResolver tenants) {
+    public AiQuotaGuard(AiUsageRepository usos, LimitesConfigurables limites, TenantIdentifierResolver tenants,
+            CuentaSinLimites sinLimites) {
+        this.sinLimites = sinLimites;
         this.usos = usos;
         this.limites = limites;
         this.tenants = tenants;
@@ -49,6 +53,9 @@ public class AiQuotaGuard {
         UUID workspace = workspaceActual();
         if (workspace == null) {
             return; // Sin workspace no hay a quién contarle; no pasa en una petición autenticada.
+        }
+        if (sinLimites.deWorkspace(workspace)) {
+            return; // La cuenta de la casa no tiene tope.
         }
 
         LocalDate hoy = LocalDate.now();
@@ -79,7 +86,7 @@ public class AiQuotaGuard {
         }
 
         UUID workspace = workspaceActual();
-        if (workspace == null) {
+        if (workspace == null || sinLimites.deWorkspace(workspace)) {
             return Integer.MAX_VALUE;
         }
 

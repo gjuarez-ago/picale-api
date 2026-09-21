@@ -62,6 +62,17 @@ public class Organization {
     private int maxWorkspaces = 3;
 
     /**
+     * Sin límites ni vigencia: la cuenta de la casa (Pícale usando Pícale). No paga, su licencia no
+     * vence, no se archiva y no le aplican los cupos de IA, publicaciones, créditos ni espacios.
+     *
+     * <p>Solo la enciende el arranque con la cuenta raíz ({@code CuentaRaizService}); no hay
+     * endpoint que la cambie.
+     */
+    @Builder.Default
+    @Column(name = "sin_limites", nullable = false, columnDefinition = "boolean default false")
+    private boolean sinLimites = false;
+
+    /**
      * El cliente de Stripe de esta organización ({@code cus_...}): con él se
      * cobran todas sus licencias y se abre su portal de facturación. Se crea la
      * primera vez que compra algo.

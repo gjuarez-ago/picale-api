@@ -50,7 +50,8 @@ public class LicenseService {
      */
     @Transactional
     public void iniciarPruebaAlRegistrarse(Workspace workspace) {
-        if (!config.habilitado() || workspace == null || workspace.getOrganization() == null) {
+        if (!config.habilitado() || workspace == null || workspace.getOrganization() == null
+                || workspace.getOrganization().isSinLimites()) {
             return;
         }
         crearPrueba(workspace, config.diasDePruebaAlRegistrarse());
@@ -90,12 +91,18 @@ public class LicenseService {
 
         // Los de antes de encender los cobros: un mes de gracia (configurable), no un corte.
         List<Workspace> sinLicencia = licencias.workspacesSinLicencia();
+        int conPrueba = 0;
         for (Workspace workspace : sinLicencia) {
+            // La cuenta de la casa no tiene licencia: ni prueba ni vencimiento.
+            if (workspace.getOrganization() != null && workspace.getOrganization().isSinLimites()) {
+                continue;
+            }
             crearPrueba(workspace, config.diasDePruebaDeLosExistentes());
-            cambios++;
+            conPrueba++;
         }
-        if (!sinLicencia.isEmpty()) {
-            log.info("Cobros: {} workspace(s) existentes recibieron su prueba gratis", sinLicencia.size());
+        cambios += conPrueba;
+        if (conPrueba > 0) {
+            log.info("Cobros: {} workspace(s) existentes recibieron su prueba gratis", conPrueba);
         }
 
         LocalDateTime ahora = LocalDateTime.now();
@@ -105,6 +112,9 @@ public class LicenseService {
                 continue;
             }
             Workspace workspace = encontrado.get();
+            if (workspace.getOrganization() != null && workspace.getOrganization().isSinLimites()) {
+                continue; // Sin vigencia: la prueba que le tocó al registrarse no la archiva.
+            }
 
             if (licencia.usable(ahora)) {
                 // Volvió a poder usarse: si fue este proceso quien lo archivó, se restaura.

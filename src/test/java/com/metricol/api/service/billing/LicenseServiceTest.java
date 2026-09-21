@@ -275,4 +275,34 @@ class LicenseServiceTest {
         assertThat(w.archivado()).as("terminada la gracia").isTrue();
         assertThat(l.getStatus()).isEqualTo(LicenseStatus.ENDED);
     }
+
+    // ------------------------------------------------------------ la cuenta de la casa (sin límites ni vigencia)
+    @Test
+    @DisplayName("la organización sin límites no recibe prueba al registrarse")
+    void laCasaNoRecibePrueba() {
+        org.setSinLimites(true);
+        Workspace w = workspace();
+
+        servicio.iniciarPruebaAlRegistrarse(w);
+
+        assertThat(guardadas).isEmpty();
+        verify(creditos, never()).otorgarMensuales(any(), anyInt(), any(), anyString());
+    }
+
+    @Test
+    @DisplayName("el barrido no le da prueba ni le termina la licencia ni archiva su workspace, aunque ya esté vencida")
+    void laCasaNoVence() {
+        org.setSinLimites(true);
+        Workspace sinLicencia = workspace();
+        when(licencias.workspacesSinLicencia()).thenReturn(List.of(sinLicencia));
+        Workspace conPruebaVencida = workspace();
+        License l = licencia(conPruebaVencida, LicenseStatus.TRIALING, LocalDateTime.now().minusDays(30), null, null);
+
+        assertThat(servicio.procesarVencimientos()).isZero();
+
+        assertThat(guardadas).containsExactly(l);
+        assertThat(l.getStatus()).isEqualTo(LicenseStatus.TRIALING);
+        assertThat(conPruebaVencida.archivado()).isFalse();
+        assertThat(sinLicencia.archivado()).isFalse();
+    }
 }

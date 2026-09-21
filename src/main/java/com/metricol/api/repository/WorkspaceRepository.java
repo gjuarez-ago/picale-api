@@ -19,6 +19,10 @@ public interface WorkspaceRepository extends JpaRepository<Workspace, UUID> {
             """)
     List<Workspace> findDeLaOrganizacion(@Param("organizationId") UUID organizationId);
 
+    /** ¿La organización de este espacio es la de la casa, sin límites ni vigencia? */
+    @Query("select count(w) > 0 from Workspace w where w.id = :id and w.organization.sinLimites = true")
+    boolean organizacionSinLimites(@Param("id") UUID id);
+
     /** Cuántos espacios activos tiene. Es lo que se compara con su tope. */
     long countByOrganizationIdAndArchivedAtIsNull(UUID organizationId);
 

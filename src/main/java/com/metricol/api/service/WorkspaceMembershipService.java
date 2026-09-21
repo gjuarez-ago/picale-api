@@ -153,20 +153,21 @@ public class WorkspaceMembershipService {
         if (nombre == null || nombre.isBlank()) {
             throw new IllegalArgumentException("El espacio de trabajo necesita un nombre.");
         }
-        if (cobros.habilitado()) {
-            // Cada espacio es una licencia: se compra, y el espacio nace cuando Stripe avisa que se pagó.
-            throw new IllegalStateException("Un espacio nuevo necesita su licencia. Contrátala desde la web, en Facturación.");
-        }
         User user = users.findById(actual.getId())
                 .orElseThrow(() -> new ResourceNotFoundException("Usuario no encontrado."));
 
         Organization organizacion = organizaciones.deLaSesion(user);
+        if (cobros.habilitado() && !organizacion.isSinLimites()) {
+            // Cada espacio es una licencia: se compra, y el espacio nace cuando Stripe avisa que se pagó.
+            // (La cuenta de la casa no compra licencias.)
+            throw new IllegalStateException("Un espacio nuevo necesita su licencia. Contrátala desde la web, en Facturación.");
+        }
         // Quien administra la organización, o un miembro a quien se le dio
         // "crear espacios". Ese miembro queda como ADMIN del que crea: es suyo.
         organizaciones.exigirPermiso(user, organizacion.getId(), OrgPermission.CREATE_WORKSPACES);
 
         long activos = workspaces.countByOrganizationIdAndArchivedAtIsNull(organizacion.getId());
-        if (activos >= organizacion.getMaxWorkspaces()) {
+        if (!organizacion.isSinLimites() && activos >= organizacion.getMaxWorkspaces()) {
             // Con el nombre del tope en el mensaje: quien lo lee tiene que
             // poder saber si le falta espacio o si algo se rompió.
             throw new IllegalStateException("Tu organización llegó a su tope de "

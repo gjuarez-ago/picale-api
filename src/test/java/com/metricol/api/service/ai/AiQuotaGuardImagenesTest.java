@@ -18,6 +18,7 @@ import com.metricol.api.config.TenantIdentifierResolver;
 import com.metricol.api.enums.AiOperacion;
 import com.metricol.api.exception.QuotaExceededException;
 import com.metricol.api.repository.AiUsageRepository;
+import com.metricol.api.service.CuentaSinLimites;
 import com.metricol.api.service.limits.LimitesConfigurables;
 
 /** El tope diario de imágenes de campaña, aparte del de llamadas de texto. */
@@ -25,6 +26,7 @@ class AiQuotaGuardImagenesTest {
 
     private AiUsageRepository usos;
     private LimitesConfigurables limites;
+    private CuentaSinLimites sinLimites;
     private AiQuotaGuard guarda;
 
     @BeforeEach
@@ -33,7 +35,8 @@ class AiQuotaGuardImagenesTest {
         limites = mock(LimitesConfigurables.class);
         TenantIdentifierResolver tenants = mock(TenantIdentifierResolver.class);
         when(tenants.resolveCurrentTenantIdentifier()).thenReturn(UUID.randomUUID().toString());
-        guarda = new AiQuotaGuard(usos, limites, tenants);
+        sinLimites = mock(CuentaSinLimites.class);
+        guarda = new AiQuotaGuard(usos, limites, tenants, sinLimites);
     }
 
     private void hechasHoy(long cuantas) {
@@ -81,5 +84,17 @@ class AiQuotaGuardImagenesTest {
         when(limites.maxImagenesIaPorDia()).thenReturn(0);
 
         assertThat(guarda.exigirCupoImagenes(5)).isEqualTo(Integer.MAX_VALUE);
+    }
+
+    @Test
+    @DisplayName("la cuenta de la casa no tiene tope de imágenes ni de llamadas, aunque el día esté agotado")
+    void laCasaNoTieneTope() {
+        when(limites.maxImagenesIaPorDia()).thenReturn(10);
+        when(limites.maxIaPorDia()).thenReturn(5);
+        when(sinLimites.deWorkspace(any(UUID.class))).thenReturn(true);
+        hechasHoy(999);
+
+        assertThat(guarda.exigirCupoImagenes(50)).isEqualTo(Integer.MAX_VALUE);
+        guarda.exigirCupo();
     }
 }

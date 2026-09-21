@@ -1,5 +1,6 @@
 package com.metricol.api.service.publishing;
 
+import com.metricol.api.service.CuentaSinLimites;
 import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.time.format.DateTimeFormatter;
@@ -64,12 +65,15 @@ public class CuotaComprometida {
     private final PostTargetRepository destinos;
     private final DailyPublishUsageRepository consumo;
     private final LimitesConfigurables limites;
+    private final CuentaSinLimites sinLimites;
 
     public CuotaComprometida(
             PostRepository posts,
             PostTargetRepository destinos,
             DailyPublishUsageRepository consumo,
-            LimitesConfigurables limites) {
+            LimitesConfigurables limites,
+            CuentaSinLimites sinLimites) {
+        this.sinLimites = sinLimites;
         this.posts = posts;
         this.destinos = destinos;
         this.consumo = consumo;
@@ -87,6 +91,9 @@ public class CuotaComprometida {
     public void exigirCupo(Post post, UUID workspace, UUID excluir) {
         if (post.getStatus() == PostStatus.DRAFT) {
             return; // Un borrador no compromete nada.
+        }
+        if (sinLimites.deWorkspace(workspace)) {
+            return; // La cuenta de la casa no tiene tope.
         }
 
         boolean esNueva = excluir == null;

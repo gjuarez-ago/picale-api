@@ -63,7 +63,7 @@ public class BillingService {
             LicenseService licencias, CreditService creditos, OrganizationService organizaciones,
             OrganizationRepository organizacionesRepo, WorkspaceRepository workspaces,
             CreditPackRepository paquetes, StripeProductCatalog catalogo,
-            @Value("${app.web-url:https://picale.click}") String urlDelSitio) {
+            @Value("${app.web-url:https://picale.rodtech.cloud}") String urlDelSitio) {
         this.config = config;
         this.stripeProps = stripeProps;
         this.stripe = stripe;
@@ -88,6 +88,12 @@ public class BillingService {
                     config.diasDeAviso(), null, null, false, null, List.of(), List.of());
         }
         Organization organizacion = organizaciones.deLaSesion(usuario);
+        if (organizacion.isSinLimites()) {
+            // La cuenta de la casa no paga ni vence: se le enseña lo mismo que con los cobros apagados,
+            // sin avisos de prueba ni de pago.
+            return new BillingSummaryResponse(false, null, config.moneda(), config.impuestoIncluido(),
+                    config.diasDeAviso(), null, null, false, null, List.of(), List.of());
+        }
         UUID espacioId = usuario.getWorkspace().getId();
         Workspace espacio = workspaces.findById(espacioId)
                 .orElseThrow(() -> new ResourceNotFoundException("Espacio de trabajo no encontrado."));

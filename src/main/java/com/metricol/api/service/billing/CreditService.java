@@ -1,5 +1,6 @@
 package com.metricol.api.service.billing;
 
+import com.metricol.api.service.CuentaSinLimites;
 import java.time.LocalDateTime;
 import java.util.Optional;
 import java.util.UUID;
@@ -30,9 +31,11 @@ public class CreditService {
     private final ImageCreditsRepository creditos;
     private final CreditMovementRepository movimientos;
     private final BillingConfig config;
+    private final CuentaSinLimites sinLimites;
 
     public CreditService(ImageCreditsRepository creditos, CreditMovementRepository movimientos,
-            BillingConfig config) {
+            BillingConfig config, CuentaSinLimites sinLimites) {
+        this.sinLimites = sinLimites;
         this.creditos = creditos;
         this.movimientos = movimientos;
         this.config = config;
@@ -63,7 +66,7 @@ public class CreditService {
      */
     @Transactional
     public int consumirGeneracion(UUID workspaceId, String referencia) {
-        if (!config.habilitado()) {
+        if (!config.habilitado() || sinLimites.deWorkspace(workspaceId)) {
             return Integer.MAX_VALUE;
         }
         // Reintentar la misma generación no la cobra dos veces.
