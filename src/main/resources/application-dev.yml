@@ -113,6 +113,8 @@ app:
     email: ${DEMO_ACCOUNT_EMAIL:}
     password: ${DEMO_ACCOUNT_PASSWORD:}
     organization: ${DEMO_ACCOUNT_ORGANIZATION:Picale HUB}
+    # WhatsApp de la marca de la cuenta raiz (opcional): del servidor, no del codigo, que es publico.
+    whatsapp: ${DEMO_ACCOUNT_WHATSAPP:}
   # Solo la direccion del remitente; el nombre visible ("Picale") lo pone
   # EmailService. Tiene que ser de un dominio verificado en Resend.
   mail:

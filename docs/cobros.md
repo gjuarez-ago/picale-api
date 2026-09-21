@@ -8,8 +8,8 @@ cobros apagados la aplicación se comporta como siempre: nadie paga, nadie se ar
 - **Una licencia por espacio de trabajo** (un negocio). Es una suscripción mensual de Stripe.
 - **Primer negocio** de una organización: precio completo (hoy $349 MXN). **Cada negocio
   adicional**: precio menor (hoy $249). Los precios **incluyen el IVA**.
-- **Prueba gratis** al registrarse (14 días, sin tarjeta). Los espacios que ya existían al
-  encender los cobros reciben una prueba más larga (30 días).
+- **Prueba gratis** de 14 días, sin tarjeta, para todos: al registrarse y también para los
+  espacios que ya existían al encender los cobros. Pasados los 14 días, a pagar.
 - **Créditos de imagen**: 1 crédito = 1 generación (con todas sus versiones). La licencia trae
   5 al mes (no se acumulan, terminan con el periodo). Los **paquetes** (10 / 25 / 50) no vencen.
   Si una generación no produce ninguna versión, el crédito se devuelve.

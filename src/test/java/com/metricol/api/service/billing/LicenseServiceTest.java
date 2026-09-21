@@ -49,7 +49,7 @@ class LicenseServiceTest {
 
         when(config.habilitado()).thenReturn(true);
         when(config.diasDePruebaAlRegistrarse()).thenReturn(14);
-        when(config.diasDePruebaDeLosExistentes()).thenReturn(30);
+        when(config.diasDePruebaDeLosExistentes()).thenReturn(14);
         when(config.creditosMensuales()).thenReturn(5);
 
         org = new Organization();
@@ -187,7 +187,7 @@ class LicenseServiceTest {
         assertThat(guardadas).hasSize(1);
         License l = guardadas.get(0);
         assertThat(l.getStatus()).isEqualTo(LicenseStatus.TRIALING);
-        assertThat(l.getTrialEndsAt()).isAfter(LocalDateTime.now().plusDays(29));
+        assertThat(l.getTrialEndsAt()).isAfter(LocalDateTime.now().plusDays(13));
         assertThat(w.archivado()).isFalse();
     }
 

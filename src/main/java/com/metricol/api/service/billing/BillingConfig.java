@@ -119,7 +119,7 @@ public class BillingConfig {
 
     /** Días gratis para los workspaces que ya existían cuando se encendieron los cobros. */
     public int diasDePruebaDeLosExistentes() {
-        return Math.max(0, entero(DIAS_PRUEBA_EXISTENTES, 30));
+        return Math.max(0, entero(DIAS_PRUEBA_EXISTENTES, 14));
     }
 
     /** Días que se sigue usando un workspace después de un cobro fallido. */
@@ -293,7 +293,7 @@ public class BillingConfig {
         s.put(DIAS_DE_AVISO, new String[] { "5",
                 "Dias antes de que termine una prueba o una licencia que no se renueva para empezar a avisar en el panel." });
         s.put(DIAS_PRUEBA_REGISTRO, new String[] { "14", "Dias gratis al registrarse. 0 = sin prueba." });
-        s.put(DIAS_PRUEBA_EXISTENTES, new String[] { "30",
+        s.put(DIAS_PRUEBA_EXISTENTES, new String[] { "14",
                 "Dias gratis para los workspaces que ya existian al encender los cobros." });
         s.put(DIAS_GRACIA, new String[] { "7", "Dias que se sigue usando un workspace tras un cobro fallido." });
         s.put(CREDITOS_MENSUALES, new String[] { "5", "Creditos de imagen (1 = 1 generacion) que trae cada licencia al mes." });

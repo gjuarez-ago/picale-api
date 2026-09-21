@@ -63,7 +63,7 @@ class BillingConfigTest {
         assertThat(config.habilitado()).isFalse();
         assertThat(config.moneda()).isEqualTo("mxn");
         assertThat(config.diasDePruebaAlRegistrarse()).isEqualTo(14);
-        assertThat(config.diasDePruebaDeLosExistentes()).isEqualTo(30);
+        assertThat(config.diasDePruebaDeLosExistentes()).isEqualTo(14);
         assertThat(config.diasDeGracia()).isEqualTo(7);
         assertThat(config.creditosMensuales()).isEqualTo(5);
     }

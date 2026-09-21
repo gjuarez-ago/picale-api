@@ -2,6 +2,8 @@ package com.metricol.api.service;
 
 import java.util.List;
 
+import org.springframework.beans.factory.annotation.Value;
+
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -31,8 +33,16 @@ public class CuentaRaizService {
     private final UserRepository usuarios;
     private final OrganizationRepository organizaciones;
     private final BrandService marca;
+    private final String whatsapp;
 
-    public CuentaRaizService(UserRepository usuarios, OrganizationRepository organizaciones, BrandService marca) {
+    /**
+     * @param whatsapp el de la marca ({@code DEMO_ACCOUNT_WHATSAPP}). Viene de la configuración del
+     *                 servidor y no del código: este repositorio es público y un teléfono escrito aquí
+     *                 lo publicaría en cada copia.
+     */
+    public CuentaRaizService(UserRepository usuarios, OrganizationRepository organizaciones, BrandService marca,
+            @Value("${app.demo.whatsapp:}") String whatsapp) {
+        this.whatsapp = whatsapp == null ? "" : whatsapp.strip();
         this.usuarios = usuarios;
         this.organizaciones = organizaciones;
         this.marca = marca;
@@ -55,17 +65,22 @@ public class CuentaRaizService {
         }
         organizaciones.save(organizacion);
 
-        marca.guardar(usuario, marcaDePicale());
+        BrandRequest datos = marcaDePicale();
+        if (!whatsapp.isEmpty()) {
+            datos.setWhatsapp(whatsapp);
+        }
+        marca.guardar(usuario, datos);
     }
 
     /**
      * Qué es Pícale, con las palabras que usa la propia plataforma. Sin precios ni cifras: cambian,
-     * y una marca con un precio viejo escribe publicaciones con un precio viejo. La ciudad y el
-     * WhatsApp se dejan vacíos a propósito: no hay un dato real que poner y la IA no debe inventarlo.
+     * y una marca con un precio viejo escribe publicaciones con un precio viejo. El WhatsApp no está
+     * aquí: llega por configuración (ver el constructor).
      */
     static BrandRequest marcaDePicale() {
         BrandRequest m = new BrandRequest();
         m.setGiro("Software para redes sociales con IA");
+        m.setCiudad("Mérida, Yucatán");
         m.setDescripcion("Pícale es la plataforma para crear, programar y publicar en todas tus redes sociales desde un solo "
                 + "lugar. Con inteligencia artificial redacta los textos y diseña las imágenes de tus campañas, y publica en "
                 + "Facebook, Instagram, TikTok, YouTube y LinkedIn, para que cualquier negocio se vea profesional sin complicarse.");

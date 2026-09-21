@@ -42,7 +42,7 @@ class CuentaRaizServiceTest {
         usuarios = mock(UserRepository.class);
         organizaciones = mock(OrganizationRepository.class);
         marca = mock(BrandService.class);
-        servicio = new CuentaRaizService(usuarios, organizaciones, marca);
+        servicio = new CuentaRaizService(usuarios, organizaciones, marca, "9991557878");
 
         organizacion = new Organization();
         organizacion.setId(UUID.randomUUID());
@@ -84,6 +84,18 @@ class CuentaRaizServiceTest {
         ArgumentCaptor<BrandRequest> pedido = ArgumentCaptor.forClass(BrandRequest.class);
         verify(marca).guardar(any(User.class), pedido.capture());
         assertThat(pedido.getValue().getDescripcion()).contains("Pícale");
+        assertThat(pedido.getValue().getCiudad()).isEqualTo("Mérida, Yucatán");
+        assertThat(pedido.getValue().getWhatsapp()).isEqualTo("9991557878");
+    }
+
+    @Test
+    @DisplayName("sin WhatsApp configurado la marca se guarda sin él, sin inventar uno")
+    void sinWhatsapp() {
+        new CuentaRaizService(usuarios, organizaciones, marca, " ").convertir("demo@picale.click", "PICALE HUB");
+
+        ArgumentCaptor<BrandRequest> pedido = ArgumentCaptor.forClass(BrandRequest.class);
+        verify(marca).guardar(any(User.class), pedido.capture());
+        assertThat(pedido.getValue().getWhatsapp()).isNull();
     }
 
     @Test
