@@ -35,7 +35,7 @@ class ConfiguracionPorAmbienteTest {
             "jwt.secret", "jwt.expiration-days",
             "app.cors.allowed-origins", "app.base-url", "app.web-url",
             "app.ops.api-key",
-            "app.demo.email", "app.demo.password", "app.demo.organization",
+            "app.demo.email", "app.demo.password", "app.demo.organization", "app.demo.whatsapp", "app.demo.root",
             "app.mail.from", "spring.mail.host", "spring.mail.port", "spring.mail.username", "spring.mail.password",
             "google.oauth.client-id",
             "cloudflare.r2.endpoint", "cloudflare.r2.access-key", "cloudflare.r2.secret-key", "cloudflare.r2.bucket",
@@ -135,6 +135,18 @@ class ConfiguracionPorAmbienteTest {
         assertThat(prod.getProperty("app.web-url")).isEqualTo("https://picale.rodtech.cloud");
         assertThat(prod.getProperty("app.cors.allowed-origins")).isEqualTo("https://picale.click").doesNotContain("localhost");
         assertThat(prod.getProperty("jwt.secret")).isEqualTo("un-secreto-largo-de-prueba-de-32-bytes!!");
+    }
+
+    @Test
+    @DisplayName("DEMO_ACCOUNT_ROOT llega a la aplicación (antes no estaba mapeada y la cuenta nacía como demo normal)")
+    void laCuentaRaizLlegaDesdeLaVariable() throws IOException {
+        for (String perfil : List.of("dev", "qa", "prod")) {
+            assertThat(entorno(perfil, OBLIGATORIAS).getProperty("app.demo.root")).as(perfil + " por omisión").isEqualTo("false");
+            assertThat(entorno(perfil, con(OBLIGATORIAS, "DEMO_ACCOUNT_ROOT", "true")).getProperty("app.demo.root"))
+                    .as(perfil + " con la variable").isEqualTo("true");
+            assertThat(entorno(perfil, con(OBLIGATORIAS, "DEMO_ACCOUNT_WHATSAPP", "9991557878")).getProperty("app.demo.whatsapp"))
+                    .as(perfil + " whatsapp").isEqualTo("9991557878");
+        }
     }
 
     @Test

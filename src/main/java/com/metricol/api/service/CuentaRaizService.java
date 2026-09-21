@@ -30,6 +30,9 @@ import com.metricol.api.repository.UserRepository;
 @Service
 public class CuentaRaizService {
 
+    /** Cómo se llama el negocio de la cuenta raíz. */
+    static final String NEGOCIO = "Pícale";
+
     private final UserRepository usuarios;
     private final OrganizationRepository organizaciones;
     private final BrandService marca;
@@ -48,6 +51,15 @@ public class CuentaRaizService {
         this.marca = marca;
     }
 
+    /** ¿Esa cuenta ya es la raíz (su organización ya no tiene límites)? */
+    @Transactional(readOnly = true)
+    public boolean yaEsRaiz(String correo) {
+        return usuarios.findByEmail(correo)
+                .map(u -> u.getWorkspace() != null && u.getWorkspace().getOrganization() != null
+                        && u.getWorkspace().getOrganization().isSinLimites())
+                .orElse(false);
+    }
+
     /**
      * @param correo             la cuenta, ya registrada
      * @param nombreOrganizacion cómo se llama su organización; si viene vacío se deja el que tenga
@@ -64,6 +76,10 @@ public class CuentaRaizService {
             organizacion.setName(nombreOrganizacion.strip());
         }
         organizaciones.save(organizacion);
+
+        // El negocio de la cuenta raíz es Pícale. Una cuenta que nació como demo normal se
+        // llamaba como su organización («PICALE HUB»), que no es el nombre de la marca.
+        usuario.getWorkspace().setName(NEGOCIO);
 
         BrandRequest datos = marcaDePicale();
         if (!whatsapp.isEmpty()) {

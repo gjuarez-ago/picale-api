@@ -66,6 +66,20 @@ public class DemoAccountInitializer {
 
             String correo = Correos.normalizar(email);
             if (usuarios.existsByEmail(correo)) {
+                // Una cuenta que nació como demo normal se convierte en raíz UNA vez: la
+                // bandera «sin límites» es la marca de que ya se hizo, y así lo que la
+                // persona edite después en «Mi marca» no se pisa en cada arranque.
+                // Su contraseña nunca se toca.
+                if (esRaiz && !raiz.yaEsRaiz(correo)) {
+                    try {
+                        raiz.convertir(correo, organizacion);
+                        log.info("La cuenta de demostracion {} ya existia y ahora es la raiz (sin limites ni "
+                                + "vigencia, con la marca de Picale); su contrasena no se toco.", correo);
+                    } catch (Exception ex) {
+                        log.error("No se pudo convertir en raiz la cuenta {}: {}", correo, ex.getMessage());
+                    }
+                    return;
+                }
                 log.info("La cuenta de demostracion {} ya existe; no se toca.", correo);
                 return;
             }

@@ -88,14 +88,47 @@ class DemoAccountInitializerTest {
     }
 
     @Test
-    @DisplayName("Cuenta raíz: si la cuenta ya existe no se toca, y por tanto tampoco se le quitan ni se le ponen límites")
-    void laRaizQueYaExisteNoSeToca() throws Exception {
+    @DisplayName("Cuenta raíz: si ya existe y ya es la raíz, no se vuelve a tocar (no se pisa lo que editó la persona)")
+    void laRaizQueYaEsRaizNoSeToca() throws Exception {
         when(usuarios.existsByEmail("demo@picale.click")).thenReturn(true);
+        when(raiz.yaEsRaiz("demo@picale.click")).thenReturn(true);
 
-        correr("demo@picale.click", "clave-segura", "Super Admin", true);
+        correr("demo@picale.click", "clave-segura", "PICALE HUB", true);
 
         verify(auth, never()).register(any());
         verify(raiz, never()).convertir(any(), any());
+    }
+
+    @Test
+    @DisplayName("Cuenta raíz: una cuenta que ya existía como demo normal se convierte en raíz, sin registrarla otra vez")
+    void unaDemoExistenteSeConvierteEnRaiz() throws Exception {
+        when(usuarios.existsByEmail("demo@picale.click")).thenReturn(true);
+        when(raiz.yaEsRaiz("demo@picale.click")).thenReturn(false);
+
+        correr("Demo@Picale.Click", "clave-segura", "PICALE HUB", true);
+
+        verify(auth, never()).register(any());
+        verify(raiz).convertir("demo@picale.click", "PICALE HUB");
+    }
+
+    @Test
+    @DisplayName("Sin la variable de raíz, una cuenta existente no se convierte en nada")
+    void sinRaizNoSeConvierte() throws Exception {
+        when(usuarios.existsByEmail("demo@picale.click")).thenReturn(true);
+
+        correr("demo@picale.click", "clave-segura", "PICALE HUB", false);
+
+        verify(raiz, never()).convertir(any(), any());
+    }
+
+    @Test
+    @DisplayName("Si convertirla falla, la API arranca igual")
+    void unFalloAlConvertirNoTumbaElArranque() throws Exception {
+        when(usuarios.existsByEmail("demo@picale.click")).thenReturn(true);
+        org.mockito.Mockito.doThrow(new IllegalStateException("algo salió mal")).when(raiz).convertir(any(), any());
+
+        correr("demo@picale.click", "clave-segura", "PICALE HUB", true);
+        // Llegar aquí sin excepción es la prueba.
     }
 
     private void correr(String email, String password) throws Exception {

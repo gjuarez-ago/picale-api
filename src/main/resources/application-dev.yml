@@ -115,6 +115,10 @@ app:
     organization: ${DEMO_ACCOUNT_ORGANIZATION:Picale HUB}
     # WhatsApp de la marca de la cuenta raiz (opcional): del servidor, no del codigo, que es publico.
     whatsapp: ${DEMO_ACCOUNT_WHATSAPP:}
+    # true = la cuenta demo es la CUENTA RAIZ (sin limites ni vigencia, con la marca de Picale).
+    # Sin esta linea la variable del servidor no llegaba a @Value("${app.demo.root}") y la cuenta
+    # nacia como una demo normal.
+    root: ${DEMO_ACCOUNT_ROOT:false}
   # Solo la direccion del remitente; el nombre visible ("Picale") lo pone
   # EmailService. Tiene que ser de un dominio verificado en Resend.
   mail:

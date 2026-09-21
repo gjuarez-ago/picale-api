@@ -68,6 +68,25 @@ class CuentaRaizServiceTest {
     }
 
     @Test
+    @DisplayName("el negocio de la cuenta raíz se llama Pícale, aunque la cuenta haya nacido como demo normal")
+    void elNegocioSeLlamaPicale() {
+        espacio.setName("PICALE HUB");
+
+        servicio.convertir("demo@picale.click", "PICALE HUB");
+
+        assertThat(espacio.getName()).isEqualTo("Pícale");
+    }
+
+    @Test
+    @DisplayName("yaEsRaiz: solo cuando su organización ya no tiene límites; una cuenta inexistente, no")
+    void yaEsRaiz() {
+        assertThat(servicio.yaEsRaiz("demo@picale.click")).isFalse();
+        organizacion.setSinLimites(true);
+        assertThat(servicio.yaEsRaiz("demo@picale.click")).isTrue();
+        assertThat(servicio.yaEsRaiz("otra@picale.click")).isFalse();
+    }
+
+    @Test
     @DisplayName("sin nombre de organización se queda con el que tenía")
     void sinNombreConservaElSuyo() {
         servicio.convertir("demo@picale.click", " ");
