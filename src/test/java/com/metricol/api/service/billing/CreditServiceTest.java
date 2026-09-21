@@ -72,7 +72,8 @@ class CreditServiceTest {
     void sinCreditos() {
         assertThatThrownBy(() -> creditos.consumirGeneracion(workspace, "g1"))
                 .isInstanceOf(QuotaExceededException.class)
-                .hasMessageContaining("paquete")
+                .hasMessageContaining("soporte")
+                .satisfies(ex -> assertThat(ex.getMessage().toLowerCase()).doesNotContain("compra").doesNotContain("paquete"))
                 .satisfies(ex -> assertThat(((QuotaExceededException) ex).getCode()).isEqualTo("CREDITS_EXHAUSTED"));
     }
 

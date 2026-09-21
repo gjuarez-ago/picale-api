@@ -80,7 +80,8 @@ public class CreditService {
         int paquete = Math.max(0, c.getPackBalance());
         if (mensuales + paquete < 1) {
             throw new QuotaExceededException("CREDITS_EXHAUSTED",
-                    "Ya usaste los créditos de imagen de este espacio. Compra un paquete en la web para seguir creando.");
+                    // Sin "compra": este mensaje lo lee también la app móvil, que no vende ni manda a pagar.
+                    "Ya usaste los créditos de imagen de este espacio. Revisa la situación de tu cuenta o escribe a soporte.");
         }
 
         String bolsa;
