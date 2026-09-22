@@ -16,8 +16,8 @@ target/
 *.log
 HELP.md
 
-# Plantilla del servidor: SI va al repo (el patron .env.* de arriba la tapaba).
-!.env.vps.example
+# .env.vps.example queda fuera del repo (lo tapa el patron .env.* de arriba):
+# hoy lleva valores reales y no es una plantilla.
 
 # Medios subidos en desarrollo local: contenido de usuarios, no codigo.
 uploads/
