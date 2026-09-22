@@ -77,11 +77,7 @@ public class UploadPostClient {
     public Map<String, Object> publishPhotos(
             String user, List<String> platforms, String caption,
             Map<String, String> captionsPorRed, List<String> photoUrls, PostFormat formato) {
-        MultiValueMap<String, Object> body = baseFields(user, platforms);
-        body.add("title", caption);
-        body.add("description", caption);
-        textosPorRed(body, captionsPorRed, false);
-        formatoPorRed(body, platforms, formato);
+        MultiValueMap<String, Object> body = cuerpoFotos(user, platforms, caption, captionsPorRed, formato);
         // El orden importa: es el que verá quien deslice el carrusel, y es el
         // que la persona eligió en la pantalla de captura.
         photoUrls.forEach(url -> body.add("photos[]", download(url)));
@@ -153,6 +149,59 @@ public class UploadPostClient {
                 .uri("/uploadposts/history")
                 .retrieve()
                 .body(Map.class);
+    }
+
+    /**
+     * Los campos de texto de una publicación de fotos, sin las fotos.
+     *
+     * <p>Separado de {@link #publishPhotos} para poderlo probar sin red: fue
+     * justo aquí donde Facebook enseñó otro texto del que la persona aprobó.
+     *
+     * <p><b>En {@code /upload_photos} Facebook no tiene campo propio de
+     * texto.</b> Según el OpenAPI del proveedor, el texto visible de una foto
+     * en Facebook sale del {@code description} GENERAL; {@code facebook_title}
+     * existe pero no es lo que se ve, y {@code facebook_description} solo
+     * existe para video. Mandar el texto de Facebook en su {@code _title} y el
+     * texto común en {@code description} publicaba en Facebook el texto de
+     * OTRA red —el de la primera elegida, que es el que viaja como común—.
+     *
+     * <p>Por eso, cuando Facebook trae texto propio, ese texto es el que va en
+     * {@code description}. Como ese mismo campo lo leen también TikTok (fotos)
+     * y LinkedIn cuando no reciben el suyo, a esas dos se les manda siempre su
+     * {@code _description} explícito: el propio si lo hay, el común si no. Así
+     * el texto de Facebook no se cuela en ninguna otra red.
+     */
+    MultiValueMap<String, Object> cuerpoFotos(String user, List<String> platforms, String caption,
+            Map<String, String> captionsPorRed, PostFormat formato) {
+        MultiValueMap<String, Object> body = baseFields(user, platforms);
+        body.add("title", caption);
+
+        String deFacebook = textoPropio(captionsPorRed, "facebook");
+        body.add("description", deFacebook != null ? deFacebook : caption);
+
+        textosPorRed(body, captionsPorRed, false);
+
+        for (String red : List.of("tiktok", "linkedin")) {
+            if (platforms.contains(red) && textoPropio(captionsPorRed, red) == null) {
+                body.add(red + "_description", caption);
+            }
+        }
+
+        formatoPorRed(body, platforms, formato);
+        return body;
+    }
+
+    /** El texto propio de una red, o {@code null} si no trae o viene vacío. */
+    private static String textoPropio(Map<String, String> captionsPorRed, String red) {
+        if (captionsPorRed == null) {
+            return null;
+        }
+        for (Map.Entry<String, String> e : captionsPorRed.entrySet()) {
+            if (red.equalsIgnoreCase(e.getKey()) && e.getValue() != null && !e.getValue().isBlank()) {
+                return e.getValue();
+            }
+        }
+        return null;
     }
 
     /**
