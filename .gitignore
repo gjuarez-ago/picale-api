@@ -24,3 +24,7 @@ uploads/
 
 # Copias de seguridad sueltas de scripts o configuraciones.
 *.bak
+
+# Lo escribe deploy-vps.sh en cada despliegue (ver VersionController); no es
+# codigo, es un dato del momento del build.
+BUILD_SHA

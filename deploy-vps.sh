@@ -33,6 +33,23 @@ PROYECTO="cmrg-505321"
 #   DESTINO=/home/contacto_rodtech_cloud/metricol.api bash deploy-vps.sh
 DESTINO="${DESTINO:-~/metricol.api}"
 
+# Que commit es esto, para que /api/v1/ops/version lo pueda contestar despues sin
+# que nadie tenga que acordarse. Se escribe ANTES de empaquetar porque el
+# Dockerfile lo copia a la imagen (ver COPY BUILD_SHA .), y ese COPY falla si el
+# archivo no esta.
+#
+# Con .git presente (una corrida directa desde el repositorio, o el checkout de
+# GitHub Actions) se lee solo. Sin .git —el flujo de "copia limpia" con
+# `git archive HEAD | tar -x` que dejar el arbol sin .git a proposito, para
+# desplegar exactamente lo confirmado y no lo que haya de mas en el working
+# directory— se respeta el BUILD_SHA que quien invoco esto ya haya dejado ahi;
+# sin ninguno de los dos, queda "desconocido" y el despliegue sigue igual.
+if [ -d .git ]; then
+  git rev-parse HEAD > BUILD_SHA
+elif [ ! -f BUILD_SHA ]; then
+  echo "desconocido" > BUILD_SHA
+fi
+
 echo "==> Empaquetando el codigo"
 # Se excluye target/ porque la imagen compila dentro: mandar 71 MB de jar por
 # la red para luego no usarlo es tiempo tirado. Y .env se queda fuera a

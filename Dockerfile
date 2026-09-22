@@ -32,6 +32,13 @@ WORKDIR /app
 # no conoce America/Mexico_City y la JVM se queda en UTC aunque se lo pidan.
 RUN apk add --no-cache ffmpeg tzdata
 
+# El commit de git que se construyó, para que /api/v1/ops/version diga qué corre
+# sin tener que adivinarlo. Lo escribe deploy-vps.sh antes de empaquetar; sin
+# ese archivo, ni siquiera para una prueba local, la build fallaría en este
+# COPY, así que deploy-vps.sh SIEMPRE lo deja puesto (con "desconocido" si no
+# hay forma de saberlo).
+COPY BUILD_SHA .
+
 COPY --from=build /app/target/metricol-api.jar app.jar
 
 # El puerto real lo inyecta quien manda: PORT en Cloud Run, y aqui el que
