@@ -21,6 +21,8 @@ public class PostResponse {
 
     /** La idea tal como la dicto la persona; ver {@code Post.brief}. Puede venir nula. */
     private String brief;
+    /** El título común a todas las redes; ver {@code Post.titulo}. Puede venir nulo. */
+    private String titulo;
 
     /** Todas las fotos, en orden. El video, cuando lo es, va solo aquí. */
     private List<String> mediaUrls;

@@ -24,6 +24,12 @@ public class PostSaveRequest {
     private String brief;
 
     /**
+     * El título común a todas las redes (ver {@code Post.titulo}). Opcional:
+     * sin él se saca del caption al publicar. Se recorta a 90.
+     */
+    private String titulo;
+
+    /**
      * Las fotos de la publicación, en el orden en que se verán, o un solo
      * video. El tope de fotos lo pone {@code app.media.max-images-per-post} y
      * lo comprueba el servidor: la app también lo respeta, pero una app vieja

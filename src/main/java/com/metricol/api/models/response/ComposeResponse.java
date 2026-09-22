@@ -8,5 +8,5 @@ import java.util.Map;
  * @param guion  la idea en una frase — lo editable, de donde se recrea todo
  * @param textos el texto por red, con la llave en mayusculas (INSTAGRAM, TIKTOK...)
  */
-public record ComposeResponse(String guion, Map<String, String> textos) {
+public record ComposeResponse(String titulo, String guion, Map<String, String> textos) {
 }

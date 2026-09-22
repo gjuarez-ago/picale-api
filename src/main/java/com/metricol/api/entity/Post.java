@@ -67,6 +67,22 @@ public class Post {
     private String brief;
 
     /**
+     * El título de la publicación, común a todas las redes.
+     *
+     * <p>Es un texto aparte del caption, desde el 22 sep 2026: lo escribe la
+     * IA (o la persona) con tope {@link com.metricol.api.service.ai.EspecTexto#TITULO_MAX}
+     * y viaja a upload-post como {@code title} y como el {@code *_title} de las
+     * redes que lo muestran aparte (Facebook, TikTok en fotos, LinkedIn,
+     * YouTube). Antes ahí iba el caption recortado a la red más estrecha, y
+     * en Facebook salía la primera frase partida con puntos suspensivos.
+     *
+     * <p>Nulo en publicaciones anteriores y en clientes que aún no lo
+     * mandan: entonces se saca del caption al publicar.
+     */
+    @Column(length = 120)
+    private String titulo;
+
+    /**
      * Las fotos —o el video— de la publicación, en el orden en que se verán.
      *
      * <p>Una lista y no un solo campo porque un carrusel es UNA publicación

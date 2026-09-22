@@ -103,7 +103,7 @@ public class AiController {
         borrador.textos().forEach((red, texto) -> textos.put(red.name(), texto));
 
         return ResponseEntity.ok(ApiResponse.success(
-                new ComposeResponse(borrador.guion(), textos)));
+                new ComposeResponse(borrador.titulo(), borrador.guion(), textos)));
     }
 
     /**

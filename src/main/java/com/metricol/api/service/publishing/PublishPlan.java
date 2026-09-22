@@ -26,6 +26,8 @@ public record PublishPlan(
         UUID workspaceId,
         String profile,
         String caption,
+        /** El título común a todas las redes, o nulo si nadie lo escribió (ver {@code Post.titulo}). */
+        String titulo,
         List<String> mediaUrls,
         boolean video,
 

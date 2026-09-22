@@ -73,12 +73,19 @@ public class Redactor {
             Tambien recibes que se ve en las imagenes y en que redes se publica.
 
             Devuelves UN JSON con esta forma:
-            {"guion": "...", "textos": {"INSTAGRAM": "...", "TIKTOK": "..."}}
+            {"titulo": "...", "guion": "...", "textos": {"INSTAGRAM": "...", "TIKTOK": "..."}}
 
+            - "titulo" es UN titulo profesional de una sola linea, el mismo para
+              todas las redes: nombra lo que se ofrece o el tema de la
+              publicacion, como el titulo de un video o de un anuncio. Maximo
+              90 caracteres. Sin hashtags, sin emojis, sin punto final y sin
+              repetir el caption. Ejemplos: "Mallas ciclonicas para predios
+              industriales", "2x1 en tacos al pastor hasta las 6".
             - "guion" es su mensaje ya limpio, en version general: lo mismo que
               dijo, bien escrito. Sirve para las redes sin texto propio.
             - "textos" lleva una llave por cada red que te pidan, con SU mensaje
-              adaptado a esa red. Ni una llave de mas.
+              adaptado a esa red. Ni una llave de mas. Es el caption: lo que se
+              lee bajo la publicacion. No lo empieces con el titulo.
 
             Reglas que no se rompen:
             - Respeta el limite de caracteres de cada red. Es un limite duro.
@@ -127,10 +134,12 @@ public class Redactor {
     }
 
     /**
+     * @param titulo      el titulo comun a todas las redes, ya recortado a
+     *                    {@link EspecTexto#TITULO_MAX}; nunca nulo si hay algun texto
      * @param guion       resumen editable de la idea
-     * @param textos      el texto final por red, ya recortado al limite
+     * @param textos      el caption final por red, ya recortado al limite
      */
-    public record Borrador(String guion, Map<Platform, String> textos) {
+    public record Borrador(String titulo, String guion, Map<Platform, String> textos) {
     }
 
     /**
@@ -285,7 +294,10 @@ public class Redactor {
             sb.append("No hay imagenes o no se pudieron ver: escribe solo con la intencion.\n\n");
         }
 
-        sb.append("Redes y su formato:\n");
+        sb.append("Titulo: maximo ").append(EspecTexto.TITULO_MAX)
+                .append(" caracteres, uno solo para todas las redes. Estilo: ")
+                .append(EspecTexto.TITULO.estilo()).append(".\n\n");
+        sb.append("Redes y su formato (el caption de cada una):\n");
         for (Platform red : redes) {
             EspecTexto espec = EspecTexto.de(red);
             sb.append("- ").append(red.name())
@@ -305,12 +317,14 @@ public class Redactor {
      * publicaria vacia.
      */
     private Borrador interpretar(String json, List<Platform> redes) {
+        String titulo = null;
         String guion = "";
         Map<Platform, String> textos = new LinkedHashMap<>();
 
         try {
             JsonNode raiz = mapper.readTree(json);
             guion = raiz.path("guion").asText("").strip();
+            titulo = EspecTexto.recortarTitulo(raiz.path("titulo").asText(""));
 
             JsonNode nodo = raiz.path("textos");
             for (Platform red : redes) {
@@ -333,7 +347,15 @@ public class Redactor {
             }
         }
 
-        return new Borrador(guion, textos);
+        // Sin titulo de la IA se saca uno del guion: es el respaldo, no lo
+        // deseado, y por eso se registra. Un titulo vacio haria que el
+        // proveedor publicara sin `title`, y en YouTube eso es un rechazo.
+        if (titulo == null) {
+            log.warn("La IA no devolvio titulo; se saca del guion");
+            titulo = EspecTexto.tituloDesde(guion);
+        }
+
+        return new Borrador(titulo, guion, textos);
     }
 
     /**

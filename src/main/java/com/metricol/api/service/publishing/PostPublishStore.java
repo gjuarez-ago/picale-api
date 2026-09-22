@@ -215,6 +215,7 @@ public class PostPublishStore {
                 workspaceId,
                 profile,
                 post.getCaption(),
+                post.getTitulo(),
                 List.copyOf(post.getMediaUrls()),
                 post.esVideo(),
                 post.formatoEfectivo(),
@@ -596,7 +597,7 @@ public class PostPublishStore {
      * comprobarlo en cada sitio por un caso que no llega.
      */
     private PublishPlan vacio(UUID postId, UUID workspaceId, PublishOutcome atajo) {
-        return new PublishPlan(postId, workspaceId, null, null, List.of(), false,
+        return new PublishPlan(postId, workspaceId, null, null, null, List.of(), false,
                 PostFormat.PHOTO, List.of(), atajo);
     }
 

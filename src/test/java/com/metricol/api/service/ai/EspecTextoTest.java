@@ -37,12 +37,31 @@ class EspecTextoTest {
     @Test
     @DisplayName("La más estricta de varias redes es la que menos admite")
     void laMasEstrictaEsLaQueMenosAdmite() {
-        // LinkedIn admite 3000 y TikTok 90: manda TikTok, porque el `title`
-        // común lo valida el proveedor contra todas las elegidas.
+        // LinkedIn admite 3000 y TikTok 255 en el caption: manda TikTok.
         EspecTexto estricta = EspecTexto.masEstricta(
                 List.of(Platform.LINKEDIN, Platform.TIKTOK, Platform.INSTAGRAM));
 
-        assertThat(estricta.maxCaracteres()).isEqualTo(90);
+        assertThat(estricta.maxCaracteres()).isEqualTo(255);
+    }
+
+    @Test
+    @DisplayName("El título es aparte del caption: 90, una línea, sin hashtags ni punto final")
+    void elTituloVaAparte() {
+        assertThat(EspecTexto.TITULO_MAX).isEqualTo(90);
+        assertThat(EspecTexto.recortarTitulo("  Mallas ciclónicas\nsegunda línea ")).isEqualTo("Mallas ciclónicas");
+        assertThat(EspecTexto.recortarTitulo(largo(120))).hasSizeLessThanOrEqualTo(90);
+        assertThat(EspecTexto.recortarTitulo("   ")).isNull();
+        assertThat(EspecTexto.recortarTitulo(null)).isNull();
+    }
+
+    @Test
+    @DisplayName("Sin título escrito se saca uno del caption: la primera frase, sin hashtags")
+    void elTituloDeRespaldoSaleDelCaption() {
+        String caption = "La seguridad en tu predio es vital. Las mallas ciclónicas ayudan. #Seguridad #CMRG";
+
+        assertThat(EspecTexto.tituloDesde(caption)).isEqualTo("La seguridad en tu predio es vital");
+        assertThat(EspecTexto.tituloDesde("#Solo #Hashtags")).isNull();
+        assertThat(EspecTexto.tituloDesde(largo(300))).hasSizeLessThanOrEqualTo(90);
     }
 
     @Test

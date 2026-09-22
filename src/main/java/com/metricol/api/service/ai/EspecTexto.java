@@ -24,55 +24,99 @@ import com.metricol.api.enums.Platform;
  */
 public record EspecTexto(int maxCaracteres, int hashtagsSugeridos, String estilo) {
 
+    /**
+     * Cuanto admite el TITULO, que es un texto aparte del caption.
+     *
+     * <p>Desde el 22 sep 2026 viajan dos cosas por publicacion: un titulo
+     * corto —el mismo para todas las redes— y el caption de cada red. En
+     * upload-post el titulo va en {@code title}, {@code facebook_title},
+     * {@code tiktok_title} (fotos), {@code linkedin_title} y
+     * {@code youtube_title}; el caption va en el campo que cada red MUESTRA.
+     *
+     * <p>90 es el titulo de una publicacion de fotos en TikTok, el mas corto
+     * de todos, y por eso es el tope comun: un solo titulo que cabe en TikTok
+     * cabe en Facebook (255) y en YouTube (100), y asi se reutiliza en vez de
+     * escribir tres.
+     */
+    public static final int TITULO_MAX = 90;
+
+    /** La especificacion del titulo: corto, sin hashtags, profesional. */
+    public static final EspecTexto TITULO = new EspecTexto(TITULO_MAX, 0,
+            "un titulo profesional de una linea: nombra lo que se ofrece o el tema,"
+                    + " sin hashtags, sin emojis y sin punto final");
+
     public static EspecTexto de(Platform platform) {
         return switch (platform) {
             case INSTAGRAM -> new EspecTexto(2200, 5,
                     "cercano y visual, con emojis con medida; los hashtags al final, nunca dentro de la frase");
 
-            // 255 y no 2000: es lo que upload-post admite en el campo `title`
-            // de Facebook, y lo rechaza entero si se pasa. Mismo aprendizaje
-            // que TikTok y del mismo modo —un 400 del proveedor que no decia
-            // nada hasta leerle el cuerpo—: "Facebook title is too long (359
-            // characters). Maximum allowed is 255."
-            //
-            // No es el limite de un post de Facebook, que es mucho mayor: es
-            // el del titulo, que es el campo por el que pasa nuestro texto.
-            // Mientras lo mandemos por ahi, 255 es el numero que manda.
+            // 255: el caption de Facebook. Historicamente era el tope del
+            // campo `title` de Facebook en upload-post (359 caracteres tiraron
+            // una publicacion entera con un 400). Hoy el titulo va aparte
+            // (TITULO) y el caption viaja por `description`, que admite mucho
+            // mas, pero 255 se conserva como medida del caption a proposito:
+            // es lo que Facebook enseña sin plegar en "Ver mas", y es el mismo
+            // tope que TikTok, lo que permite reutilizar un texto entre ambas.
             case FACEBOOK -> new EspecTexto(255, 2,
                     "conversacional y directo, como quien le cuenta algo a un vecino; casi sin hashtags");
 
-            // 90 y no 2200: lo que TikTok admite en el titulo de una
-            // publicacion, y lo rechaza entero si se pasa. Lo aprendimos de un
-            // rechazo real —115 caracteres— que se veia solo como un 400 del
-            // proveedor. Cuenta como cuenta Java: un emoji fuera del BMP son
-            // dos unidades UTF-16, que es exactamente la regla de TikTok
-            // ("an emoji counts as 2"), asi que length() vale de medida.
+            // 255 y ya no 90: los 90 eran el TITULO de una publicacion de
+            // fotos en TikTok, y ahi es donde iba nuestro texto. Ahora el
+            // titulo va aparte (TITULO, 90) y el caption viaja por
+            // `tiktok_description` en fotos y `tiktok_title` en video, que
+            // admiten 4000 y 2200. Se queda en 255, igual que Facebook, para
+            // que el mismo caption sirva en las dos redes.
             //
-            // Se aplica tambien al video, donde quiza cabria mas: el texto va
-            // al mismo campo `title`, y el coste de equivocarse no es simetrico
-            // —quedarse corto se lee raro, pasarse no se publica—.
-            //
-            // Con 90 caracteres, cuatro hashtags se comen la mitad del texto:
-            // el que fallo gastaba 51 de 115 en ellos. Por eso bajan a dos.
-            case TIKTOK -> new EspecTexto(90, 2,
-                    "muy corto, de un vistazo: el gancho en las primeras palabras y nada de"
+            // Cuenta como cuenta Java: un emoji fuera del BMP son dos unidades
+            // UTF-16, que es la regla de TikTok ("an emoji counts as 2").
+            case TIKTOK -> new EspecTexto(255, 2,
+                    "corto y de un vistazo: el gancho en las primeras palabras y nada de"
                             + " relleno; lenguaje de la plataforma, sin sonar a anuncio");
 
-            // 100 y no 5000: en la descripcion de un video de YouTube caben
-            // 5000, pero nuestro texto no viaja por ahi — va en `title`, que
-            // YouTube limita a 100 y ademas exige. Mismo aprendizaje que
-            // Facebook con sus 255 y TikTok con sus 90: mientras lo mandemos
-            // por el campo de titulo, el numero que manda es el del titulo.
-            //
-            // Dos hashtags y no cinco por lo mismo que en TikTok: en 100
-            // caracteres, cinco se comen el texto entero.
-            case YOUTUBE -> new EspecTexto(100, 2,
-                    "un titulo, no un parrafo: lo que promete el video en las primeras"
-                            + " palabras, sin relleno ni saludo");
+            // La descripcion del video, no su titulo: el titulo va aparte
+            // (TITULO, que cabe en los 100 de YouTube). En la descripcion caben
+            // 5000; se pide menos porque nadie lee cinco mil caracteres bajo un
+            // video, pero ya no se recorta a un titular.
+            case YOUTUBE -> new EspecTexto(1000, 3,
+                    "la descripcion del video: que se ve y por que verlo, en dos o tres"
+                            + " frases claras, sin relleno ni saludo");
 
             case LINKEDIN -> new EspecTexto(3000, 3,
                     "profesional pero humano, en primera persona; nada de jerga corporativa vacia");
         };
+    }
+
+    /** El titulo recortado a lo que admite, o {@code null} si no hay. */
+    public static String recortarTitulo(String titulo) {
+        if (titulo == null || titulo.isBlank()) {
+            return null;
+        }
+        // Un titulo es una linea: si viene con saltos, se queda la primera.
+        String linea = titulo.strip().split("\\R", 2)[0].strip();
+        return TITULO.recortar(linea);
+    }
+
+    /**
+     * Un titulo sacado de un texto, para cuando nadie escribio uno.
+     *
+     * <p>Es el respaldo para clientes viejos y publicaciones anteriores al
+     * titulo. No es el titulo profesional que escribe la IA: es la primera
+     * frase del caption, sin hashtags, recortada a lo que cabe. Mejor eso que
+     * un caption de 255 caracteres partido a los 90 con puntos suspensivos.
+     */
+    public static String tituloDesde(String texto) {
+        if (texto == null || texto.isBlank()) {
+            return null;
+        }
+        String sinHashtags = texto.replaceAll("#\\S+", " ").replaceAll("\\s{2,}", " ").strip();
+        String primera = sinHashtags.split("(?<=[.!?])\\s|\\R", 2)[0].strip();
+        if (primera.isEmpty()) {
+            primera = sinHashtags;
+        }
+        if (primera.endsWith(".")) {
+            primera = primera.substring(0, primera.length() - 1);
+        }
+        return recortarTitulo(primera);
     }
 
     /**

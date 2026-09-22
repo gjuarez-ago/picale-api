@@ -72,12 +72,15 @@ public class UploadPostClient {
      * {@code photos[]}. Mandarlas de a una habría creado varias publicaciones
      * sueltas en la red en vez de un carrusel, que es justo lo contrario de
      * lo que pide quien elige seis fotos.
+     *
+     * @param titulo         el título común a todas las redes (ya recortado a 90)
+     * @param captionsPorRed el caption de cada red, con la llave en mayúsculas
      */
     @SuppressWarnings("unchecked")
     public Map<String, Object> publishPhotos(
-            String user, List<String> platforms, String caption,
+            String user, List<String> platforms, String titulo,
             Map<String, String> captionsPorRed, List<String> photoUrls, PostFormat formato) {
-        MultiValueMap<String, Object> body = cuerpoFotos(user, platforms, caption, captionsPorRed, formato);
+        MultiValueMap<String, Object> body = cuerpoFotos(user, platforms, titulo, captionsPorRed, formato);
         // El orden importa: es el que verá quien deslice el carrusel, y es el
         // que la persona eligió en la pantalla de captura.
         photoUrls.forEach(url -> body.add("photos[]", download(url)));
@@ -91,13 +94,9 @@ public class UploadPostClient {
     }
 
     @SuppressWarnings("unchecked")
-    public Map<String, Object> publishVideo(String user, List<String> platforms, String title,
+    public Map<String, Object> publishVideo(String user, List<String> platforms, String titulo,
             Map<String, String> captionsPorRed, String videoUrl, PostFormat formato) {
-        MultiValueMap<String, Object> body = baseFields(user, platforms);
-        body.add("title", title);
-        body.add("description", title);
-        textosPorRed(body, captionsPorRed, true);
-        formatoPorRed(body, platforms, formato);
+        MultiValueMap<String, Object> body = cuerpoVideo(user, platforms, titulo, captionsPorRed, formato);
         body.add("video", download(videoUrl));
 
         return restClient.post()
@@ -109,40 +108,23 @@ public class UploadPostClient {
     }
 
     /**
-     * Cómo acabó un envío, red por red.
+     * Cómo acabó un envío que el proveedor aceptó: por red, éxito o error.
      *
-     * <p>Esta llamada es la que dice la verdad. {@code /upload} solo acepta el
-     * encargo —{@code is_async: true} en todo lo que devuelve el proveedor— y
-     * contesta antes de que ninguna red haya terminado; medido en producción,
-     * un reel de 13 MB tardó 85 segundos en salir en las tres redes mientras
-     * que la subida contestó a los 20.
-     *
-     * <p>Devuelve {@code status} ("completed" cuando ya no falta ninguna),
-     * {@code completed}/{@code total}, y {@code results}: una LISTA con una
-     * fila por red, no un mapa indexado por red.
+     * <p>Devuelve el JSON crudo de {@code /uploadposts/status}. Lo que trae —una
+     * lista {@code results} con un objeto por red con {@code platform},
+     * {@code success}, {@code platform_post_id} y {@code error}— lo interpreta
+     * quien lo pide, con la misma tolerancia que el resto de respuestas.
      */
     @SuppressWarnings("unchecked")
     public Map<String, Object> status(String requestId) {
         return restClient.get()
-                .uri(uriBuilder -> uriBuilder.path("/uploadposts/status").queryParam("request_id", requestId).build())
+                .uri(uriBuilder -> uriBuilder.path("/uploadposts/status")
+                        .queryParam("request_id", requestId)
+                        .build())
                 .retrieve()
                 .body(Map.class);
     }
 
-    /**
-     * Las últimas subidas de la cuenta, en {@code history}.
-     *
-     * <p>Es el plan B de {@link #status(String)}: sirve cuando no se guardó el
-     * identificador del envío. Sus filas traen los mismos campos que las de
-     * status —{@code platform}, {@code success}, {@code platform_post_id},
-     * {@code post_url}, {@code error_message}— así que las lee el mismo código.
-     *
-     * <p>Trae solo las diez últimas de TODA la llave, que es de todos los
-     * negocios, y no admite filtro ni paginado por perfil (se probaron
-     * {@code profile}, {@code profile_username} y {@code limit}: los dos
-     * primeros se ignoran y el tercero da 400). Por eso solo vale recién
-     * mandado el envío, cuando lo nuestro todavía está arriba.
-     */
     @SuppressWarnings("unchecked")
     public Map<String, Object> historial() {
         return restClient.get()
@@ -151,47 +133,106 @@ public class UploadPostClient {
                 .body(Map.class);
     }
 
-    /**
-     * Los campos de texto de una publicación de fotos, sin las fotos.
-     *
-     * <p>Separado de {@link #publishPhotos} para poderlo probar sin red: fue
-     * justo aquí donde Facebook enseñó otro texto del que la persona aprobó.
-     *
-     * <p><b>En {@code /upload_photos} Facebook no tiene campo propio de
-     * texto.</b> Según el OpenAPI del proveedor, el texto visible de una foto
-     * en Facebook sale del {@code description} GENERAL; {@code facebook_title}
-     * existe pero no es lo que se ve, y {@code facebook_description} solo
-     * existe para video. Mandar el texto de Facebook en su {@code _title} y el
-     * texto común en {@code description} publicaba en Facebook el texto de
-     * OTRA red —el de la primera elegida, que es el que viaja como común—.
-     *
-     * <p>Por eso, cuando Facebook trae texto propio, ese texto es el que va en
-     * {@code description}. Como ese mismo campo lo leen también TikTok (fotos)
-     * y LinkedIn cuando no reciben el suyo, a esas dos se les manda siempre su
-     * {@code _description} explícito: el propio si lo hay, el común si no. Así
-     * el texto de Facebook no se cuela en ninguna otra red.
-     */
-    MultiValueMap<String, Object> cuerpoFotos(String user, List<String> platforms, String caption,
+    /** Los campos de texto de una publicación de fotos, sin las fotos. Separado para poderlo probar sin red. */
+    MultiValueMap<String, Object> cuerpoFotos(String user, List<String> platforms, String titulo,
             Map<String, String> captionsPorRed, PostFormat formato) {
         MultiValueMap<String, Object> body = baseFields(user, platforms);
-        body.add("title", caption);
-
-        String deFacebook = textoPropio(captionsPorRed, "facebook");
-        body.add("description", deFacebook != null ? deFacebook : caption);
-
-        textosPorRed(body, captionsPorRed, false);
-
-        for (String red : List.of("tiktok", "linkedin")) {
-            if (platforms.contains(red) && textoPropio(captionsPorRed, red) == null) {
-                body.add(red + "_description", caption);
-            }
-        }
-
+        textosPorRed(body, platforms, titulo, captionsPorRed, false);
         formatoPorRed(body, platforms, formato);
         return body;
     }
 
-    /** El texto propio de una red, o {@code null} si no trae o viene vacío. */
+    /** Los campos de texto de un video, sin el archivo. Separado para poderlo probar sin red. */
+    MultiValueMap<String, Object> cuerpoVideo(String user, List<String> platforms, String titulo,
+            Map<String, String> captionsPorRed, PostFormat formato) {
+        MultiValueMap<String, Object> body = baseFields(user, platforms);
+        textosPorRed(body, platforms, titulo, captionsPorRed, true);
+        formatoPorRed(body, platforms, formato);
+        return body;
+    }
+
+    /**
+     * El título y el caption de cada red, cada uno en el campo que esa red lee.
+     *
+     * <p>Viajan DOS textos por publicación (22 sep 2026): un título corto,
+     * común a todas las redes, y el caption de cada red. Antes viajaba uno
+     * solo, en los campos de título, recortado a la red más estrecha; en
+     * Facebook salía la primera frase partida con "…" y encima de otra red.
+     *
+     * <p>Qué campo muestra cada red, según el OpenAPI del proveedor
+     * (https://docs.upload-post.com/openapi.json):
+     * <ul>
+     * <li><b>Instagram</b>: {@code instagram_title} es el pie. Va el caption.</li>
+     * <li><b>Facebook fotos</b>: el texto visible es el {@code description}
+     * GENERAL; no hay {@code facebook_description} para fotos y
+     * {@code facebook_title} no se ve. Va el caption en {@code description}.</li>
+     * <li><b>Facebook video</b>: {@code facebook_description} es el texto;
+     * {@code facebook_title} es el nombre del video. Título y caption aparte.</li>
+     * <li><b>TikTok fotos</b>: {@code tiktok_title} (90) y
+     * {@code tiktok_description} se muestran los dos. Título y caption aparte.</li>
+     * <li><b>TikTok video</b>: {@code tiktok_title} es el único texto y se ve
+     * entero (2200). Va el caption.</li>
+     * <li><b>LinkedIn</b>: {@code linkedin_description} es el comentario
+     * visible; {@code linkedin_title} nombra el adjunto. Aparte.</li>
+     * <li><b>YouTube</b>: título y descripción, los dos visibles. Aparte.</li>
+     * </ul>
+     *
+     * <p>El {@code description} general lo leen también TikTok (fotos) y
+     * LinkedIn cuando no reciben el suyo; por eso a toda red del envío se le
+     * manda su campo explícito, con su caption o con el primero que haya, y
+     * el de Facebook no se cuela en ninguna otra.
+     */
+    private void textosPorRed(MultiValueMap<String, Object> body, List<String> platforms,
+            String titulo, Map<String, String> captionsPorRed, boolean video) {
+        String primerCaption = captionsPorRed == null ? null : captionsPorRed.values().stream()
+                .filter(t -> t != null && !t.isBlank())
+                .findFirst()
+                .orElse(null);
+        String tituloEfectivo = titulo != null && !titulo.isBlank() ? titulo : primerCaption;
+
+        body.add("title", tituloEfectivo);
+
+        String deFacebook = textoPropio(captionsPorRed, "facebook");
+        String descripcion = deFacebook != null ? deFacebook : primerCaption != null ? primerCaption : tituloEfectivo;
+        body.add("description", descripcion);
+
+        for (String red : platforms) {
+            String propio = textoPropio(captionsPorRed, red);
+            String caption = propio != null ? propio : primerCaption != null ? primerCaption : tituloEfectivo;
+            if (caption == null) {
+                continue;
+            }
+            switch (red.toLowerCase()) {
+                case "instagram" -> body.add("instagram_title", caption);
+                case "facebook" -> {
+                    body.add("facebook_title", tituloEfectivo);
+                    if (video) {
+                        body.add("facebook_description", caption);
+                    }
+                    // En fotos el caption ya va en {@code description} (arriba).
+                }
+                case "tiktok" -> {
+                    if (video) {
+                        body.add("tiktok_title", caption);
+                    } else {
+                        body.add("tiktok_title", tituloEfectivo);
+                        body.add("tiktok_description", caption);
+                    }
+                }
+                case "linkedin" -> {
+                    body.add("linkedin_title", tituloEfectivo);
+                    body.add("linkedin_description", caption);
+                }
+                case "youtube" -> {
+                    body.add("youtube_title", tituloEfectivo);
+                    body.add("youtube_description", caption);
+                }
+                default -> body.add(red.toLowerCase() + "_title", caption);
+            }
+        }
+    }
+
+    /** El caption propio de una red, o {@code null} si no trae o viene vacío. */
     private static String textoPropio(Map<String, String> captionsPorRed, String red) {
         if (captionsPorRed == null) {
             return null;
@@ -202,48 +243,6 @@ public class UploadPostClient {
             }
         }
         return null;
-    }
-
-    /**
-     * Añade el texto propio de cada red, cuando lo hay.
-     *
-     * <p>upload-post acepta {@code instagram_title}, {@code facebook_title},
-     * {@code tiktok_title}, {@code linkedin_title} y {@code x_title}, y cada
-     * uno pisa al {@code title} general. Es lo que permite mandar un texto
-     * distinto por red SIN partir la publicacion en cinco envios: sigue siendo
-     * una sola llamada, y el carrusel sigue siendo una sola publicacion.
-     *
-     * <p>Ademas del {@code *_title} se manda el {@code *_description} de las
-     * redes que lo tienen, con el mismo texto. Segun el OpenAPI del proveedor,
-     * en LinkedIn el cuerpo visible de la publicacion es el "commentary"
-     * ({@code linkedin_description}), no el title; TikTok lo tiene para fotos y
-     * Facebook y YouTube para video. Sin estos campos esas redes enseñaban el
-     * texto comun —que era lo dictado— y no el que la persona aprobo por red.
-     *
-     * <p>Lo que no venga se queda sin su campo, y esa red usa el general. Es
-     * el comportamiento que habia antes de todo esto.
-     */
-    private void textosPorRed(MultiValueMap<String, Object> body, Map<String, String> captionsPorRed, boolean video) {
-        if (captionsPorRed == null || captionsPorRed.isEmpty()) {
-            return;
-        }
-        captionsPorRed.forEach((platform, texto) -> {
-            if (texto == null || texto.isBlank()) {
-                return;
-            }
-            String red = platform.toLowerCase();
-            body.add(red + "_title", texto);
-
-            boolean conDescripcion = switch (red) {
-                case "linkedin" -> true;
-                case "tiktok" -> !video;
-                case "facebook", "youtube" -> video;
-                default -> false;
-            };
-            if (conDescripcion) {
-                body.add(red + "_description", texto);
-            }
-        });
     }
 
     /**

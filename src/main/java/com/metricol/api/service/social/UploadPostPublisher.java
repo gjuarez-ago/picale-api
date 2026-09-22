@@ -264,19 +264,37 @@ public class UploadPostPublisher {
         // previa. Como el proveedor enseña el comun en varias redes aunque
         // reciba el propio, mandar el crudo aqui publicaba lo dictado.
         List<Platform> redesDelEnvio = plan.destinos().stream().map(PublishPlan.Destino::platform).toList();
-        EspecTexto masEstricta = EspecTexto.masEstricta(redesDelEnvio);
         String baseComun = porRed.values().stream()
                 .filter(t -> t != null && !t.isBlank())
                 .findFirst()
                 .orElse(plan.caption());
-        String tituloComun = masEstricta.recortar(baseComun);
+
+        // El TITULO, aparte del caption (22 sep 2026). Es lo que va en `title`
+        // y en los `*_title` de las redes que lo muestran aparte, con tope
+        // propio (90) y el mismo para todas. Antes ahi iba el caption comun
+        // recortado a la red mas estrecha, y Facebook enseñaba la primera
+        // frase partida con "…". Ahora el caption de cada red viaja entero por
+        // el campo que esa red MUESTRA (ver UploadPostClient.textosPorRed).
+        //
+        // Sin titulo guardado —publicaciones viejas, clientes viejos— se saca
+        // uno del caption: la primera frase sin hashtags. No es el titulo que
+        // escribe la IA, pero es un titulo y no un caption mutilado.
+        String titulo = plan.titulo() != null && !plan.titulo().isBlank()
+                ? EspecTexto.recortarTitulo(plan.titulo())
+                : EspecTexto.tituloDesde(baseComun);
+        if (titulo == null) {
+            titulo = EspecTexto.TITULO.recortar(baseComun);
+        }
 
         List<String> medios = plan.mediaUrls();
         if (medios.isEmpty()) {
-            return client.publishText(plan.profile(), platforms, tituloComun);
+            // Sin medios el `title` ES el texto del post, no un titulo: va el
+            // caption comun, recortado a la mas estrecha porque es un solo campo.
+            return client.publishText(plan.profile(), platforms,
+                    EspecTexto.masEstricta(redesDelEnvio).recortar(baseComun));
         }
         if (plan.video()) {
-            return client.publishVideo(plan.profile(), platforms, tituloComun, porRed,
+            return client.publishVideo(plan.profile(), platforms, titulo, porRed,
                     medios.get(0), plan.formato());
         }
 
@@ -301,7 +319,7 @@ public class UploadPostPublisher {
 
         try {
             return client.publishPhotos(
-                    plan.profile(), platforms, tituloComun, porRed, ajuste.urls(), plan.formato());
+                    plan.profile(), platforms, titulo, porRed, ajuste.urls(), plan.formato());
         } catch (RuntimeException ex) {
             if (!ajuste.huboFallo()) {
                 throw ex;

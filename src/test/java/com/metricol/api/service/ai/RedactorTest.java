@@ -44,7 +44,8 @@ class RedactorTest {
     @DisplayName("cada red se queda con su texto")
     void repartAElCadaTexto() {
         when(client.completeJson(any(), anyString(), anyString())).thenReturn("""
-                {"guion": "Anunciar el 2x1 de hoy",
+                {"titulo": "2x1 en tacos al pastor hoy",
+                 "guion": "Anunciar el 2x1 de hoy",
                  "textos": {"INSTAGRAM": "Hoy hay 2x1 🌮", "YOUTUBE": "2x1 hoy. Corre."}}
                 """);
 
@@ -52,6 +53,7 @@ class RedactorTest {
                 "anuncia el 2x1", List.of("tacos al pastor"),
                 List.of(Platform.INSTAGRAM, Platform.YOUTUBE), Redactor.Negocio.DESCONOCIDO);
 
+        assertThat(borrador.titulo()).isEqualTo("2x1 en tacos al pastor hoy");
         assertThat(borrador.guion()).isEqualTo("Anunciar el 2x1 de hoy");
         assertThat(borrador.textos().get(Platform.INSTAGRAM)).isEqualTo("Hoy hay 2x1 🌮");
         assertThat(borrador.textos().get(Platform.YOUTUBE)).isEqualTo("2x1 hoy. Corre.");
@@ -107,7 +109,7 @@ class RedactorTest {
     @DisplayName("recortar no parte una palabra por la mitad")
     void elRecorteRespetaLasPalabras() {
         EspecTexto yt = EspecTexto.de(Platform.YOUTUBE);
-        String texto = "palabra ".repeat(60).strip();
+        String texto = "palabra ".repeat(200).strip();
 
         String recortado = yt.recortar(texto);
 
@@ -130,7 +132,7 @@ class RedactorTest {
         verify(client).complete(eq(AiOperacion.AJUSTAR), sistema.capture(), prompt.capture());
         assertThat(sistema.getValue()).contains("limite DURO");
         assertThat(prompt.getValue())
-                .contains("Limite duro: 90 caracteres")
+                .contains("Limite duro: 255 caracteres")
                 .contains("Hashtags: como maximo 2")
                 .contains("Texto actual (7 caracteres)")
                 .contains(Ajuste.HASHTAGS.getInstruccion());
@@ -152,8 +154,11 @@ class RedactorTest {
     void loQueSePasaSeAcortaEnVezDeCortarse() {
         // El caso que motivo esto: "Mas largo" en TikTok. Recortado, se
         // perdian justo los hashtags del final.
+        // Mas de 255, que es el caption de TikTok desde que el titulo va aparte.
         String largo = "Hoy tenemos dos por uno en todos los tacos al pastor hasta las seis"
-                + " de la tarde, ven con tus amigos #tacos #2x1";
+                + " de la tarde, ven con tus amigos, trae a la familia, hay lugar para todos,"
+                + " musica en vivo, promociones en bebidas y un ambiente increible para pasar"
+                + " la tarde con quien mas quieres, te esperamos #tacos #2x1";
         String corto = "2x1 en tacos al pastor hasta las 6 #tacos #2x1";
         when(client.complete(any(), anyString(), anyString())).thenReturn(largo, corto);
 
@@ -172,26 +177,26 @@ class RedactorTest {
     @Test
     @DisplayName("si tampoco cabe a la segunda, se recorta: nunca sale pasado del limite")
     void aLaSegundaSeRecorta() {
-        String largo = "palabra ".repeat(30).strip();
+        String largo = "palabra ".repeat(40).strip();
         when(client.complete(any(), anyString(), anyString())).thenReturn(largo, largo);
 
         String resultado = redactor.ajustar("algo", Platform.TIKTOK, Ajuste.LARGO);
 
-        assertThat(resultado.length()).isLessThanOrEqualTo(90);
+        assertThat(resultado.length()).isLessThanOrEqualTo(255);
         verify(client, times(2)).complete(any(), anyString(), anyString());
     }
 
     @Test
     @DisplayName("si falla la segunda vuelta, se queda con el retoque recortado")
     void siFallaAcortarSeRecorta() {
-        String largo = "palabra ".repeat(30).strip();
+        String largo = "palabra ".repeat(40).strip();
         when(client.complete(any(), anyString(), anyString()))
                 .thenReturn(largo)
                 .thenThrow(new IllegalStateException("sin red"));
 
         String resultado = redactor.ajustar("algo", Platform.TIKTOK, Ajuste.LARGO);
 
-        assertThat(resultado.length()).isLessThanOrEqualTo(90);
+        assertThat(resultado.length()).isLessThanOrEqualTo(255);
         assertThat(resultado).startsWith("palabra");
     }
 

@@ -246,6 +246,13 @@ public class PostService {
         Medios medios = validarMedios(request, accounts, formato);
 
         post.setCaption(request.getCaption());
+        // El titulo se recorta a su tope aqui y no solo al publicar: lo que
+        // se guarda es lo que va a salir, y asi la pantalla lo enseña igual.
+        // Vacio desde un cliente viejo = se conserva el que hubiera.
+        String titulo = com.metricol.api.service.ai.EspecTexto.recortarTitulo(request.getTitulo());
+        if (titulo != null) {
+            post.setTitulo(titulo);
+        }
         // La idea dictada, aparte del texto que sale. Puede venir vacia desde
         // clientes que aun no la mandan; ahi se conserva la que hubiera.
         if (request.getBrief() != null && !request.getBrief().isBlank()) {
@@ -649,6 +656,7 @@ public class PostService {
                 .id(post.getId())
                 .caption(post.getCaption())
                 .brief(post.getBrief())
+                .titulo(post.getTitulo())
                 // Se manda la lista Y el primero como mediaUrl: una app que
                 // solo conoce el campo viejo sigue enseñando su miniatura.
                 .mediaUrls(List.copyOf(post.getMediaUrls()))
