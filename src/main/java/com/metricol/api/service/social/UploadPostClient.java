@@ -224,8 +224,12 @@ public class UploadPostClient {
                     body.add("linkedin_description", caption);
                 }
                 case "youtube" -> {
-                    body.add("youtube_title", tituloEfectivo);
-                    body.add("youtube_description", caption);
+                    // YouTube rechaza "<" y ">" en titulo y descripcion, y
+                    // exige titulo (<= 100; el nuestro es <= 90). El titulo ya
+                    // viene limpio de EspecTexto.recortarTitulo; la descripcion
+                    // se limpia aqui porque es el caption de la red tal cual.
+                    body.add("youtube_title", tituloEfectivo.replaceAll("[<>]", ""));
+                    body.add("youtube_description", caption.replaceAll("[<>]", ""));
                 }
                 default -> body.add(red.toLowerCase() + "_title", caption);
             }

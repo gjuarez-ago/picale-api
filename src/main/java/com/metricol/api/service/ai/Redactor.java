@@ -78,8 +78,9 @@ public class Redactor {
             - "titulo" es UN titulo profesional de una sola linea, el mismo para
               todas las redes: nombra lo que se ofrece o el tema de la
               publicacion, como el titulo de un video o de un anuncio. Maximo
-              90 caracteres. Sin hashtags, sin emojis, sin punto final y sin
-              repetir el caption. Ejemplos: "Mallas ciclonicas para predios
+              90 caracteres. Sin hashtags, sin emojis, sin punto final, sin
+              los simbolos < ni > (YouTube los rechaza) y sin repetir el
+              caption. Ejemplos: "Mallas ciclonicas para predios
               industriales", "2x1 en tacos al pastor hasta las 6".
             - "guion" es su mensaje ya limpio, en version general: lo mismo que
               dijo, bien escrito. Sirve para las redes sin texto propio.

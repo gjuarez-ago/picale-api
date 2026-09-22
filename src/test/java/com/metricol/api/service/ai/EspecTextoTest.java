@@ -52,6 +52,9 @@ class EspecTextoTest {
         assertThat(EspecTexto.recortarTitulo(largo(120))).hasSizeLessThanOrEqualTo(90);
         assertThat(EspecTexto.recortarTitulo("   ")).isNull();
         assertThat(EspecTexto.recortarTitulo(null)).isNull();
+        // YouTube rechaza < y > en el título, y el título es uno para todas.
+        assertThat(EspecTexto.recortarTitulo("Promo <2x1> hoy")).isEqualTo("Promo 2x1 hoy");
+        assertThat(EspecTexto.recortarTitulo("<>")).isNull();
     }
 
     @Test

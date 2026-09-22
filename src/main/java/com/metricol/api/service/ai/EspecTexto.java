@@ -92,7 +92,13 @@ public record EspecTexto(int maxCaracteres, int hashtagsSugeridos, String estilo
             return null;
         }
         // Un titulo es una linea: si viene con saltos, se queda la primera.
-        String linea = titulo.strip().split("\\R", 2)[0].strip();
+        // Sin "<" ni ">": YouTube rechaza el video entero si el titulo los
+        // trae, y como el titulo es uno para todas las redes, se limpia aqui
+        // y no solo al mandarlo a YouTube.
+        String linea = titulo.strip().split("\\R", 2)[0].replaceAll("[<>]", "").strip();
+        if (linea.isEmpty()) {
+            return null;
+        }
         return TITULO.recortar(linea);
     }
 

@@ -116,6 +116,31 @@ class UploadPostClientTextosTest {
     }
 
     @Test
+    @DisplayName("YouTube: título obligatorio de hasta 100, descripción aparte, y sin < ni > en ninguno")
+    void youtube() {
+        MultiValueMap<String, Object> body = cliente().cuerpoVideo(
+                "perfil", List.of("youtube", "instagram"), TITULO,
+                Map.of("YOUTUBE", "Mira el <video> completo. Más info: <link>", "INSTAGRAM", DE_INSTAGRAM),
+                PostFormat.REEL);
+
+        assertThat(body.getFirst("title")).isEqualTo(TITULO);
+        assertThat((String) body.getFirst("youtube_title")).isEqualTo(TITULO).hasSizeLessThanOrEqualTo(100);
+        assertThat(body.getFirst("youtube_description")).isEqualTo("Mira el video completo. Más info: link");
+    }
+
+    @Test
+    @DisplayName("sin título ni captions no se manda un title vacío: YouTube lo exige")
+    void youtubeSiempreConTitulo() {
+        Map<String, String> enOrden = new java.util.LinkedHashMap<>();
+        enOrden.put("YOUTUBE", "Descripción del video");
+        MultiValueMap<String, Object> body = cliente().cuerpoVideo(
+                "perfil", List.of("youtube"), null, enOrden, PostFormat.REEL);
+
+        assertThat((String) body.getFirst("title")).isNotBlank();
+        assertThat((String) body.getFirst("youtube_title")).isNotBlank();
+    }
+
+    @Test
     @DisplayName("una historia marca el formato en los dos campos, con sus nombres asimétricos")
     void historia() {
         MultiValueMap<String, Object> body = cliente().cuerpoVideo(
