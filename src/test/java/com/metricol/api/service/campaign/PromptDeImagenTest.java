@@ -224,4 +224,25 @@ class PromptDeImagenTest {
         assertThat(PromptDeImagen.zonaLogo(Posicion.TOP_LEFT, Lienzo.CUADRADO)).contains("y=40..250");
         assertThat(PromptDeImagen.zonaLogo(Posicion.BOTTOM_RIGHT, Lienzo.CUADRADO)).contains("y=774..984");
     }
+
+    @Test
+    @DisplayName("con el título arriba, el titular empieza en un píxel dicho: debajo del logo si el logo va arriba")
+    void tituloDebajoDelLogo() {
+        String logoArriba = PromptDeImagen.armar(datos(Lienzo.CUATRO_QUINTOS, Layout.PHOTO_TOP_TITLE, 1, Posicion.TOP_LEFT));
+        // El rincón del logo termina en y=298 (ver logoSegunElRecorte); el titular, 40 px más abajo.
+        assertThat(logoArriba)
+                .contains("left-aligned")
+                .contains("top edge is at about y=338 and never higher")
+                .contains("Above y=338 there is only the plain gradient");
+
+        // Con el logo abajo, o sin logo, el titular arranca al borde de la zona segura (123 + 40).
+        String logoAbajo = PromptDeImagen.armar(datos(Lienzo.CUATRO_QUINTOS, Layout.PHOTO_TOP_TITLE, 1, Posicion.BOTTOM_RIGHT));
+        assertThat(logoAbajo).contains("top edge is at about y=163").doesNotContain("reserved for the logo");
+        String sinLogo = PromptDeImagen.armar(datos(Lienzo.CUATRO_QUINTOS, Layout.PHOTO_TOP_TITLE, 1, null));
+        assertThat(sinLogo).contains("top edge is at about y=163");
+
+        assertThat(PromptDeImagen.inicioDelTitulo(Lienzo.CUADRADO, Layout.PHOTO_TOP_TITLE, Posicion.TOP_RIGHT)).isEqualTo(290);
+        assertThat(PromptDeImagen.inicioDelTitulo(Lienzo.HISTORIA, Layout.PHOTO_TOP_TITLE, Posicion.TOP_CENTER)).isEqualTo(465);
+        assertThat(PromptDeImagen.inicioDelTitulo(Lienzo.HISTORIA, Layout.PHOTO_TOP_TITLE, null)).isEqualTo(280);
+    }
 }

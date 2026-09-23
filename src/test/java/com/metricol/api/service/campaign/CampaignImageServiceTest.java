@@ -1097,4 +1097,100 @@ class CampaignImageServiceTest {
         assertThat(preparado.variantes().get(0).redes()).isEmpty();
         assertThat(preparado.totalImagenes()).isEqualTo(1);
     }
+
+    // ------------------------------------------------------------ logo según la composición
+
+    /** Dónde queda, a lo ancho (0 a 1), el centro del logo azul pegado; -1 si no hay logo. */
+    private static double centroXAzules(byte[] jpeg) throws Exception {
+        BufferedImage imagen = ImageIO.read(new ByteArrayInputStream(jpeg));
+        long suma = 0;
+        int n = 0;
+        for (int y = 0; y < imagen.getHeight(); y++) {
+            for (int x = 0; x < imagen.getWidth(); x++) {
+                int p = imagen.getRGB(x, y);
+                int r = (p >> 16) & 0xFF;
+                int g = (p >> 8) & 0xFF;
+                int b = p & 0xFF;
+                if (b > 60 && b < 130 && r < 50 && g < 80) {
+                    suma += x;
+                    n++;
+                }
+            }
+        }
+        return n == 0 ? -1 : (double) suma / n / imagen.getWidth();
+    }
+
+    private static CampaignImageRequest conTituloArriba(String foto, String logo, String posicion, Boolean botonEnImagen) {
+        return new CampaignImageRequest(2,
+                new CampaignImageRequest.Format("post", "4:5", "1024x1536"), List.of(foto),
+                new CampaignImageRequest.Brand(logo, posicion),
+                "Anuncia el 20% de descuento", "Vender", List.of("Minimalista"), "Cercano", "Escríbenos",
+                botonEnImagen, null);
+    }
+
+    private void directorEligeTituloArriba(String foto, String logo) throws Exception {
+        assetsPorUrl();
+        r2SirveSegun(java.util.Map.of(foto, new byte[] { 7 }, logo, logoPng()));
+        when(director.disponible()).thenReturn(true);
+        when(director.dirigir(any())).thenReturn(Optional.of(plan("photo_top_title", 1, "Caption")));
+        when(imagenes.editar(anyString(), anyList(), anyString()))
+                .thenReturn(new Resultado(png(0x808080), 1, 1, "gpt-image-1.5"));
+    }
+
+    @Test
+    @DisplayName("con el título arriba y botón, el logo se va arriba a la derecha: el titular ocupa la izquierda")
+    void tituloArribaConBotonLogoALaDerecha() throws Exception {
+        String foto = "https://cdn.test/foto.jpg";
+        String logo = "https://cdn.test/logo.png";
+        directorEligeTituloArriba(foto, logo);
+
+        servicio.generar(usuario, conTituloArriba(foto, logo, null, Boolean.TRUE));
+
+        ArgumentCaptor<String> prompt = ArgumentCaptor.forClass(String.class);
+        verify(imagenes).editar(prompt.capture(), anyList(), anyString());
+        assertThat(prompt.getValue())
+                .contains("at the top-right")
+                // El titular empieza debajo del rincón del logo, con el número dicho.
+                .contains("top edge is at about y=338")
+                .contains("reserved for the logo");
+        assertThat(azulesEntre(subidos.get(0), 0.0, 0.5)).isGreaterThan(500);
+        assertThat(azulesEntre(subidos.get(0), 0.5, 1.0)).isZero();
+        assertThat(centroXAzules(subidos.get(0))).isGreaterThan(0.5);
+    }
+
+    @Test
+    @DisplayName("con el título arriba y sin botón, el logo baja a la derecha: la parte baja de la foto queda limpia")
+    void tituloArribaSinBotonLogoAbajo() throws Exception {
+        String foto = "https://cdn.test/foto.jpg";
+        String logo = "https://cdn.test/logo.png";
+        directorEligeTituloArriba(foto, logo);
+
+        servicio.generar(usuario, conTituloArriba(foto, logo, null, null));
+
+        ArgumentCaptor<String> prompt = ArgumentCaptor.forClass(String.class);
+        verify(imagenes).editar(prompt.capture(), anyList(), anyString());
+        assertThat(prompt.getValue())
+                .contains("at the bottom-right")
+                .contains("top edge is at about y=163")
+                .doesNotContain("reserved for the logo");
+        assertThat(azulesEntre(subidos.get(0), 0.5, 1.0)).isGreaterThan(500);
+        assertThat(azulesEntre(subidos.get(0), 0.0, 0.5)).isZero();
+        assertThat(centroXAzules(subidos.get(0))).isGreaterThan(0.5);
+    }
+
+    @Test
+    @DisplayName("si la persona eligió dónde va el logo, la composición no lo mueve")
+    void posicionElegidaMandaSobreLaComposicion() throws Exception {
+        String foto = "https://cdn.test/foto.jpg";
+        String logo = "https://cdn.test/logo.png";
+        directorEligeTituloArriba(foto, logo);
+
+        servicio.generar(usuario, conTituloArriba(foto, logo, "TOP_LEFT", Boolean.TRUE));
+
+        ArgumentCaptor<String> prompt = ArgumentCaptor.forClass(String.class);
+        verify(imagenes).editar(prompt.capture(), anyList(), anyString());
+        assertThat(prompt.getValue()).contains("at the top-left").contains("top edge is at about y=338");
+        assertThat(azulesEntre(subidos.get(0), 0.0, 0.5)).isGreaterThan(500);
+        assertThat(centroXAzules(subidos.get(0))).isLessThan(0.5);
+    }
 }

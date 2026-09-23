@@ -16,7 +16,10 @@ import com.metricol.api.service.campaign.SelloDeLogo.Posicion;
  *
  * <p>Los márgenes van en píxeles del lienzo de {@code gpt-image} (1024 × 1536)
  * y no en porcentajes: con "deja un 12 % libre" el modelo ponía el logo pegado
- * al borde; con un rectángulo concreto no queda nada que interpretar.
+ * al borde; con un rectángulo concreto no queda nada que interpretar. Por lo
+ * mismo, con el título arriba se le dice en qué píxel empieza el titular:
+ * "debajo del área del logo" lo dejaba unos 60 px dentro de esa área, y el
+ * logo real caía encima de la primera letra.
  */
 final class PromptDeImagen {
 
@@ -70,6 +73,17 @@ final class PromptDeImagen {
             Posicion logo) {
     }
 
+    /** Un rectángulo del lienzo, en píxeles. */
+    record Zona(int x, int y, int ancho, int alto) {
+        int derecha() {
+            return x + ancho;
+        }
+
+        int abajo() {
+            return y + alto;
+        }
+    }
+
     static String armar(Datos d) {
         StringBuilder t = new StringBuilder();
         t.append("Create ONE finished, professional social-media advertisement for ")
@@ -95,7 +109,7 @@ final class PromptDeImagen {
 
         // Sin botón no se nombra el botón en ningún lado: un prompt que lo menciona lo dibuja.
         boolean conBoton = hay(d.cta());
-        t.append("LAYOUT: ").append(descripcion(d.layout(), d.lienzo(), conBoton)).append("\n\n");
+        t.append("LAYOUT: ").append(descripcion(d.layout(), d.lienzo(), conBoton, d.logo())).append("\n\n");
 
         t.append("TEXT: render exactly these words, in Spanish, letter for letter and with their accents, ")
                 .append("and NO other words anywhere in the image.\n");
@@ -188,7 +202,32 @@ final class PromptDeImagen {
         };
     }
 
-    private static String descripcion(Layout layout, Lienzo lienzo, boolean conBoton) {
+    /** Donde empieza a lo alto la zona segura del lienzo, en píxeles. */
+    private static int arribaSeguro(Lienzo lienzo, Layout layout) {
+        return switch (lienzo) {
+            case HISTORIA -> 240;
+            case CUADRADO -> 80;
+            case CUATRO_QUINTOS -> cortesVerticales(lienzo, layout)[0] + 72;
+        };
+    }
+
+    /**
+     * En qué píxel empieza el titular cuando el texto va arriba.
+     *
+     * <p>Con el logo arriba, debajo de su rincón y con aire; si no, al borde de
+     * la zona segura. Es un número y no una relación ("debajo del logo") porque
+     * la relación el modelo la cumplía a ojo, unos 60 px cortos, y el logo real
+     * caía sobre la primera letra del titular.
+     */
+    static int inicioDelTitulo(Lienzo lienzo, Layout layout, Posicion logo) {
+        int aire = 40;
+        if (logo == null || !logo.arriba()) {
+            return arribaSeguro(lienzo, layout) + aire;
+        }
+        return rectanguloLogo(logo, lienzo, layout).abajo() + aire;
+    }
+
+    private static String descripcion(Layout layout, Lienzo lienzo, boolean conBoton, Posicion logo) {
         // Sin botón la banda es aún más baja: solo lleva titular y subtítulo.
         int alturaBanda = lienzo == Lienzo.CUADRADO ? (conBoton ? 780 : 830) : (conBoton ? 1150 : 1210);
         return switch (layout) {
@@ -200,11 +239,19 @@ final class PromptDeImagen {
                             ? "HEADLINE, the SUBTITLE under it, and a compact BUTTON below, with comfortable empty "
                                     + "space under the button."
                             : "HEADLINE and the SUBTITLE under it, with comfortable empty space below them.");
-            case PHOTO_TOP_TITLE -> "The hero photo fills the whole canvas, unchanged, with only a soft dark "
-                    + "gradient over the top third to hold the text (no fog, no blur). Inside the safe rectangle, "
-                    + "below the logo area: the HEADLINE, then the SUBTITLE."
-                    + (conBoton ? " The BUTTON sits near the bottom of the safe rectangle."
-                            : " Nothing else is written on the photo: its lower part stays completely clean.");
+            case PHOTO_TOP_TITLE -> {
+                int desde = inicioDelTitulo(lienzo, layout, logo);
+                yield "The hero photo fills the whole canvas, unchanged, with only a soft dark gradient over the "
+                        + "top third to hold the text (no fog, no blur). Inside the safe rectangle, left-aligned: the "
+                        + "HEADLINE, whose top edge is at about y=" + desde + " and never higher, then the SUBTITLE "
+                        + "right under it."
+                        + (logo != null && logo.arriba()
+                                ? " Above y=" + desde + " there is only the plain gradient: that band is reserved "
+                                        + "for the logo."
+                                : "")
+                        + (conBoton ? " The BUTTON sits near the bottom of the safe rectangle, left-aligned as well."
+                                : " Nothing else is written on the photo: its lower part stays completely clean.");
+            }
             case FRAMED_PHOTO -> "A solid background in the primary brand color fills the canvas. The hero photo "
                     + "sits in the middle inside a large rounded rectangle (its content unchanged and uncropped as "
                     + "much as possible). The HEADLINE, in white, goes above the photo; "
@@ -220,6 +267,14 @@ final class PromptDeImagen {
 
     /** El rincón que se deja libre para el logo, en píxeles aproximados del lienzo. */
     static String zonaLogo(Posicion posicion, Lienzo lienzo, Layout layout) {
+        Zona z = rectanguloLogo(posicion, lienzo, layout);
+        return "the area of about " + z.ancho() + "x" + z.alto() + " pixels " + (posicion.arriba() ? "at the top" : "at the bottom")
+                + "-" + (posicion.izquierda() ? "left" : posicion.derecha() ? "right" : "center")
+                + " (roughly x=" + z.x() + ".." + z.derecha() + ", y=" + z.y() + ".." + z.abajo() + ")";
+    }
+
+    /** El rectángulo del logo en el lienzo. Lo que {@link #zonaLogo} pone en palabras. */
+    static Zona rectanguloLogo(Posicion posicion, Lienzo lienzo, Layout layout) {
         int[] cortes = cortesVerticales(lienzo, layout);
         int ancho = 440;
         int alto = 210;
@@ -241,9 +296,7 @@ final class PromptDeImagen {
                 y = posicion.arriba() ? cortes[0] + 37 : 1536 - cortes[1] - 48 - alto;
             }
         }
-        return "the area of about " + ancho + "x" + alto + " pixels " + (posicion.arriba() ? "at the top" : "at the bottom")
-                + "-" + (posicion.izquierda() ? "left" : posicion.derecha() ? "right" : "center")
-                + " (roughly x=" + x + ".." + (x + ancho) + ", y=" + y + ".." + (y + alto) + ")";
+        return new Zona(x, y, ancho, alto);
     }
 
     private static boolean hay(String texto) {

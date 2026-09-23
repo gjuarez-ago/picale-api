@@ -434,6 +434,11 @@ public class CampaignImageService {
         // pedirlo la imagen sale limpia: el llamado a la acción ya va en el caption de cada red.
         String ctaDeLaImagen = Boolean.TRUE.equals(peticion.ctaEnImagen()) ? ctaPropio : "";
 
+        // Dónde va el logo, ahora que se sabe cómo se compone la imagen: con el título arriba, el
+        // rincón de siempre es justo el del titular. En un carrusel no hay composición que mirar.
+        SelloDeLogo.Posicion posicionLogo = posicionSegunComposicion(p, formato.secuencia ? null : layout,
+                !ctaDeLaImagen.isBlank());
+
         progreso.etapa("Creando las imágenes…");
 
         // Se piden TODAS las piezas de TODAS las versiones a la vez.
@@ -450,9 +455,9 @@ public class CampaignImageService {
                 }
                 String prompt = formato.secuencia
                         ? armarPrompt(negocio, peticion, variante.lienzo(), i, p.piezasPorVariante(),
-                                referencias.size(), p.posicionLogo())
+                                referencias.size(), posicionLogo)
                         : PromptDeImagen.armar(new PromptDeImagen.Datos(variante.lienzo(), layout, negocio.nombre(),
-                                escena, titular, subtitulo, ctaDeLaImagen, paleta, referencias.size(), p.posicionLogo()));
+                                escena, titular, subtitulo, ctaDeLaImagen, paleta, referencias.size(), posicionLogo));
                 if (primerPrompt == null) {
                     primerPrompt = prompt;
                 }
@@ -473,7 +478,7 @@ public class CampaignImageService {
             VarianteGenerada generada;
             try {
                 List<Resultado> resultados = recogerEnOrden(envio.futuros());
-                generada = guardar(negocio, peticion, p, envio.variante(), resultados,
+                generada = guardar(negocio, peticion, p, envio.variante(), resultados, posicionLogo,
                         formato.secuencia ? 0.5 : layout.cortaArriba);
             } catch (RuntimeException ex) {
                 log.warn("Una versión del contenido falló ({}): {}", envio.variante().lienzo(), ex.getMessage());
@@ -511,7 +516,7 @@ public class CampaignImageService {
      * se conserva nada a medias.
      */
     private VarianteGenerada guardar(Negocio negocio, CampaignImageRequest peticion, Preparado p, Variante variante,
-            List<Resultado> resultados, double cortaArriba) {
+            List<Resultado> resultados, SelloDeLogo.Posicion posicionLogo, double cortaArriba) {
         List<String> claves = new ArrayList<>();
         List<MediaAsset> nuevos = new ArrayList<>();
         try {
@@ -519,7 +524,7 @@ public class CampaignImageService {
                 byte[] jpeg = RecorteDeImagen.recortar(resultados.get(i).imagen(), variante.lienzo().ratioAncho,
                         variante.lienzo().ratioAlto, 0.9f, cortaArriba);
                 if (p.logo() != null) {
-                    jpeg = ponerLogo(jpeg, p.logo(), p.posicionLogo(), variante.lienzo().historia());
+                    jpeg = ponerLogo(jpeg, p.logo(), posicionLogo, variante.lienzo().historia());
                 }
                 String nombre = "contenido-v" + Math.max(1, versionDe(peticion)) + "-" + variante.id() + "-" + (i + 1)
                         + ".jpg";
@@ -753,8 +758,12 @@ public class CampaignImageService {
     }
 
     /**
-     * Dónde va el logo: lo que pidió la app, o el sitio de siempre para el
-     * formato. {@code null} = sin logo.
+     * Dónde va el logo antes de conocer la composición: lo que pidió la app, o
+     * el sitio de siempre para el formato. {@code null} = sin logo.
+     *
+     * <p>Arriba por defecto: las composiciones suelen poner el texto y el botón
+     * abajo o en el centro. La excepción —el título arriba— se resuelve en
+     * {@link #posicionSegunComposicion} cuando el director ya eligió.
      */
     private static SelloDeLogo.Posicion posicionDelLogo(CampaignImageRequest peticion, Formato formato) {
         String pedido = peticion.brand() == null ? null : peticion.brand().logoPosition();
@@ -765,15 +774,50 @@ public class CampaignImageService {
         if (elegida != null) {
             return elegida;
         }
-        // Arriba en todas: las composiciones ponen el texto y el botón abajo o en
-        // el centro, y el logo necesita un rincón que ninguna les quite.
         return formato == Formato.STORY ? SelloDeLogo.Posicion.TOP_CENTER : SelloDeLogo.Posicion.TOP_LEFT;
     }
 
-    /** Sin logo la imagen sirve igual: no se tira lo que ya se pagó por un logo que no se pudo leer. */
+    /**
+     * El rincón del logo para esta composición.
+     *
+     * <p>Lo que eligió la persona manda siempre. Sin elección, el de siempre,
+     * SALVO con el título arriba: ahí el titular ocupa justo el rincón de
+     * arriba a la izquierda, y el logo se va a la derecha —arriba si hay botón
+     * (que va abajo), abajo si no, porque entonces la parte baja de la foto
+     * queda limpia por diseño—. Fue lo que pasó en producción: la placa del
+     * logo encima de la primera letra del titular.
+     *
+     * @param layout la composición elegida, o {@code null} si no hay (carrusel)
+     */
+    static SelloDeLogo.Posicion posicionSegunComposicion(Preparado p, PromptDeImagen.Layout layout,
+            boolean conBoton) {
+        if (p.posicionLogo() == null) {
+            return null;
+        }
+        String pedido = p.peticion().brand() == null ? null : p.peticion().brand().logoPosition();
+        boolean laEligioLaPersona = SelloDeLogo.Posicion.de(pedido) != null;
+        if (laEligioLaPersona || layout != PromptDeImagen.Layout.PHOTO_TOP_TITLE) {
+            return p.posicionLogo();
+        }
+        if (conBoton) {
+            return SelloDeLogo.Posicion.TOP_RIGHT;
+        }
+        return p.formato() == Formato.STORY ? SelloDeLogo.Posicion.BOTTOM_CENTER : SelloDeLogo.Posicion.BOTTOM_RIGHT;
+    }
+
+    /**
+     * Sin logo la imagen sirve igual: no se tira lo que ya se pagó por un logo
+     * que no se pudo leer. Si el sello acabó en otro rincón que el pedido, se
+     * anota: quiere decir que la IA no dejó libre el que se le pidió.
+     */
     private static byte[] ponerLogo(byte[] imagen, Referencia logo, SelloDeLogo.Posicion posicion, boolean historia) {
         try {
-            return SelloDeLogo.poner(imagen, logo.bytes(), posicion, historia);
+            SelloDeLogo.Colocado colocado = SelloDeLogo.colocar(imagen, logo.bytes(), posicion, historia);
+            if (colocado.posicion() != posicion) {
+                log.info("El logo se movió de {} a {}: la IA no dejó libre el rincón pedido", posicion,
+                        colocado.posicion());
+            }
+            return colocado.imagen();
         } catch (RuntimeException ex) {
             log.warn("No se pudo pegar el logo: {}", ex.getMessage());
             return imagen;
