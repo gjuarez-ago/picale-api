@@ -19,8 +19,8 @@ Una bandera en la organización (`organizations.sin_limites`). Con ella encendid
 Lo que **no** cambia: los límites propios de cada red social. Si Instagram o TikTok rechazan una
 publicación por sus reglas, la cuenta raíz también se topa con eso.
 
-La bandera **no tiene endpoint**: solo la enciende el arranque (`CuentaRaizService`), para que nadie
-pueda dársela a sí mismo.
+La bandera la enciende el arranque (`CuentaRaizService`) y, desde la pantalla **Administración** de
+la web, quien administra la plataforma (ver abajo). Ningún permiso de organización llega a ella.
 
 ## Cómo se crea
 
@@ -56,3 +56,38 @@ solo (`ddl-auto=update`). Es un cambio de esquema: hacer antes un respaldo de la
 
 Apagar la bandera a mano en la base (`update organizations set sin_limites=false where name='PICALE HUB'`)
 la devuelve al régimen normal.
+
+## Administrar la plataforma (super admin)
+
+Aparte de «sin límites», la cuenta raíz **administra la plataforma**: una marca en el usuario
+(`users.platform_admin`) que abre `/api/v1/root/**` y la pantalla **Administración** de la web
+(`/panel/administracion`). Desde ahí se ve y se toca de **todas** las organizaciones:
+
+| Qué | Cómo |
+| --- | --- |
+| Lista de organizaciones | Con dueño, espacios, personas, licencias vigentes y vencidas, situación de pago y próximo vencimiento. Filtro por situación y búsqueda por nombre o correo. |
+| Detalle | Sus personas (papel en la organización), sus espacios y, de cada espacio, la licencia, los créditos y quién entra con qué rol. |
+| Exentar de pago | El interruptor «Exenta de pago» enciende o apaga `sin_limites` en esa organización. |
+| Cupo de espacios | Cambia `max_workspaces`. |
+| Licencia | Estado (prueba, activa, pago pendiente, terminada) y hasta cuándo. Un espacio sin licencia recibe una nueva con sus créditos mensuales; terminarla archiva el espacio ya (sin borrar nada); dejarla vigente restaura el que archivó el barrido. Si la lleva Stripe, la pantalla avisa de que el siguiente aviso de Stripe puede pisar las fechas. |
+| Créditos de imagen | Sumar o quitar; van a la bolsa de paquete (no vence). Queda un movimiento `ADJUSTMENT` con referencia `root:<usuario>:<uuid>`. |
+
+Quién la tiene:
+
+- La cuenta raíz (`DEMO_ACCOUNT_ROOT=true`): `convertir` la marca, y en cada arranque se asegura
+  aunque la cuenta venga de un despliegue anterior a la columna.
+- Cualquier otra cuenta a la que se la dé alguien que ya la tiene, desde la tarjeta **Quién administra
+  la plataforma** de la pantalla Administración (`GET/POST/DELETE /api/v1/root/administradores`,
+  `AdministradoresService`). Vive solo en la base: no hay variable de entorno ni se toca en el arranque.
+  Tiene que ser una cuenta ya registrada (404 si no). No se puede quitar a la raíz (`ADMIN_ES_RAIZ`)
+  ni quitarse uno mismo (`ADMIN_ES_USTED`), así que siempre queda al menos una. Dar o quitar vale desde
+  la siguiente petición (el filtro JWT recarga al usuario) y queda en el log como `WARN`.
+
+La primera vez, sin nadie más que la raíz, se da entrando con la cuenta raíz, o a mano:
+`update users set platform_admin = true where email in ('…', '…');`
+
+La marca viaja en `GET /me` como `root`; la web enseña el menú **Administración** solo con eso, y
+el servidor exige la marca en cada petición (`RootAccessService`, 403 a los demás).
+
+Al desplegar: la columna `users.platform_admin` (`boolean not null default false`) la crea Hibernate
+(`ddl-auto=update`). Respaldar antes, como con cualquier cambio de esquema.

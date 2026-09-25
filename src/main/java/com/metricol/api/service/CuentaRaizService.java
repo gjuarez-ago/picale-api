@@ -61,6 +61,27 @@ public class CuentaRaizService {
     }
 
     /**
+     * Marca la cuenta como administradora de la plataforma, sin tocar nada más.
+     *
+     * <p>Idempotente: se llama en cada arranque para la cuenta raíz, y una
+     * cuenta que ya lo era no cambia. Si el correo no existe todavía no falla.
+     * A las demás cuentas la marca se la da o se la quita otra que ya la tiene,
+     * desde la pantalla de Administración ({@code AdministradoresService}).
+     *
+     * @return si la cuenta existe y quedó (o ya estaba) marcada
+     */
+    @Transactional
+    public boolean marcarAdministradorDePlataforma(String correo) {
+        return usuarios.findByEmail(correo).map(u -> {
+            if (!u.isPlatformAdmin()) {
+                u.setPlatformAdmin(true);
+                usuarios.save(u);
+            }
+            return true;
+        }).orElse(false);
+    }
+
+    /**
      * @param correo             la cuenta, ya registrada
      * @param nombreOrganizacion cómo se llama su organización; si viene vacío se deja el que tenga
      */
@@ -76,6 +97,10 @@ public class CuentaRaizService {
             organizacion.setName(nombreOrganizacion.strip());
         }
         organizaciones.save(organizacion);
+
+        // La raíz administra la plataforma entera (ver User.platformAdmin).
+        usuario.setPlatformAdmin(true);
+        usuarios.save(usuario);
 
         // El negocio de la cuenta raíz es Pícale. Una cuenta que nació como demo normal se
         // llamaba como su organización («PICALE HUB»), que no es el nombre de la marca.

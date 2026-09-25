@@ -40,4 +40,8 @@ public interface OrganizationMemberRepository extends JpaRepository<Organization
      * aplicación.
      */
     long countByOrganizationIdAndRole(UUID organizationId, OrgRole role);
+
+    /** Todos, con su usuario ya cargado: para el listado de la administración de la plataforma. */
+    @Query("select m from OrganizationMember m join fetch m.user join fetch m.organization order by m.createdAt")
+    List<OrganizationMember> findTodosConUsuario();
 }

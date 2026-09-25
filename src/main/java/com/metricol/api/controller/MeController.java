@@ -60,6 +60,7 @@ public class MeController {
                 currentUser.getWorkspace().getId(),
                 currentUser.getWorkspace().getName(),
                 permisos.rolDe(currentUser).name(),
-                lista)));
+                lista,
+                currentUser.isPlatformAdmin())));
     }
 }

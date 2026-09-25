@@ -70,6 +70,11 @@ public class DemoAccountInitializer {
                 // bandera «sin límites» es la marca de que ya se hizo, y así lo que la
                 // persona edite después en «Mi marca» no se pisa en cada arranque.
                 // Su contraseña nunca se toca.
+                // La raíz de un despliegue anterior no tenía la marca de administradora de la
+                // plataforma (la columna es nueva): se pone aquí, sin tocar nada más.
+                if (esRaiz) {
+                    raiz.marcarAdministradorDePlataforma(correo);
+                }
                 if (esRaiz && !raiz.yaEsRaiz(correo)) {
                     try {
                         raiz.convertir(correo, organizacion);

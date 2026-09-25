@@ -13,6 +13,8 @@ import org.springframework.security.web.SecurityFilterChain;
 import org.springframework.security.web.authentication.UsernamePasswordAuthenticationFilter;
 import org.springframework.web.cors.CorsConfiguration;
 import org.springframework.web.cors.CorsConfigurationSource;
+
+import com.metricol.api.entity.User;
 import org.springframework.web.cors.UrlBasedCorsConfigurationSource;
 
 import com.metricol.api.security.JwtAccessDeniedHandler;
@@ -64,6 +66,10 @@ public class SecurityConfig {
                         .requestMatchers("/api/v1/billing/webhook").permitAll()
                         // Los precios de lista son públicos: los enseña la página de planes a quien aún no tiene cuenta.
                         .requestMatchers(org.springframework.http.HttpMethod.GET, "/api/v1/billing/plans").permitAll()
+                        // La administración de la plataforma: solo quien tiene la marca (User.platformAdmin).
+                        // Aquí y no solo en el controlador, para que un endpoint nuevo bajo /root nunca
+                        // quede abierto por olvidar una línea.
+                        .requestMatchers("/api/v1/root/**").hasAuthority(User.PLATFORM_ADMIN)
                         .anyRequest().authenticated())
                 .headers(headers -> headers.frameOptions(frame -> frame.sameOrigin()))
                 .exceptionHandling(handling -> handling

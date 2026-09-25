@@ -30,6 +30,9 @@ public interface UserRepository extends JpaRepository<User, UUID> {
 
     boolean existsByEmail(String email);
 
+    /** Quienes administran la plataforma hoy, para revisar en el arranque que sigan en la configuración. */
+    List<User> findByPlatformAdminTrue();
+
     /**
      * Quienes no tienen membresía en su propio workspace activo: todos los que
      * existían antes de que hubiera membresías. Ver WorkspaceMemberBackfill.

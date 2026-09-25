@@ -48,6 +48,9 @@ import lombok.Setter;
 @Builder
 public class User implements UserDetails {
 
+    /** La autoridad de quien administra la plataforma (ver {@link #platformAdmin}). */
+    public static final String PLATFORM_ADMIN = "PLATFORM_ADMIN";
+
     @Id
     @GeneratedValue(strategy = GenerationType.UUID)
     private UUID id;
@@ -66,8 +69,28 @@ public class User implements UserDetails {
     @JoinColumn(name = "workspace_id", nullable = false)
     private Workspace workspace;
 
+    /**
+     * Administra la PLATAFORMA, no un workspace ni una organización: ve y
+     * ajusta todas las organizaciones, sus licencias y sus créditos desde
+     * {@code /api/v1/root/**}.
+     *
+     * <p>No es un {@link Role}: aquel dice qué puede hacer dentro de su espacio,
+     * y esto es otra dimensión. Lo enciende el arranque para la cuenta raíz, y
+     * para las demás lo da o lo quita solo quien ya lo tiene, desde
+     * {@code /api/v1/root/administradores}: ningún permiso de organización
+     * escala hasta aquí.
+     */
+    @Builder.Default
+    @Column(name = "platform_admin", nullable = false, columnDefinition = "boolean default false")
+    private boolean platformAdmin = false;
+
     @Override
     public Collection<? extends GrantedAuthority> getAuthorities() {
+        if (platformAdmin) {
+            // Ver SecurityConfig: /api/v1/root/** exige esta autoridad.
+            return List.of(new SimpleGrantedAuthority("ROLE_" + role.name()),
+                    new SimpleGrantedAuthority(PLATFORM_ADMIN));
+        }
         return List.of(new SimpleGrantedAuthority("ROLE_" + role.name()));
     }
 

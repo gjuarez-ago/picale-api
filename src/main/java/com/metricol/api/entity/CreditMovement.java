@@ -68,6 +68,15 @@ public class CreditMovement {
     @Column(length = 80)
     private String referencia;
 
+    /**
+     * Por qué, con palabras, cuando alguien lo escribió: el motivo de un ajuste a
+     * mano desde la administración de la plataforma. Nulo en los movimientos
+     * automáticos, que ya se explican con {@link #motivo} y {@link #referencia}.
+     * Sin esto el historial enseñaba un AJUSTE pelado con una referencia opaca.
+     */
+    @Column(length = 60)
+    private String nota;
+
     @Builder.Default
     @Column(nullable = false, updatable = false)
     private LocalDateTime createdAt = LocalDateTime.now();

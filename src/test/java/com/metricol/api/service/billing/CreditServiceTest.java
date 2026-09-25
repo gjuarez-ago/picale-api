@@ -17,7 +17,9 @@ import org.springframework.test.context.TestPropertySource;
 import org.springframework.test.context.bean.override.mockito.MockitoBean;
 import org.springframework.transaction.annotation.Transactional;
 
+import com.metricol.api.entity.CreditMovement;
 import com.metricol.api.exception.QuotaExceededException;
+import com.metricol.api.repository.CreditMovementRepository;
 
 /**
  * Los créditos de imagen contra la base de verdad (esquema, candado y restricción
@@ -42,6 +44,9 @@ class CreditServiceTest {
 
     @Autowired
     private CreditService creditos;
+
+    @Autowired
+    private CreditMovementRepository movimientos;
 
     @MockitoBean
     private BillingConfig config;
@@ -209,5 +214,27 @@ class CreditServiceTest {
         assertThat(creditos.saldo(otro).total()).isZero();
         assertThatThrownBy(() -> creditos.consumirGeneracion(otro, "g1"))
                 .isInstanceOf(QuotaExceededException.class);
+    }
+
+    @Test
+    @DisplayName("el ajuste a mano va a la bolsa de paquete, nunca deja saldo negativo y es idempotente")
+    void ajusteAMano() {
+        assertThat(creditos.ajustar(workspace, 3, "root:a")).isEqualTo(3);
+        assertThat(creditos.saldo(workspace).paquete()).isEqualTo(3);
+        assertThat(creditos.saldo(workspace).mensuales()).isZero();
+
+        // Quitar más de lo que hay deja cero, no negativo.
+        assertThat(creditos.ajustar(workspace, -10, "root:b")).isZero();
+        assertThat(creditos.saldo(workspace).paquete()).isZero();
+
+        // La misma referencia dos veces no suma dos veces.
+        creditos.ajustar(workspace, 4, "root:c");
+        creditos.ajustar(workspace, 4, "root:c");
+        assertThat(creditos.saldo(workspace).paquete()).isEqualTo(4);
+
+        // El motivo escrito a mano queda en el movimiento, no solo en el log.
+        creditos.ajustar(workspace, 2, "root:d", "cortesía por la falla del lunes");
+        assertThat(movimientos.findByWorkspaceIdAndMotivoAndReferencia(workspace, CreditMovement.AJUSTE, "root:d")
+                .map(CreditMovement::getNota)).contains("cortesía por la falla del lunes");
     }
 }

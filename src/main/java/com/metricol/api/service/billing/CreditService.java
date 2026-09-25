@@ -165,6 +165,50 @@ public class CreditService {
         return true;
     }
 
+    /**
+     * Ajuste a mano desde la administración de la plataforma: suma o quita
+     * créditos de la bolsa de PAQUETE, que es la que no vence.
+     *
+     * <p>Va a esa bolsa y no a la mensual a propósito: la mensual la reinicia
+     * cada factura de Stripe ({@link #otorgarMensuales}), así que un regalo
+     * puesto ahí duraría hasta el siguiente cobro. En paquete se queda hasta
+     * que se gasta. Nunca deja el saldo negativo. Idempotente por referencia,
+     * como el resto.
+     *
+     * @return el saldo total que queda
+     */
+    @Transactional
+    public int ajustar(UUID workspaceId, int delta, String referencia) {
+        return ajustar(workspaceId, delta, referencia, null);
+    }
+
+    /**
+     * @param nota por qué, con palabras, para el historial; nula si nadie lo escribió
+     */
+    @Transactional
+    public int ajustar(UUID workspaceId, int delta, String referencia, String nota) {
+        if (delta == 0) {
+            return saldo(workspaceId).total();
+        }
+        if (movimientos.existsByWorkspaceIdAndMotivoAndReferencia(workspaceId, CreditMovement.AJUSTE, referencia)) {
+            return saldo(workspaceId).total();
+        }
+        LocalDateTime ahora = LocalDateTime.now();
+        ImageCredits c = obtener(workspaceId);
+        int paquete = Math.max(0, c.getPackBalance());
+        int aplicado = Math.max(-paquete, delta);
+        if (aplicado == 0) {
+            return c.mensualesVigentes(ahora) + paquete; // No había nada que quitar: sin movimiento.
+        }
+        c.setPackBalance(paquete + aplicado);
+        c.setUpdatedAt(ahora);
+        creditos.save(c);
+        movimientos.save(CreditMovement.builder()
+                .workspaceId(workspaceId).delta(aplicado).bolsa(CreditMovement.PAQUETE)
+                .motivo(CreditMovement.AJUSTE).referencia(referencia).nota(nota).build());
+        return c.mensualesVigentes(ahora) + Math.max(0, c.getPackBalance());
+    }
+
     /** La fila del workspace, con candado; se crea si es la primera vez. */
     private ImageCredits obtener(UUID workspaceId) {
         return creditos.bloquear(workspaceId)

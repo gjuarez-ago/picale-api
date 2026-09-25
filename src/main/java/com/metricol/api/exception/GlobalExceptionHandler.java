@@ -122,6 +122,13 @@ public class GlobalExceptionHandler {
         return ResponseEntity.status(HttpStatus.CONFLICT).body(ApiResponse.error("CONFLICT", ex.getMessage()));
     }
 
+    /** Un 409 con el código que la pantalla necesita para saber qué preguntar. */
+    @ExceptionHandler(ConflictoException.class)
+    public ResponseEntity<ApiResponse<Void>> handleConflicto(ConflictoException ex) {
+        log.warn("Conflicto ({}): {}", ex.getCode(), ex.getMessage());
+        return ResponseEntity.status(HttpStatus.CONFLICT).body(ApiResponse.error(ex.getCode(), ex.getMessage()));
+    }
+
     @ExceptionHandler(Exception.class)
     public ResponseEntity<ApiResponse<Void>> handleGeneric(Exception ex) {
         log.error("Unhandled exception", ex);
