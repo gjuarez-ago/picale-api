@@ -24,6 +24,9 @@ public class PostResponse {
     /** El título común a todas las redes; ver {@code Post.titulo}. Puede venir nulo. */
     private String titulo;
 
+    /** Si TikTok le pone música al carrusel; ver {@code Post.musicaAutomatica}. Nulo = apagado. */
+    private Boolean musicaAutomatica;
+
     /** Todas las fotos, en orden. El video, cuando lo es, va solo aquí. */
     private List<String> mediaUrls;
 

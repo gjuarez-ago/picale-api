@@ -43,6 +43,13 @@ public record PublishPlan(
          */
         PostFormat formato,
 
+        /**
+         * Que TikTok le ponga música al carrusel de fotos (ver
+         * {@code Post.musicaAutomatica}). Nunca nulo: lo que no se pidió es
+         * falso. Solo lo lee el envío de fotos, y solo si TikTok va en él.
+         */
+        boolean musicaAutomatica,
+
         List<Destino> destinos,
 
         /**

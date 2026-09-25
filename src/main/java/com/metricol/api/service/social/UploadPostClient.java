@@ -73,14 +73,18 @@ public class UploadPostClient {
      * sueltas en la red en vez de un carrusel, que es justo lo contrario de
      * lo que pide quien elige seis fotos.
      *
-     * @param titulo         el título común a todas las redes (ya recortado a 90)
-     * @param captionsPorRed el caption de cada red, con la llave en mayúsculas
+     * @param titulo           el título común a todas las redes (ya recortado a 90)
+     * @param captionsPorRed   el caption de cada red, con la llave en mayúsculas
+     * @param musicaAutomatica que TikTok le ponga música de fondo al carrusel;
+     *                         se ignora si TikTok no va en el envío
      */
     @SuppressWarnings("unchecked")
     public Map<String, Object> publishPhotos(
             String user, List<String> platforms, String titulo,
-            Map<String, String> captionsPorRed, List<String> photoUrls, PostFormat formato) {
-        MultiValueMap<String, Object> body = cuerpoFotos(user, platforms, titulo, captionsPorRed, formato);
+            Map<String, String> captionsPorRed, List<String> photoUrls, PostFormat formato,
+            boolean musicaAutomatica) {
+        MultiValueMap<String, Object> body = cuerpoFotos(
+                user, platforms, titulo, captionsPorRed, formato, musicaAutomatica);
         // El orden importa: es el que verá quien deslice el carrusel, y es el
         // que la persona eligió en la pantalla de captura.
         photoUrls.forEach(url -> body.add("photos[]", download(url)));
@@ -135,11 +139,32 @@ public class UploadPostClient {
 
     /** Los campos de texto de una publicación de fotos, sin las fotos. Separado para poderlo probar sin red. */
     MultiValueMap<String, Object> cuerpoFotos(String user, List<String> platforms, String titulo,
-            Map<String, String> captionsPorRed, PostFormat formato) {
+            Map<String, String> captionsPorRed, PostFormat formato, boolean musicaAutomatica) {
         MultiValueMap<String, Object> body = baseFields(user, platforms);
         textosPorRed(body, platforms, titulo, captionsPorRed, false);
         formatoPorRed(body, platforms, formato);
+        musicaDeTikTok(body, platforms, musicaAutomatica);
         return body;
+    }
+
+    /**
+     * Le pide a TikTok que le ponga música de fondo al carrusel.
+     *
+     * <p>Es lo único que el proveedor admite en cuanto a sonido para fotos:
+     * {@code auto_add_music}, y TikTok elige él la canción (no hay campo para
+     * escoger una; eso solo existe en video, con {@code tiktok_music_id}, y no
+     * se usa aquí). Solo va cuando TikTok está en el envío: para las demás
+     * redes el campo no significa nada, y mandarlo sin destino que lo lea es
+     * ruido que el día de un rechazo hay que descartar a mano.
+     *
+     * <p>Sin la marca no se manda nada, ni {@code false}: es exactamente el
+     * envío de siempre, el que hoy funciona.
+     */
+    private void musicaDeTikTok(MultiValueMap<String, Object> body,
+            List<String> platforms, boolean musicaAutomatica) {
+        if (musicaAutomatica && platforms.contains("tiktok")) {
+            body.add("auto_add_music", "true");
+        }
     }
 
     /** Los campos de texto de un video, sin el archivo. Separado para poderlo probar sin red. */

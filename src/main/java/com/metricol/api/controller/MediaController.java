@@ -20,6 +20,7 @@ import com.metricol.api.enums.Permission;
 import com.metricol.api.models.request.MediaPresignRequest;
 import com.metricol.api.models.response.ApiResponse;
 import com.metricol.api.models.response.MediaAssetResponse;
+import com.metricol.api.models.response.MediaEliminadoResponse;
 import com.metricol.api.models.response.MediaPresignResponse;
 import com.metricol.api.models.response.StorageUsageResponse;
 import com.metricol.api.service.MediaService;
@@ -130,17 +131,39 @@ public class MediaController {
     }
 
     /**
-     * Ya no borra: archiva.
+     * Elimina un archivo de verdad: sale de R2 y deja de contar en el espacio.
+     * Es la única forma de liberar espacio a mano; archivar no lo hace.
      *
-     * <p>Nada se elimina físicamente. La ruta se deja por si una versión vieja
-     * de la web o de la app la llama, pero hace lo mismo que
-     * {@code POST /{id}/archive}: el archivo no se borra de R2 ni libera cuota.
+     * <p>Si alguna publicación lo usa, sin {@code conPublicaciones=true} se
+     * contesta 409 {@code MEDIA_IN_USE} con las cuentas: la pantalla pregunta
+     * y vuelve con la confirmación. Entonces las publicaciones que lo usan se
+     * eliminan también —para la persona; para nosotros quedan marcadas—, y por
+     * eso hace falta además el permiso de borrar publicaciones.
+     *
+     * <p>Contesta qué pasó: cuánto se liberó y cuántas publicaciones se fueron,
+     * para que la pantalla lo diga en vez de un "listo" a secas.
      */
     @DeleteMapping("/{id}")
-    public ResponseEntity<ApiResponse<Void>> delete(
+    public ResponseEntity<ApiResponse<MediaEliminadoResponse>> delete(
+            @AuthenticationPrincipal User currentUser, @PathVariable UUID id,
+            @RequestParam(name = "conPublicaciones", defaultValue = "false") boolean conPublicaciones) {
+        permisos.exigir(currentUser, Permission.MEDIA_DELETE);
+        if (conPublicaciones) {
+            permisos.exigir(currentUser, Permission.POST_DELETE);
+        }
+        return ResponseEntity.ok(ApiResponse.success(
+                service.eliminar(id, conPublicaciones, currentUser.getWorkspace().getId())));
+    }
+
+    /**
+     * Libera el espacio de un video ya publicado sin perder la publicación:
+     * el archivo sale de R2 y la publicación conserva su portada. Solo cuando
+     * todas sus publicaciones ya salieron; si no, 409 con el motivo.
+     */
+    @PostMapping("/{id}/liberar")
+    public ResponseEntity<ApiResponse<MediaEliminadoResponse>> liberar(
             @AuthenticationPrincipal User currentUser, @PathVariable UUID id) {
         permisos.exigir(currentUser, Permission.MEDIA_DELETE);
-        service.archive(id, true);
-        return ResponseEntity.ok(ApiResponse.success(null));
+        return ResponseEntity.ok(ApiResponse.success(service.liberarAPeticion(id)));
     }
 }

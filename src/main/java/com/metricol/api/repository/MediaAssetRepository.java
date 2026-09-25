@@ -157,7 +157,8 @@ public interface MediaAssetRepository extends JpaRepository<MediaAsset, UUID> {
      *
      * <p>El {@code not exists} contra {@code post_media} es lo que decide. Un
      * borrador cuenta como uso: sus URLs están en esa tabla desde que se
-     * guarda, así que las fotos de un borrador no se tocan.
+     * guarda, así que las fotos de un borrador no se tocan. Una publicación
+     * que la persona eliminó ya no cuenta: para ella no existe.
      *
      * <p>En SQL nativo por lo de siempre: corre sin usuario, y una consulta de
      * JPA la filtraría Hibernate por un tenant que aquí no existe.
@@ -169,7 +170,9 @@ public interface MediaAssetRepository extends JpaRepository<MediaAsset, UUID> {
               and m.archived_at is null
               and m.created_at < :limite
               and not exists (
-                    select 1 from post_media pm where pm.url = m.url
+                    select 1 from post_media pm
+                    join posts p on p.id = pm.post_id
+                    where pm.url = m.url and p.deleted_at is null
               )
             order by m.created_at asc
             limit :tope
@@ -219,12 +222,14 @@ public interface MediaAssetRepository extends JpaRepository<MediaAsset, UUID> {
                     where pm.url = m.url
                       and p.status = 'PUBLISHED'
                       and p.published_at < :limite
+                      and p.deleted_at is null
               )
               and not exists (
                     select 1 from post_media pm2
                     join posts p2 on p2.id = pm2.post_id
                     where pm2.url = m.url
                       and p2.status <> 'PUBLISHED'
+                      and p2.deleted_at is null
               )
             order by m.created_at asc
             limit :tope

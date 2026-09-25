@@ -50,7 +50,7 @@ class UploadPostClientTextosTest {
     @Test
     @DisplayName("fotos: Facebook recibe su caption en description y el título en facebook_title")
     void fotosFacebook() {
-        MultiValueMap<String, Object> body = cliente().cuerpoFotos("perfil", REDES, TITULO, TODOS, null);
+        MultiValueMap<String, Object> body = cliente().cuerpoFotos("perfil", REDES, TITULO, TODOS, null, false);
 
         assertThat(body.getFirst("title")).isEqualTo(TITULO);
         assertThat(body.getFirst("description")).isEqualTo(DE_FACEBOOK);
@@ -62,7 +62,7 @@ class UploadPostClientTextosTest {
     @Test
     @DisplayName("fotos: Instagram recibe su caption; TikTok y LinkedIn título y caption aparte")
     void fotosDemasRedes() {
-        MultiValueMap<String, Object> body = cliente().cuerpoFotos("perfil", REDES, TITULO, TODOS, null);
+        MultiValueMap<String, Object> body = cliente().cuerpoFotos("perfil", REDES, TITULO, TODOS, null, false);
 
         assertThat(body.getFirst("instagram_title")).isEqualTo(DE_INSTAGRAM);
 
@@ -93,7 +93,7 @@ class UploadPostClientTextosTest {
     void facebookNoSeCuela() {
         MultiValueMap<String, Object> body = cliente().cuerpoFotos(
                 "perfil", List.of("tiktok", "linkedin", "facebook"), TITULO,
-                Map.of("FACEBOOK", DE_FACEBOOK, "TIKTOK", DE_TIKTOK), null);
+                Map.of("FACEBOOK", DE_FACEBOOK, "TIKTOK", DE_TIKTOK), null, false);
 
         assertThat(body.getFirst("description")).isEqualTo(DE_FACEBOOK);
         // LinkedIn no trae propio: recibe el primer caption disponible, no el de Facebook por accidente.
@@ -109,10 +109,31 @@ class UploadPostClientTextosTest {
         enOrden.put("INSTAGRAM", DE_INSTAGRAM);
         enOrden.put("FACEBOOK", DE_FACEBOOK);
         MultiValueMap<String, Object> body = cliente().cuerpoFotos(
-                "perfil", List.of("instagram", "facebook"), null, enOrden, null);
+                "perfil", List.of("instagram", "facebook"), null, enOrden, null, false);
 
         assertThat(body.getFirst("title")).isEqualTo(DE_INSTAGRAM);
         assertThat(body.getFirst("description")).isEqualTo(DE_FACEBOOK);
+    }
+
+    @Test
+    @DisplayName("música automática: auto_add_music solo va en fotos, y solo si TikTok está en el envío")
+    void musicaAutomatica() {
+        // Con TikTok y la marca puesta: se pide.
+        MultiValueMap<String, Object> conTikTok = cliente().cuerpoFotos("perfil", REDES, TITULO, TODOS, null, true);
+        assertThat(conTikTok.getFirst("auto_add_music")).isEqualTo("true");
+
+        // Sin la marca no se manda nada, ni `false`: es el envío de siempre.
+        MultiValueMap<String, Object> apagada = cliente().cuerpoFotos("perfil", REDES, TITULO, TODOS, null, false);
+        assertThat(apagada.get("auto_add_music")).isNull();
+
+        // Con la marca pero sin TikTok en el envío el campo no significa nada.
+        MultiValueMap<String, Object> sinTikTok = cliente().cuerpoFotos(
+                "perfil", List.of("instagram", "facebook"), TITULO, TODOS, null, true);
+        assertThat(sinTikTok.get("auto_add_music")).isNull();
+
+        // En video no existe: el audio es el del propio video.
+        MultiValueMap<String, Object> video = cliente().cuerpoVideo("perfil", REDES, TITULO, TODOS, PostFormat.REEL);
+        assertThat(video.get("auto_add_music")).isNull();
     }
 
     @Test

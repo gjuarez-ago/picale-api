@@ -733,7 +733,7 @@ class CampaignImageServiceTest {
         viejo.setCaption("Hoy toca taquiza en Mérida 🌮 Te esperamos.");
         Post vacio = new Post();
         vacio.setCaption("   ");
-        when(posts.findTop8ByStatusAndArchivedAtIsNullOrderByPublishedAtDesc(PostStatus.PUBLISHED))
+        when(posts.findTop8ByStatusAndArchivedAtIsNullAndDeletedAtIsNullOrderByPublishedAtDesc(PostStatus.PUBLISHED))
                 .thenReturn(List.of(viejo, vacio));
         when(imagenes.generar(anyString(), anyString()))
                 .thenReturn(new Resultado(png(0xFF0000), 0, 0, "gpt-image-1.5"));
@@ -751,7 +751,7 @@ class CampaignImageServiceTest {
     @Test
     @DisplayName("si no se pueden leer los captions anteriores la campaña sale igual")
     void captionsAnterioresFallan() throws Exception {
-        when(posts.findTop8ByStatusAndArchivedAtIsNullOrderByPublishedAtDesc(PostStatus.PUBLISHED))
+        when(posts.findTop8ByStatusAndArchivedAtIsNullAndDeletedAtIsNullOrderByPublishedAtDesc(PostStatus.PUBLISHED))
                 .thenThrow(new IllegalStateException("base caída"));
         when(imagenes.generar(anyString(), anyString()))
                 .thenReturn(new Resultado(png(0xFF0000), 0, 0, "gpt-image-1.5"));

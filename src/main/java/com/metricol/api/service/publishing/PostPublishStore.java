@@ -109,6 +109,13 @@ public class PostPublishStore {
             return vacio(postId, workspaceId,
                     PublishOutcome.permanent("La publicacion ya no existe."));
         }
+        // Eliminarla cancela sus trabajos, pero uno que ya estuviera tomado
+        // llega hasta aquí: se cierra sin publicar y sin ruido. Para la
+        // persona esa publicación ya no existe.
+        if (post.eliminada()) {
+            return vacio(postId, workspaceId,
+                    PublishOutcome.permanent("La publicacion se elimino antes de salir."));
+        }
 
         // Se revisa el estado otra vez: entre que el despachador la encontró y
         // este momento la pudieron publicar a mano o cancelar, y publicar dos
@@ -219,6 +226,7 @@ public class PostPublishStore {
                 List.copyOf(post.getMediaUrls()),
                 post.esVideo(),
                 post.formatoEfectivo(),
+                Boolean.TRUE.equals(post.getMusicaAutomatica()),
                 destinos,
                 null);
     }
@@ -598,7 +606,7 @@ public class PostPublishStore {
      */
     private PublishPlan vacio(UUID postId, UUID workspaceId, PublishOutcome atajo) {
         return new PublishPlan(postId, workspaceId, null, null, null, List.of(), false,
-                PostFormat.PHOTO, List.of(), atajo);
+                PostFormat.PHOTO, false, List.of(), atajo);
     }
 
     /**

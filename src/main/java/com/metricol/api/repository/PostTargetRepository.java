@@ -57,6 +57,7 @@ public interface PostTargetRepository extends JpaRepository<PostTarget, UUID> {
               and coalesce(p.scheduledAt, p.createdAt) >= :desde
               and coalesce(p.scheduledAt, p.createdAt) < :hasta
               and p.id <> :excluir
+              and p.deletedAt is null
             """)
     long countComprometidas(
             @Param("tenant") String tenant,

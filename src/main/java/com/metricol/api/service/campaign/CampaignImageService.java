@@ -990,7 +990,7 @@ public class CampaignImageService {
      */
     private List<String> captionsAnteriores() {
         try {
-            return posts.findTop8ByStatusAndArchivedAtIsNullOrderByPublishedAtDesc(PostStatus.PUBLISHED).stream()
+            return posts.findTop8ByStatusAndArchivedAtIsNullAndDeletedAtIsNullOrderByPublishedAtDesc(PostStatus.PUBLISHED).stream()
                     .map(Post::getCaption)
                     .filter(c -> c != null && !c.isBlank())
                     .map(c -> c.trim().length() <= 300 ? c.trim() : c.trim().substring(0, 300) + "...")

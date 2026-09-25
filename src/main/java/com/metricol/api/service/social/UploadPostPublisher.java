@@ -319,7 +319,8 @@ public class UploadPostPublisher {
 
         try {
             return client.publishPhotos(
-                    plan.profile(), platforms, titulo, porRed, ajuste.urls(), plan.formato());
+                    plan.profile(), platforms, titulo, porRed, ajuste.urls(), plan.formato(),
+                    plan.musicaAutomatica());
         } catch (RuntimeException ex) {
             if (!ajuste.huboFallo()) {
                 throw ex;

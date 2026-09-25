@@ -109,7 +109,7 @@ public class CuotaComprometida {
         if (tope <= 0) {
             return;
         }
-        long pendientes = posts.countByStatusInAndIdNot(VIVAS, excluir == null ? NINGUNA : excluir);
+        long pendientes = posts.countByStatusInAndIdNotAndDeletedAtIsNull(VIVAS, excluir == null ? NINGUNA : excluir);
         if (pendientes >= tope) {
             throw new QuotaExceededException("POSTS_PENDING_LIMIT",
                     "Tienes " + pendientes + " publicaciones esperando salir, que es el máximo. "

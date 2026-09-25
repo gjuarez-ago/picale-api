@@ -83,6 +83,20 @@ public class Post {
     private String titulo;
 
     /**
+     * Que TikTok le ponga una música de fondo al carrusel de fotos.
+     *
+     * <p>Es lo único que upload-post admite en cuanto a sonido para fotos
+     * ({@code auto_add_music}, 24 sep 2026): TikTok elige él la canción, no se
+     * puede escoger una. En video no aplica —ahí el audio es el del propio
+     * video— y en las demás redes no existe nada parecido, así que solo se
+     * manda cuando la publicación es de fotos y va a TikTok.
+     *
+     * <p>{@code null} en las filas anteriores a esta columna y en clientes que
+     * aún no lo mandan: cuenta como apagado, que es como salían hasta ahora.
+     */
+    private Boolean musicaAutomatica;
+
+    /**
      * Las fotos —o el video— de la publicación, en el orden en que se verán.
      *
      * <p>Una lista y no un solo campo porque un carrusel es UNA publicación
@@ -225,6 +239,30 @@ public class Post {
      * una publicacion no aparece.
      */
     private LocalDateTime archivedAt;
+
+    /**
+     * Cuándo la eliminó la persona, o null si para ella sigue existiendo.
+     *
+     * <p>Eliminar es dos cosas distintas según quién mire. Para quien usa
+     * Pícale es un hecho: la publicación deja de aparecer en todas sus listas,
+     * y si todavía no había salido, ya no sale. Para nosotros es una marca: la
+     * fila se queda con sus destinos y su historial, para poder contestar qué
+     * pasó con ella y para que un aviso tardío del proveedor no caiga en el
+     * vacío. Nada de lo de la persona se borra físicamente.
+     *
+     * <p>Es lo que pasa con las publicaciones que usaban un archivo que
+     * alguien eliminó de Contenido ({@code MediaService.eliminar}): sin esto se
+     * quedaban apuntando a un archivo que ya no existe, y eso se veía como un
+     * error nuestro cuando fue una decisión suya.
+     *
+     * <p>Aparte de {@link #archivedAt}: archivar solo esconde y no cancela
+     * nada; eliminar esconde Y cancela lo que estuviera por salir.
+     */
+    private LocalDateTime deletedAt;
+
+    public boolean eliminada() {
+        return deletedAt != null;
+    }
 
     @Builder.Default
     @OneToMany(mappedBy = "post", cascade = CascadeType.ALL, orphanRemoval = true)

@@ -15,16 +15,56 @@ import com.metricol.api.models.response.PostStatusResponse;
 
 public interface PostRepository extends JpaRepository<Post, UUID> {
 
-    List<Post> findAllByOrderByScheduledAtAscCreatedAtDesc();
+    /**
+     * Las publicaciones que existen para la persona: todas menos las
+     * eliminadas.
+     *
+     * <p>Las eliminadas ({@link Post#getDeletedAt()}) se quedan en la tabla
+     * para nosotros, así que cada consulta que alimenta una pantalla las deja
+     * fuera a mano. No se hace con un filtro global de Hibernate a propósito:
+     * la cola de publicación y la conciliación con el proveedor sí tienen que
+     * poder cargar una eliminada por su id para cerrar lo que estuviera en
+     * curso sin que parezca un error.
+     */
+    List<Post> findByDeletedAtIsNullOrderByScheduledAtAscCreatedAtDesc();
 
-    List<Post> findTop5ByOrderByCreatedAtDesc();
+    /** Una publicación por su id, si la persona todavía la tiene. */
+    java.util.Optional<Post> findByIdAndDeletedAtIsNull(UUID id);
 
     /**
      * Lo último que salió, para que la IA conozca la voz del negocio. Solo
      * publicadas y sin archivar: un borrador o algo que la persona descartó no
      * dice cómo quiere sonar.
      */
-    List<Post> findTop8ByStatusAndArchivedAtIsNullOrderByPublishedAtDesc(PostStatus status);
+    List<Post> findTop8ByStatusAndArchivedAtIsNullAndDeletedAtIsNullOrderByPublishedAtDesc(PostStatus status);
+
+    /**
+     * Las publicaciones (no eliminadas) que usan este archivo. Es lo que se
+     * lleva por delante eliminar un archivo en uso.
+     *
+     * <p>{@code distinct} por si la misma foto se puso dos veces en un
+     * carrusel: la publicación es una.
+     */
+    @Query("""
+            select distinct p from Post p join p.mediaUrls u
+            where u = :url and p.deletedAt is null
+            """)
+    List<Post> findQueUsan(String url);
+
+    /**
+     * Qué archivo usa qué publicación, de todo el workspace: la URL, el id de
+     * la publicación y su estado. Una fila por cada foto de cada publicación
+     * que la persona todavía tiene.
+     *
+     * <p>Se agrupa en Java y no en la consulta: son cientos de filas como
+     * mucho, y así la cuenta de "cuántas todavía no han salido" no depende de
+     * cómo traduzca cada base un {@code case} dentro de un {@code sum}.
+     */
+    @Query("""
+            select u, p.id, p.status from Post p join p.mediaUrls u
+            where p.deletedAt is null
+            """)
+    List<Object[]> mediosEnUso();
 
     /**
      * Solo el estado de cada publicación, sin tocar medios ni destinos.
@@ -43,16 +83,19 @@ public interface PostRepository extends JpaRepository<Post, UUID> {
             select new com.metricol.api.models.response.PostStatusResponse(
                 p.id, p.status, p.publishedAt)
             from Post p
+            where p.deletedAt is null
             """)
     List<PostStatusResponse> findEstados();
 
-    long countByStatus(PostStatus status);
+    /** Cuantas tiene la persona en ese estado; las eliminadas no son suyas ya. */
+    long countByStatusAndDeletedAtIsNull(PostStatus status);
 
     /**
      * Cuantas del workspace actual estan en alguno de esos estados, sin
-     * contar una (la que se esta editando). Hibernate filtra por tenant.
+     * contar una (la que se esta editando) ni las eliminadas —esas ya no van
+     * a salir—. Hibernate filtra por tenant.
      */
-    long countByStatusInAndIdNot(List<PostStatus> estados, UUID excluir);
+    long countByStatusInAndIdNotAndDeletedAtIsNull(List<PostStatus> estados, UUID excluir);
 
     /** Cuantas creo el workspace actual en ese rango. Hibernate filtra por tenant. */
     long countByCreatedAtBetween(LocalDateTime desde, LocalDateTime hasta);
@@ -70,6 +113,9 @@ public interface PostRepository extends JpaRepository<Post, UUID> {
      * para hacer sitio y la publicación que ya había salido se quedó sin
      * portada para siempre, sin forma de recuperarla.
      */
+    /// <p>Cuenta también las publicaciones eliminadas, a propósito: para la
+    /// persona ya no existen, pero para nosotros se conservan, y su portada es
+    /// lo único que las deja leer en el historial.
     @Query(value = "select exists (select 1 from post_media pm where pm.url = :url)",
             nativeQuery = true)
     boolean algunaPublicacionUsa(String url);
@@ -129,6 +175,7 @@ public interface PostRepository extends JpaRepository<Post, UUID> {
             where p.status = 'SCHEDULED'
               and p.scheduled_at is not null
               and p.scheduled_at <= :ahora
+              and p.deleted_at is null
             order by p.scheduled_at asc
             limit :tope
             """, nativeQuery = true)

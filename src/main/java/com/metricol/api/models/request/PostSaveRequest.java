@@ -30,6 +30,13 @@ public class PostSaveRequest {
     private String titulo;
 
     /**
+     * Que TikTok le ponga música de fondo al carrusel de fotos (ver
+     * {@code Post.musicaAutomatica}). Opcional: nulo desde un cliente viejo
+     * conserva lo que hubiera guardado. Solo cuenta en fotos que van a TikTok.
+     */
+    private Boolean musicaAutomatica;
+
+    /**
      * Las fotos de la publicación, en el orden en que se verán, o un solo
      * video. El tope de fotos lo pone {@code app.media.max-images-per-post} y
      * lo comprueba el servidor: la app también lo respeta, pero una app vieja

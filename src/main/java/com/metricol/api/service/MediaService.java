@@ -4,7 +4,9 @@ import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.time.LocalDateTime;
+import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
 import java.util.UUID;
 
 import org.slf4j.Logger;
@@ -16,15 +18,20 @@ import org.springframework.web.multipart.MultipartFile;
 
 import com.metricol.api.config.MediaLimitsProperties;
 import com.metricol.api.entity.MediaAsset;
+import com.metricol.api.entity.Workspace;
 import com.metricol.api.enums.MediaAssetStatus;
 import com.metricol.api.enums.MediaType;
+import com.metricol.api.enums.PostStatus;
+import com.metricol.api.exception.ConflictoException;
 import com.metricol.api.exception.QuotaExceededException;
 import com.metricol.api.exception.ResourceNotFoundException;
 import com.metricol.api.models.request.MediaPresignRequest;
 import com.metricol.api.models.response.MediaAssetResponse;
+import com.metricol.api.models.response.MediaEliminadoResponse;
 import com.metricol.api.models.response.MediaPresignResponse;
 import com.metricol.api.models.response.StorageUsageResponse;
 import com.metricol.api.repository.MediaAssetRepository;
+import com.metricol.api.repository.WorkspaceRepository;
 import com.metricol.api.service.media.AdaptadorDeImagenes;
 import com.metricol.api.service.media.FfmpegImagen;
 import com.metricol.api.service.media.MiniaturasEnSegundoPlano;
@@ -50,6 +57,8 @@ public class MediaService {
     private final MediaLimitsProperties limites;
     private final MiniaturasEnSegundoPlano miniaturas;
     private final com.metricol.api.repository.PostRepository postRepository;
+    private final PostService posts;
+    private final WorkspaceRepository workspaces;
     private final FfmpegImagen ffmpeg;
     private final TransactionTemplate transaccion;
 
@@ -60,6 +69,8 @@ public class MediaService {
             MediaLimitsProperties limites,
             MiniaturasEnSegundoPlano miniaturas,
             com.metricol.api.repository.PostRepository postRepository,
+            PostService posts,
+            WorkspaceRepository workspaces,
             FfmpegImagen ffmpeg,
             TransactionTemplate transaccion) {
         this.repository = repository;
@@ -68,22 +79,184 @@ public class MediaService {
         this.limites = limites;
         this.miniaturas = miniaturas;
         this.postRepository = postRepository;
+        this.posts = posts;
+        this.workspaces = workspaces;
         this.ffmpeg = ffmpeg;
         this.transaccion = transaccion;
     }
 
-    /** La galería: solo lo confirmado. Ver el comentario del repositorio. */
+    /**
+     * La galería: solo lo confirmado, y con cuántas publicaciones usa cada
+     * archivo. Ver el comentario del repositorio.
+     */
+    @Transactional(readOnly = true)
     public List<MediaAssetResponse> list() {
+        Map<String, Uso> usos = usosPorUrl();
         return repository.findByStatusAndArchivedAtIsNullOrderByCreatedAtDesc(MediaAssetStatus.READY).stream()
-                .map(this::toResponse)
+                .map(asset -> toResponse(asset, usos.getOrDefault(asset.getUrl(), Uso.NINGUNO)))
                 .toList();
     }
 
     /** Lo que se archivó, para poder devolverlo a la galería. */
+    @Transactional(readOnly = true)
     public List<MediaAssetResponse> listArchived() {
+        Map<String, Uso> usos = usosPorUrl();
         return repository.findByStatusAndArchivedAtIsNotNullOrderByArchivedAtDesc(MediaAssetStatus.READY).stream()
-                .map(this::toResponse)
+                .map(asset -> toResponse(asset, usos.getOrDefault(asset.getUrl(), Uso.NINGUNO)))
                 .toList();
+    }
+
+    // ------------------------------------------------------------------
+    // Eliminar de verdad
+    // ------------------------------------------------------------------
+
+    /**
+     * Elimina un archivo de verdad: sale de R2, deja de contar en el espacio y
+     * su fila desaparece. Es lo que libera espacio; archivar no lo hace.
+     *
+     * <p><b>Si alguna publicación lo usa, hay que decirlo dos veces.</b> Sin
+     * {@code conPublicaciones} se contesta {@code MEDIA_IN_USE} con las
+     * cuentas, y la pantalla pregunta. Con él, las publicaciones que lo usan se
+     * eliminan también —para la persona—: dejan de aparecer y las que no
+     * habían salido ya no salen. Para nosotros solo quedan marcadas (ver
+     * {@link com.metricol.api.entity.Post#getDeletedAt()}). La alternativa era
+     * dejar la publicación viva apuntando a un archivo que ya no existe: una
+     * programada fallaba al salir con un motivo que no decía nada, y una
+     * publicada perdía su foto en el historial. Se veía como un error nuestro
+     * cuando fue una decisión suya.
+     *
+     * <p>Lo que ya salió sigue en las redes: eso no se deshace desde aquí, y
+     * el texto que la app enseña antes de confirmar lo dice.
+     *
+     * <p>El logotipo del espacio no se elimina por este camino: se cambia en
+     * Mi marca, que es donde se sabe qué lo reemplaza. Borrarlo desde aquí
+     * dejaría el espacio con un logotipo roto en cada pantalla.
+     *
+     * @param conPublicaciones la persona ya vio cuántas publicaciones se van
+     *                         con el archivo y aceptó
+     * @param workspaceId      el espacio dueño, para reconocer su logotipo
+     */
+    @Transactional
+    public MediaEliminadoResponse eliminar(UUID id, boolean conPublicaciones, UUID workspaceId) {
+        MediaAsset asset = repository.findById(id)
+                .orElseThrow(() -> new ResourceNotFoundException("Archivo no encontrado."));
+        if (asset.getStatus() == MediaAssetStatus.PENDING) {
+            throw new IllegalStateException("Ese archivo todavía se está subiendo.");
+        }
+
+        String logo = workspaceId == null ? null
+                : workspaces.findById(workspaceId).map(Workspace::getLogoUrl).orElse(null);
+        if (logo != null && logo.equals(asset.getUrl())) {
+            throw new IllegalStateException(
+                    "Es el logotipo de este espacio. Cámbialo en Mi marca antes de eliminarlo.");
+        }
+
+        Uso uso = usosDe(asset.getUrl());
+        if (uso.total() > 0 && !conPublicaciones) {
+            throw new ConflictoException("MEDIA_IN_USE", mensajeEnUso(uso));
+        }
+
+        int eliminadas = uso.total() == 0 ? 0 : posts.eliminarLasQueUsan(asset.getUrl());
+        long bytes = bytesQueOcupa(asset);
+        delete(id);
+
+        log.info("Archivo eliminado a petición: {} ({}); publicaciones eliminadas: {}",
+                asset.getFileName(), MediaLimitsProperties.legible(bytes), eliminadas);
+        return MediaEliminadoResponse.builder()
+                .publicacionesEliminadas(eliminadas)
+                .bytesLiberados(bytes)
+                .liberadoLabel(MediaLimitsProperties.legible(bytes))
+                .build();
+    }
+
+    /**
+     * Libera el espacio de un video ya publicado, a petición, sin esperar los
+     * treinta días del proceso automático y sin perder la publicación.
+     *
+     * <p>Es la salida buena para el caso más común de "no me cabe": un video
+     * de cien megas que ya salió. Eliminarlo se llevaría la publicación;
+     * liberarlo devuelve el mismo espacio y la publicación se sigue viendo
+     * con su portada, con el video entero en la red donde salió.
+     *
+     * <p>Solo cuando todas sus publicaciones ya salieron: si alguna está por
+     * salir, liberarlo la dejaría sin archivo que publicar. Y solo videos: una
+     * foto pesa mil veces menos y es la biblioteca que se reutiliza.
+     */
+    @Transactional
+    public MediaEliminadoResponse liberarAPeticion(UUID id) {
+        MediaAsset asset = repository.findById(id)
+                .orElseThrow(() -> new ResourceNotFoundException("Archivo no encontrado."));
+        if (asset.getType() != MediaType.VIDEO) {
+            throw new IllegalStateException("Solo se libera el espacio de los videos. Una foto se elimina.");
+        }
+        if (asset.getStatus() == MediaAssetStatus.RELEASED) {
+            return MediaEliminadoResponse.builder().liberadoLabel(MediaLimitsProperties.legible(0)).build();
+        }
+
+        Uso uso = usosDe(asset.getUrl());
+        if (uso.total() == 0) {
+            throw new IllegalStateException("Ninguna publicación usa este video: elimínalo y listo.");
+        }
+        if (uso.sinSalir() > 0) {
+            throw new IllegalStateException("Este video está en " + publicaciones(uso.sinSalir())
+                    + " que todavía no " + (uso.sinSalir() == 1 ? "sale" : "salen")
+                    + ". Espera a que salga o elimínala.");
+        }
+
+        long bytes = bytesQueOcupa(asset);
+        liberar(id);
+        return MediaEliminadoResponse.builder()
+                .bytesLiberados(bytes)
+                .liberadoLabel(MediaLimitsProperties.legible(bytes))
+                .build();
+    }
+
+    /** Cuántas publicaciones usan este archivo, y cuántas de esas no han salido. */
+    private Uso usosDe(String url) {
+        return url == null ? Uso.NINGUNO : usosPorUrl().getOrDefault(url, Uso.NINGUNO);
+    }
+
+    /**
+     * Los usos de cada archivo del workspace, agrupados aquí a partir de una
+     * fila por foto y publicación. Una misma foto dos veces en un carrusel
+     * cuenta una sola publicación.
+     */
+    private Map<String, Uso> usosPorUrl() {
+        Map<String, Map<UUID, PostStatus>> porUrl = new HashMap<>();
+        for (Object[] fila : postRepository.mediosEnUso()) {
+            porUrl.computeIfAbsent((String) fila[0], k -> new HashMap<>())
+                    .put((UUID) fila[1], (PostStatus) fila[2]);
+        }
+        Map<String, Uso> usos = new HashMap<>();
+        porUrl.forEach((url, publicaciones) -> usos.put(url, new Uso(
+                publicaciones.size(),
+                (int) publicaciones.values().stream().filter(s -> s != PostStatus.PUBLISHED).count())));
+        return usos;
+    }
+
+    private static String mensajeEnUso(Uso uso) {
+        StringBuilder sb = new StringBuilder("Este archivo se usa en ").append(publicaciones(uso.total()));
+        if (uso.sinSalir() > 0) {
+            sb.append(" (").append(uso.sinSalir()).append(" todavía sin salir)");
+        }
+        return sb.append(". Si lo eliminas, esas publicaciones también se eliminan.").toString();
+    }
+
+    private static String publicaciones(int n) {
+        return n == 1 ? "1 publicación" : n + " publicaciones";
+    }
+
+    /** Lo que devuelve eliminarlo: nada si el archivo ya no estaba en R2. */
+    private static long bytesQueOcupa(MediaAsset asset) {
+        if (asset.getStatus() == MediaAssetStatus.RELEASED || asset.getSizeBytes() == null) {
+            return 0;
+        }
+        return Math.max(0, asset.getSizeBytes());
+    }
+
+    /** Publicaciones que usan un archivo: cuántas en total y cuántas aún no han salido. */
+    private record Uso(int total, int sinSalir) {
+        static final Uso NINGUNO = new Uso(0, 0);
     }
 
     /**
@@ -103,7 +276,7 @@ public class MediaService {
         } else if (!archivar) {
             asset.setArchivedAt(null);
         }
-        return toResponse(repository.save(asset));
+        return toResponse(repository.save(asset), usosDe(asset.getUrl()));
     }
 
     /**
@@ -478,7 +651,12 @@ public class MediaService {
         return fileName == null || fileName.isBlank() ? key : fileName;
     }
 
+    /** Un archivo recién subido o confirmado: todavía no lo usa nadie. */
     private MediaAssetResponse toResponse(MediaAsset asset) {
+        return toResponse(asset, Uso.NINGUNO);
+    }
+
+    private MediaAssetResponse toResponse(MediaAsset asset, Uso uso) {
         return MediaAssetResponse.builder()
                 .id(asset.getId())
                 .fileName(asset.getFileName())
@@ -492,6 +670,9 @@ public class MediaService {
                         : MediaLimitsProperties.legible(asset.getSizeBytes()))
                 .createdAt(asset.getCreatedAt())
                 .archivedAt(asset.getArchivedAt())
+                .usos(uso.total())
+                .usosSinSalir(uso.sinSalir())
+                .enUso(uso.total() > 0)
                 .build();
     }
 }

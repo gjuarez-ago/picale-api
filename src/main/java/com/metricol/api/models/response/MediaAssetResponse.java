@@ -36,4 +36,16 @@ public class MediaAssetResponse {
 
     /** Cuándo se archivó, o nulo si sigue a la vista en Contenido. */
     private LocalDateTime archivedAt;
+
+    /**
+     * Cuántas publicaciones (de las que la persona todavía tiene) usan este
+     * archivo, y cuántas de esas no han salido aún.
+     *
+     * <p>Es lo que decide qué se pregunta antes de eliminarlo: sin usos se
+     * borra y ya; con usos, la pantalla avisa de que las publicaciones se van
+     * con él, y dice cuántas de ellas todavía iban a salir.
+     */
+    private int usos;
+    private int usosSinSalir;
+    private boolean enUso;
 }

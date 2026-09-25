@@ -30,10 +30,10 @@ public class DashboardService {
                 // publicacion inmediata pasa por QUEUED antes de salir, y
                 // contar solo SCHEDULED la habria hecho desaparecer del
                 // resumen durante ese rato.
-                .scheduledCount(postRepository.countByStatus(PostStatus.SCHEDULED)
-                        + postRepository.countByStatus(PostStatus.QUEUED)
-                        + postRepository.countByStatus(PostStatus.PUBLISHING))
-                .publishedCount(postRepository.countByStatus(PostStatus.PUBLISHED))
+                .scheduledCount(postRepository.countByStatusAndDeletedAtIsNull(PostStatus.SCHEDULED)
+                        + postRepository.countByStatusAndDeletedAtIsNull(PostStatus.QUEUED)
+                        + postRepository.countByStatusAndDeletedAtIsNull(PostStatus.PUBLISHING))
+                .publishedCount(postRepository.countByStatusAndDeletedAtIsNull(PostStatus.PUBLISHED))
                 .connectedAccountsCount(socialAccountRepository.countByStatus(SocialAccountStatus.CONNECTED))
                 .recentPosts(postService.list().stream()
                         // Lo archivado se guarda, pero deja de ser lo que

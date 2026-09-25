@@ -70,8 +70,14 @@ public class PostService {
         this.cupo = cupo;
     }
 
+    /**
+     * Con transacción de lectura a propósito: la respuesta recorre los
+     * destinos de cada publicación, que son perezosos, y así no depende de
+     * que la sesión de la petición siga abierta (open-in-view) para armarse.
+     */
+    @Transactional(readOnly = true)
     public List<PostResponse> list() {
-        return postRepository.findAllByOrderByScheduledAtAscCreatedAtDesc().stream()
+        return postRepository.findByDeletedAtIsNullOrderByScheduledAtAscCreatedAtDesc().stream()
                 .map(this::toResponse)
                 .toList();
     }
@@ -87,6 +93,7 @@ public class PostService {
         return postRepository.findEstados();
     }
 
+    @Transactional(readOnly = true)
     public PostResponse get(UUID id) {
         return toResponse(findOrThrow(id));
     }
@@ -179,13 +186,48 @@ public class PostService {
         return toResponse(postRepository.saveAndFlush(post));
     }
 
+    /**
+     * Elimina una publicación para la persona.
+     *
+     * <p>No borra la fila: la marca ({@link Post#getDeletedAt()}). Para quien
+     * la eliminó el efecto es el mismo que antes —desaparece de todas sus
+     * listas y, si no había salido, ya no sale— y para nosotros queda el
+     * historial de qué se publicó dónde, que es lo que hace falta cuando
+     * alguien pregunta por algo que "ya no está". Antes se borraba de verdad y
+     * con ella se iban sus destinos y sus motivos de fallo.
+     *
+     * <p>Lo que ya salió sigue en las redes: eso no se deshace desde aquí.
+     */
     @Transactional
     public void delete(UUID id) {
-        Post post = findOrThrow(id);
-        // Antes de borrar la fila: un trabajo que sobreviva al post intentaria
-        // publicar algo que ya no existe, y acabaria como un fallo confuso.
+        eliminar(findOrThrow(id));
+    }
+
+    /**
+     * Elimina —para la persona— todas las publicaciones que usan este archivo.
+     *
+     * <p>Lo llama {@code MediaService.eliminar} cuando alguien borra de
+     * Contenido un archivo en uso y confirma que las publicaciones se vayan
+     * con él. Sin esto, la publicación se quedaba apuntando a un archivo que ya
+     * no existe: una programada fallaba al salir con un motivo que no decía
+     * nada, y una publicada perdía su foto en el historial. Se ve como un
+     * error nuestro cuando fue una decisión suya.
+     *
+     * @return cuántas se eliminaron
+     */
+    @Transactional
+    public int eliminarLasQueUsan(String url) {
+        List<Post> afectadas = postRepository.findQueUsan(url);
+        afectadas.forEach(this::eliminar);
+        return afectadas.size();
+    }
+
+    private void eliminar(Post post) {
+        // Antes de marcarla: un trabajo que sobreviva intentaria publicar algo
+        // que la persona ya no quiere, y acabaria como un fallo confuso.
         cola.cancelarDePost(post.getId());
-        postRepository.delete(post);
+        post.setDeletedAt(LocalDateTime.now());
+        postRepository.save(post);
     }
 
     /**
@@ -252,6 +294,11 @@ public class PostService {
         String titulo = com.metricol.api.service.ai.EspecTexto.recortarTitulo(request.getTitulo());
         if (titulo != null) {
             post.setTitulo(titulo);
+        }
+        // La musica automatica de TikTok. Nula desde un cliente viejo = se
+        // conserva lo que hubiera; un cliente que la manda es quien decide.
+        if (request.getMusicaAutomatica() != null) {
+            post.setMusicaAutomatica(request.getMusicaAutomatica());
         }
         // La idea dictada, aparte del texto que sale. Puede venir vacia desde
         // clientes que aun no la mandan; ahi se conserva la que hubiera.
@@ -591,8 +638,9 @@ public class PostService {
     private record Medios(List<String> urls, MediaType tipo) {
     }
 
+    /** Por id y solo si la persona todavía la tiene: una eliminada es un 404 para ella. */
     private Post findOrThrow(UUID id) {
-        return postRepository.findById(id)
+        return postRepository.findByIdAndDeletedAtIsNull(id)
                 .orElseThrow(() -> new ResourceNotFoundException("Publicacion no encontrada."));
     }
 
@@ -657,6 +705,7 @@ public class PostService {
                 .caption(post.getCaption())
                 .brief(post.getBrief())
                 .titulo(post.getTitulo())
+                .musicaAutomatica(post.getMusicaAutomatica())
                 // Se manda la lista Y el primero como mediaUrl: una app que
                 // solo conoce el campo viejo sigue enseñando su miniatura.
                 .mediaUrls(List.copyOf(post.getMediaUrls()))
