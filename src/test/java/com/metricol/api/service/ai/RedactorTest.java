@@ -132,7 +132,7 @@ class RedactorTest {
         verify(client).complete(eq(AiOperacion.AJUSTAR), sistema.capture(), prompt.capture());
         assertThat(sistema.getValue()).contains("limite DURO");
         assertThat(prompt.getValue())
-                .contains("Limite duro: 255 caracteres")
+                .contains("Limite duro: 300 caracteres")
                 .contains("Hashtags: como maximo 2")
                 .contains("Texto actual (7 caracteres)")
                 .contains(Ajuste.HASHTAGS.getInstruccion());
@@ -154,11 +154,13 @@ class RedactorTest {
     void loQueSePasaSeAcortaEnVezDeCortarse() {
         // El caso que motivo esto: "Mas largo" en TikTok. Recortado, se
         // perdian justo los hashtags del final.
-        // Mas de 255, que es el caption de TikTok desde que el titulo va aparte.
+        // Mas de 300, que es el caption de TikTok desde que el titulo va aparte.
         String largo = "Hoy tenemos dos por uno en todos los tacos al pastor hasta las seis"
                 + " de la tarde, ven con tus amigos, trae a la familia, hay lugar para todos,"
                 + " musica en vivo, promociones en bebidas y un ambiente increible para pasar"
-                + " la tarde con quien mas quieres, te esperamos #tacos #2x1";
+                + " la tarde con quien mas quieres, y estacionamiento gratis para quien"
+                + " llegue antes de las cinco, te esperamos #tacos #2x1";
+        assertThat(largo.length()).isGreaterThan(300);
         String corto = "2x1 en tacos al pastor hasta las 6 #tacos #2x1";
         when(client.complete(any(), anyString(), anyString())).thenReturn(largo, corto);
 
@@ -182,7 +184,7 @@ class RedactorTest {
 
         String resultado = redactor.ajustar("algo", Platform.TIKTOK, Ajuste.LARGO);
 
-        assertThat(resultado.length()).isLessThanOrEqualTo(255);
+        assertThat(resultado.length()).isLessThanOrEqualTo(300);
         verify(client, times(2)).complete(any(), anyString(), anyString());
     }
 
@@ -196,7 +198,7 @@ class RedactorTest {
 
         String resultado = redactor.ajustar("algo", Platform.TIKTOK, Ajuste.LARGO);
 
-        assertThat(resultado.length()).isLessThanOrEqualTo(255);
+        assertThat(resultado.length()).isLessThanOrEqualTo(300);
         assertThat(resultado).startsWith("palabra");
     }
 

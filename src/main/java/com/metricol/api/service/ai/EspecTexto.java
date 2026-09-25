@@ -50,26 +50,28 @@ public record EspecTexto(int maxCaracteres, int hashtagsSugeridos, String estilo
             case INSTAGRAM -> new EspecTexto(2200, 5,
                     "cercano y visual, con emojis con medida; los hashtags al final, nunca dentro de la frase");
 
-            // 255: el caption de Facebook. Historicamente era el tope del
-            // campo `title` de Facebook en upload-post (359 caracteres tiraron
-            // una publicacion entera con un 400). Hoy el titulo va aparte
-            // (TITULO) y el caption viaja por `description`, que admite mucho
-            // mas, pero 255 se conserva como medida del caption a proposito:
-            // es lo que Facebook enseña sin plegar en "Ver mas", y es el mismo
-            // tope que TikTok, lo que permite reutilizar un texto entre ambas.
-            case FACEBOOK -> new EspecTexto(255, 2,
+            // 300: el caption de Facebook. Historicamente era 255, el tope
+            // del campo `title` de Facebook en upload-post (359 caracteres
+            // tiraron una publicacion entera con un 400). Hoy el titulo va
+            // aparte (TITULO) y el caption viaja por `description`, que
+            // admite mucho mas; el 300 (24 sep 2026) es una medida a
+            // proposito, un poco mas holgada que la anterior: cabe una frase
+            // mas y sigue cerca de lo que Facebook enseña sin plegar en "Ver
+            // mas". Es el mismo tope que TikTok, lo que permite reutilizar un
+            // texto entre ambas.
+            case FACEBOOK -> new EspecTexto(300, 2,
                     "conversacional y directo, como quien le cuenta algo a un vecino; casi sin hashtags");
 
-            // 255 y ya no 90: los 90 eran el TITULO de una publicacion de
+            // 300 y ya no 90: los 90 eran el TITULO de una publicacion de
             // fotos en TikTok, y ahi es donde iba nuestro texto. Ahora el
             // titulo va aparte (TITULO, 90) y el caption viaja por
             // `tiktok_description` en fotos y `tiktok_title` en video, que
-            // admiten 4000 y 2200. Se queda en 255, igual que Facebook, para
+            // admiten 4000 y 2200. Se queda en 300, igual que Facebook, para
             // que el mismo caption sirva en las dos redes.
             //
             // Cuenta como cuenta Java: un emoji fuera del BMP son dos unidades
             // UTF-16, que es la regla de TikTok ("an emoji counts as 2").
-            case TIKTOK -> new EspecTexto(255, 2,
+            case TIKTOK -> new EspecTexto(300, 2,
                     "corto y de un vistazo: el gancho en las primeras palabras y nada de"
                             + " relleno; lenguaje de la plataforma, sin sonar a anuncio");
 

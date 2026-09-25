@@ -25,23 +25,24 @@ class EspecTextoTest {
     }
 
     @Test
-    @DisplayName("Facebook admite 255 en el título, no los 2000 de un post")
-    void facebookSonDoscientosCincuentaYCinco() {
+    @DisplayName("Facebook admite 300 en el caption, no los 2000 de un post")
+    void facebookSonTrescientos() {
         // 359 es el largo exacto del que rechazó upload-post. Con el tope
-        // viejo de 2000 pasaba entero y se perdía la publicación.
+        // viejo de 2000 pasaba entero y se perdía la publicación. El 300
+        // (24 sep 2026) sube un poco el 255 anterior sin volver a ese caso.
         String recortado = EspecTexto.de(Platform.FACEBOOK).recortar(largo(359));
 
-        assertThat(recortado).hasSizeLessThanOrEqualTo(255);
+        assertThat(recortado).hasSizeLessThanOrEqualTo(300);
     }
 
     @Test
     @DisplayName("La más estricta de varias redes es la que menos admite")
     void laMasEstrictaEsLaQueMenosAdmite() {
-        // LinkedIn admite 3000 y TikTok 255 en el caption: manda TikTok.
+        // LinkedIn admite 3000 y TikTok 300 en el caption: manda TikTok.
         EspecTexto estricta = EspecTexto.masEstricta(
                 List.of(Platform.LINKEDIN, Platform.TIKTOK, Platform.INSTAGRAM));
 
-        assertThat(estricta.maxCaracteres()).isEqualTo(255);
+        assertThat(estricta.maxCaracteres()).isEqualTo(300);
     }
 
     @Test
@@ -68,13 +69,13 @@ class EspecTextoTest {
     }
 
     @Test
-    @DisplayName("Con Facebook entre las elegidas, el común cabe en 255")
-    void conFacebookElComunCabeEnDoscientosCincuentaYCinco() {
+    @DisplayName("Con Facebook entre las elegidas, el común cabe en 300")
+    void conFacebookElComunCabeEnTrescientos() {
         // El caso real: video a Facebook e Instagram con un texto de 359.
         EspecTexto estricta =
                 EspecTexto.masEstricta(List.of(Platform.FACEBOOK, Platform.INSTAGRAM));
 
-        assertThat(estricta.recortar(largo(359))).hasSizeLessThanOrEqualTo(255);
+        assertThat(estricta.recortar(largo(359))).hasSizeLessThanOrEqualTo(300);
     }
 
     @Test
