@@ -79,6 +79,11 @@ sudo mkdir -p $DESTINO
 # root y se devuelve al dueno de la carpeta, para que un despliegue a mano
 # desde su propia sesion siga pudiendo sobreescribir lo que este dejo.
 # El .env.vps se conserva: es el unico archivo que vive solo en el servidor.
+#
+# src/ se borra antes: tar solo agrega y sobreescribe, y un archivo que se
+# quito del repositorio seguia en la VM y se compilaba (asi fallo el 24 sep
+# 2026 con un RootAccountsInitializer que ya no existia).
+sudo rm -rf $DESTINO/src
 sudo tar --no-same-owner -xzf /tmp/metricol-api.tar.gz -C $DESTINO
 DUENO=\$(sudo stat -c %U $DESTINO)
 sudo chown -R \"\$DUENO\":\"\$DUENO\" $DESTINO
