@@ -17,6 +17,7 @@ import org.springframework.test.context.TestPropertySource;
 import com.metricol.api.config.TenantIdentifierResolver;
 import com.metricol.api.entity.MediaAsset;
 import com.metricol.api.entity.Post;
+import com.metricol.api.entity.Workspace;
 import com.metricol.api.enums.MediaAssetStatus;
 import com.metricol.api.enums.MediaType;
 import com.metricol.api.enums.PostStatus;
@@ -64,6 +65,9 @@ class MediaAssetRepositoryTest {
 
     @Autowired
     private PostRepository posts;
+
+    @Autowired
+    private WorkspaceRepository workspaces;
 
     /** Todo lo de esta prueba pasa dentro del workspace de arriba. */
     private void enElWorkspace(Runnable accion) {
@@ -114,9 +118,9 @@ class MediaAssetRepositoryTest {
             asset.setArchivedAt(LocalDateTime.now());
             mediaAssets.save(asset);
 
-            assertThat(mediaAssets.findByStatusAndArchivedAtIsNullOrderByCreatedAtDesc(MediaAssetStatus.READY))
+            assertThat(mediaAssets.galeria())
                     .extracting(MediaAsset::getId).doesNotContain(asset.getId());
-            assertThat(mediaAssets.findByStatusAndArchivedAtIsNotNullOrderByArchivedAtDesc(MediaAssetStatus.READY))
+            assertThat(mediaAssets.archivados())
                     .extracting(MediaAsset::getId).contains(asset.getId());
             // El archivo sigue en R2, asi que sigue ocupando el espacio.
             assertThat(mediaAssets.espacioUsado()).isEqualTo(usadoAntes);
@@ -130,6 +134,45 @@ class MediaAssetRepositoryTest {
             MediaAsset huerfano = subir("nadie-me-usa.jpg");
 
             assertThat(idsSinUsar()).contains(huerfano.getId().toString());
+        });
+    }
+
+    @Test
+    @DisplayName("El logotipo de un espacio no se limpia, aunque ninguna publicación lo use")
+    void laLimpiezaNoTocaElLogotipo() {
+        enElWorkspace(() -> {
+            // El caso reportado: los logotipos desaparecían a los tres días.
+            MediaAsset logo = subir("logo-del-espacio.png");
+            workspaces.save(Workspace.builder().name("Con logotipo").logoUrl(logo.getUrl()).build());
+
+            assertThat(idsSinUsar()).doesNotContain(logo.getId().toString());
+        });
+    }
+
+    @Test
+    @DisplayName("Los logotipos no salen en la galería de Contenido")
+    void laGaleriaNoMuestraLogotipos() {
+        enElWorkspace(() -> {
+            // Uno viejo, en media/ y guardado como logotipo de un espacio.
+            MediaAsset viejo = subir("logo-viejo.png");
+            workspaces.save(Workspace.builder().name("Logotipo viejo").logoUrl(viejo.getUrl()).build());
+
+            // Uno nuevo, en logos/, recién subido y aún sin guardar.
+            MediaAsset nuevo = mediaAssets.save(MediaAsset.builder()
+                    .fileName("logo-nuevo.png")
+                    .url("https://cdn.test/logos/" + WS + "/logo-nuevo.png")
+                    .storageKey("logos/" + WS + "/logo-nuevo.png")
+                    .type(MediaType.IMAGE)
+                    .contentType("image/png")
+                    .sizeBytes(1024L)
+                    .status(MediaAssetStatus.READY)
+                    .build());
+
+            MediaAsset foto = subir("foto-normal.jpg");
+
+            assertThat(mediaAssets.galeria()).extracting(MediaAsset::getId)
+                    .contains(foto.getId())
+                    .doesNotContain(viejo.getId(), nuevo.getId());
         });
     }
 

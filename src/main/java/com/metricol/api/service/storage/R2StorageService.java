@@ -89,8 +89,26 @@ public class R2StorageService {
      * ".jpg"— acabaría enviado al endpoint de fotos y rechazado por la red.
      */
     public String claveNueva(UUID workspaceId, String fileName, String contentType) {
-        return "media/" + workspaceId + "/" + UUID.randomUUID() + extensionPara(fileName, contentType);
+        return claveNueva(CARPETA_MEDIA, workspaceId, fileName, contentType);
     }
+
+    /** Lo mismo, bajo otra carpeta raíz del bucket: {@link #CARPETA_LOGOS}, por ejemplo. */
+    public String claveNueva(String carpeta, UUID workspaceId, String fileName, String contentType) {
+        return carpeta + "/" + workspaceId + "/" + UUID.randomUUID() + extensionPara(fileName, contentType);
+    }
+
+    /** Donde va lo que se publica: la biblioteca de Contenido. */
+    public static final String CARPETA_MEDIA = "media";
+
+    /**
+     * Donde van los logotipos de los espacios, aparte de la biblioteca.
+     *
+     * <p>Un logotipo no es contenido: no se publica, no sale en la galería y
+     * no lo debe tocar la limpieza de archivos sin usar. Vivía en
+     * {@code media/} y esa limpieza lo borraba a los tres días por no estar en
+     * ninguna publicación.
+     */
+    public static final String CARPETA_LOGOS = "logos";
 
     /** La URL pública y permanente de una clave. */
     public String urlDe(String key) {
@@ -164,13 +182,18 @@ public class R2StorageService {
      * el intermediario cuesta.
      */
     public UploadedFile upload(MultipartFile file, java.util.UUID workspaceId) {
+        return upload(file, workspaceId, CARPETA_MEDIA);
+    }
+
+    /** Lo mismo, bajo otra carpeta raíz del bucket. */
+    public UploadedFile upload(MultipartFile file, java.util.UUID workspaceId, String carpeta) {
         exigirConfiguracion();
         if (file.isEmpty()) {
             throw new IllegalArgumentException("El archivo está vacío.");
         }
 
         String originalName = file.getOriginalFilename();
-        String key = claveNueva(workspaceId, originalName, file.getContentType());
+        String key = claveNueva(carpeta, workspaceId, originalName, file.getContentType());
 
         try {
             s3Client.putObject(

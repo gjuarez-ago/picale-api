@@ -60,6 +60,6 @@ public class WorkspaceLogoUploader {
      */
     @Transactional(propagation = Propagation.REQUIRES_NEW)
     public MediaAssetResponse subirEnTransaccionNueva(MultipartFile file, UUID workspaceId) {
-        return media.upload(file, workspaceId);
+        return media.uploadLogo(file, workspaceId);
     }
 }

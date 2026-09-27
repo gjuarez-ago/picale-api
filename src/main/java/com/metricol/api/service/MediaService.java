@@ -92,7 +92,7 @@ public class MediaService {
     @Transactional(readOnly = true)
     public List<MediaAssetResponse> list() {
         Map<String, Uso> usos = usosPorUrl();
-        return repository.findByStatusAndArchivedAtIsNullOrderByCreatedAtDesc(MediaAssetStatus.READY).stream()
+        return repository.galeria().stream()
                 .map(asset -> toResponse(asset, usos.getOrDefault(asset.getUrl(), Uso.NINGUNO)))
                 .toList();
     }
@@ -101,7 +101,7 @@ public class MediaService {
     @Transactional(readOnly = true)
     public List<MediaAssetResponse> listArchived() {
         Map<String, Uso> usos = usosPorUrl();
-        return repository.findByStatusAndArchivedAtIsNotNullOrderByArchivedAtDesc(MediaAssetStatus.READY).stream()
+        return repository.archivados().stream()
                 .map(asset -> toResponse(asset, usos.getOrDefault(asset.getUrl(), Uso.NINGUNO)))
                 .toList();
     }
@@ -474,10 +474,27 @@ public class MediaService {
      */
     @Transactional
     public MediaAssetResponse upload(MultipartFile file, UUID workspaceId) {
+        return upload(file, workspaceId, R2StorageService.CARPETA_MEDIA);
+    }
+
+    /**
+     * Sube el logotipo de un espacio: igual que {@link #upload}, pero en
+     * {@code logos/}, fuera de la biblioteca de Contenido. Solo imágenes.
+     */
+    @Transactional
+    public MediaAssetResponse uploadLogo(MultipartFile file, UUID workspaceId) {
+        String tipo = normalizar(file.getContentType());
+        if (tipo == null || !tipo.startsWith("image/")) {
+            throw new IllegalArgumentException("El logotipo tiene que ser una imagen.");
+        }
+        return upload(file, workspaceId, R2StorageService.CARPETA_LOGOS);
+    }
+
+    private MediaAssetResponse upload(MultipartFile file, UUID workspaceId, String carpeta) {
         exigirTipoDeMedio(normalizar(file.getContentType()));
         cuota.verificar(file.getSize(), file.getOriginalFilename());
 
-        R2StorageService.UploadedFile subido = storage.upload(file, workspaceId);
+        R2StorageService.UploadedFile subido = storage.upload(file, workspaceId, carpeta);
 
         MediaAsset asset = MediaAsset.builder()
                 .fileName(subido.fileName())

@@ -3,6 +3,7 @@ package com.metricol.api.service;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.when;
 
 import java.util.ArrayList;
@@ -160,9 +161,9 @@ class WorkspaceLogoUploadTest {
         MiWorkspaceResponse gimnasio = membresias.crear(agencia, "Gimnasio B");
         workspacesCreados.add(gimnasio.id());
 
-        when(storage.upload(any(), any())).thenReturn(new R2StorageService.UploadedFile(
-                "logo.png", "media/" + gimnasio.id() + "/logo.png",
-                "https://cdn.test/media/" + gimnasio.id() + "/logo.png",
+        when(storage.upload(any(), any(), eq(R2StorageService.CARPETA_LOGOS))).thenReturn(new R2StorageService.UploadedFile(
+                "logo.png", "logos/" + gimnasio.id() + "/logo.png",
+                "https://cdn.test/logos/" + gimnasio.id() + "/logo.png",
                 MediaType.IMAGE, 4, "image/png"));
 
         comoSesionDe(agencia);

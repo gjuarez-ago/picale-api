@@ -33,6 +33,36 @@ public interface MediaAssetRepository extends JpaRepository<MediaAsset, UUID> {
 
     List<MediaAsset> findAllByOrderByCreatedAtDesc();
 
+    /**
+     * La galería de Contenido: lo confirmado y no archivado, sin logotipos.
+     *
+     * <p>Un logotipo no es contenido. Se reconoce por las dos vías: por su
+     * carpeta ({@code logos/}, donde sube el cambio de logotipo desde que
+     * existe) y por ser el {@code logo_url} de algún espacio (los que se
+     * subieron antes a {@code media/}, o desde la biblioteca). Lo primero
+     * lo esconde aunque todavía no se haya guardado en el espacio.
+     */
+    @Query("""
+            select m from MediaAsset m
+            where m.status = com.metricol.api.enums.MediaAssetStatus.READY
+              and m.archivedAt is null
+              and (m.storageKey is null or m.storageKey not like 'logos/%')
+              and not exists (select 1 from Workspace w where w.logoUrl = m.url)
+            order by m.createdAt desc
+            """)
+    List<MediaAsset> galeria();
+
+    /** Lo archivado, sin logotipos, lo último en archivarse primero. */
+    @Query("""
+            select m from MediaAsset m
+            where m.status = com.metricol.api.enums.MediaAssetStatus.READY
+              and m.archivedAt is not null
+              and (m.storageKey is null or m.storageKey not like 'logos/%')
+              and not exists (select 1 from Workspace w where w.logoUrl = m.url)
+            order by m.archivedAt desc
+            """)
+    List<MediaAsset> archivados();
+
     /** La galería del día a día: lo confirmado y no archivado. */
     List<MediaAsset> findByStatusAndArchivedAtIsNullOrderByCreatedAtDesc(MediaAssetStatus status);
 
@@ -160,6 +190,12 @@ public interface MediaAssetRepository extends JpaRepository<MediaAsset, UUID> {
      * guarda, así que las fotos de un borrador no se tocan. Una publicación
      * que la persona eliminó ya no cuenta: para ella no existe.
      *
+     * <p>El logotipo de un espacio tampoco se toca, aunque ninguna publicación
+     * lo use nunca: eso es lo normal en un logotipo. Sin esta condición la
+     * limpieza los borraba a los tres días y los espacios se quedaban con la
+     * imagen rota (reportado el 27 sep 2026). El logotipo que se reemplazó sí
+     * se limpia: ya no es el de nadie.
+     *
      * <p>En SQL nativo por lo de siempre: corre sin usuario, y una consulta de
      * JPA la filtraría Hibernate por un tenant que aquí no existe.
      */
@@ -173,6 +209,9 @@ public interface MediaAssetRepository extends JpaRepository<MediaAsset, UUID> {
                     select 1 from post_media pm
                     join posts p on p.id = pm.post_id
                     where pm.url = m.url and p.deleted_at is null
+              )
+              and not exists (
+                    select 1 from workspaces w where w.logo_url = m.url
               )
             order by m.created_at asc
             limit :tope

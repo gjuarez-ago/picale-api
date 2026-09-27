@@ -25,8 +25,17 @@ public class WorkspaceService {
     public WorkspaceResponse update(User currentUser, WorkspaceUpdateRequest request) {
         Workspace workspace = findOrThrow(currentUser);
         workspace.setName(request.getName());
-        workspace.setLogoUrl(request.getLogoUrl());
-        workspace.setUploadPostProfile(request.getUploadPostProfile());
+
+        // El logotipo y el perfil de upload-post tampoco se tocan si no
+        // vienen. Antes se pisaban siempre: completar el negocio desde la app
+        // sin elegir foto —o desde el registro web, que no los conoce— dejaba
+        // al espacio sin logotipo. Vacío sí los borra.
+        if (request.getLogoUrl() != null) {
+            workspace.setLogoUrl(limpio(request.getLogoUrl()));
+        }
+        if (request.getUploadPostProfile() != null) {
+            workspace.setUploadPostProfile(limpio(request.getUploadPostProfile()));
+        }
 
         // El contexto del negocio solo se toca si viene, al reves que los de
         // arriba. Es a proposito: una app ya instalada no conoce estos campos
