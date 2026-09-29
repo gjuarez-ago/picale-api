@@ -170,4 +170,19 @@ class UploadPostClientTextosTest {
         assertThat(body.getFirst("media_type")).isEqualTo("STORIES");
         assertThat(body.getFirst("facebook_media_type")).isEqualTo("STORIES");
     }
+
+    @Test
+    @DisplayName("video a TikTok: la portada sale del segundo uno, no del primer cuadro")
+    void portadaDeTikTok() {
+        MultiValueMap<String, Object> conTikTok = cliente().cuerpoVideo("perfil", REDES, TITULO, TODOS, PostFormat.REEL);
+        assertThat(conTikTok.getFirst("cover_timestamp")).isEqualTo("1000");
+
+        MultiValueMap<String, Object> sinTikTok = cliente().cuerpoVideo(
+                "perfil", List.of("instagram", "facebook"), TITULO, TODOS, PostFormat.REEL);
+        assertThat(sinTikTok.get("cover_timestamp")).isNull();
+
+        // En fotos no aplica: el carrusel no tiene un instante del que sacarla.
+        MultiValueMap<String, Object> fotos = cliente().cuerpoFotos("perfil", REDES, TITULO, TODOS, null, false);
+        assertThat(fotos.get("cover_timestamp")).isNull();
+    }
 }

@@ -9,6 +9,7 @@ import java.time.Duration;
 import java.util.List;
 import java.util.Map;
 
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.core.io.ByteArrayResource;
 import org.springframework.http.MediaType;
 import org.springframework.stereotype.Component;
@@ -18,6 +19,7 @@ import org.springframework.web.client.RestClient;
 
 import com.metricol.api.config.UploadPostProperties;
 import com.metricol.api.enums.PostFormat;
+import com.metricol.api.service.media.PortadaDeVideo;
 
 /**
  * Cliente delgado sobre la API de upload-post.com (https://docs.upload-post.com).
@@ -35,6 +37,8 @@ public class UploadPostClient {
 
     private final UploadPostProperties props;
     private final RestClient restClient;
+    /** Nula en las pruebas que solo arman el cuerpo: ahí no hay video que abrir. */
+    private final PortadaDeVideo portada;
     /**
      * Sin timeout, un medio que no responde deja el worker colgado para
      * siempre y ese hilo no vuelve a publicar nada: con ocho workers bastan
@@ -45,7 +49,13 @@ public class UploadPostClient {
             .build();
 
     public UploadPostClient(UploadPostProperties props) {
+        this(props, null);
+    }
+
+    @Autowired
+    public UploadPostClient(UploadPostProperties props, PortadaDeVideo portada) {
         this.props = props;
+        this.portada = portada;
         this.restClient = RestClient.builder()
                 .baseUrl(props.getBaseUrl())
                 .defaultHeader("Authorization", "Apikey " + props.getApiKey())
@@ -101,7 +111,9 @@ public class UploadPostClient {
     public Map<String, Object> publishVideo(String user, List<String> platforms, String titulo,
             Map<String, String> captionsPorRed, String videoUrl, PostFormat formato) {
         MultiValueMap<String, Object> body = cuerpoVideo(user, platforms, titulo, captionsPorRed, formato);
-        body.add("video", download(videoUrl));
+        ByteArrayResource video = download(videoUrl);
+        body.add("video", video);
+        portadaDeInstagram(body, platforms, formato, video);
 
         return restClient.post()
                 .uri("/upload")
@@ -173,7 +185,53 @@ public class UploadPostClient {
         MultiValueMap<String, Object> body = baseFields(user, platforms);
         textosPorRed(body, platforms, titulo, captionsPorRed, true);
         formatoPorRed(body, platforms, formato);
+        portadaDeTikTok(body, platforms);
         return body;
+    }
+
+    /**
+     * De qué momento del video saca TikTok la portada: el segundo uno.
+     *
+     * <p>Sin el campo TikTok toma el primer cuadro, que en un video grabado con
+     * el teléfono suele salir negro o movido: la mano todavía se movía o el
+     * sensor no había ajustado la luz. Al segundo ya hay imagen de verdad. Es
+     * el mismo criterio que la miniatura de la galería.
+     *
+     * <p>Va como instante y no como imagen ({@code tiktok_cover_image}) a
+     * propósito: el instante no necesita ffmpeg ni permisos especiales de la
+     * cuenta, y TikTok no deja publicar videos de menos de tres segundos, así
+     * que el segundo uno siempre existe.
+     */
+    private void portadaDeTikTok(MultiValueMap<String, Object> body, List<String> platforms) {
+        if (platforms.contains("tiktok")) {
+            body.add("cover_timestamp", "1000");
+        }
+    }
+
+    /**
+     * La portada del reel en Instagram: el cuadro del segundo uno, como imagen.
+     *
+     * <p>Instagram no acepta un instante como TikTok —el proveedor solo
+     * ofrece {@code cover_image}—, así que hay que sacar el cuadro aquí. Solo
+     * para reels: una historia no tiene portada que mostrar.
+     *
+     * <p>Si no se pudo sacar, no se manda nada y el reel sale con la portada
+     * que elija Instagram, como hasta ahora.
+     */
+    private void portadaDeInstagram(MultiValueMap<String, Object> body, List<String> platforms,
+            PostFormat formato, ByteArrayResource video) {
+        if (portada == null || formato == PostFormat.STORY || !platforms.contains("instagram")) {
+            return;
+        }
+        byte[] imagen = portada.sacar(video.getByteArray());
+        if (imagen != null) {
+            body.add("cover_image", new ByteArrayResource(imagen) {
+                @Override
+                public String getFilename() {
+                    return "portada.jpg";
+                }
+            });
+        }
     }
 
     /**
