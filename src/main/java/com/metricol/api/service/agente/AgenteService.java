@@ -197,6 +197,38 @@ public class AgenteService {
         return cuentas;
     }
 
+    /**
+     * Una propuesta en la bandeja de todas las cuentas, con lo que la persona
+     * puede hacer con ella en ESA cuenta (su rol puede ser distinto en cada una).
+     */
+    public record PropuestaDeCuenta(UUID cuentaId, String cuenta, String color, PostResponse propuesta,
+            boolean puedeAprobar, boolean puedeDescartar) {
+    }
+
+    /**
+     * La bandeja del community manager: lo que espera aprobación en todas sus
+     * cuentas, en el orden en que saldría. Cada cuenta se lee con su propio
+     * workspace impuesto, como si se entrara a ella.
+     */
+    public List<PropuestaDeCuenta> bandejaDeTodas(List<com.metricol.api.models.response.MiWorkspaceResponse> mias) {
+        List<PropuestaDeCuenta> todas = new ArrayList<>();
+        for (var m : mias) {
+            if (m.archivado()) {
+                continue;
+            }
+            boolean aprueba = m.permisos() != null && m.permisos().contains("POST_SCHEDULE");
+            boolean descarta = m.permisos() != null && m.permisos().contains("POST_DELETE");
+            com.metricol.api.config.TenantIdentifierResolver.comoTenant(m.id().toString(), () -> {
+                for (PostResponse p : propuestas()) {
+                    todas.add(new PropuestaDeCuenta(m.id(), m.name(), m.color(), p, aprueba, descarta));
+                }
+            });
+        }
+        todas.sort(java.util.Comparator.comparing((PropuestaDeCuenta p) -> p.propuesta().getFechaPropuesta(),
+                java.util.Comparator.nullsLast(java.util.Comparator.naturalOrder())));
+        return todas;
+    }
+
     /** El horario del negocio: qué días y entre qué horas propone publicar. */
     public Estado guardarHorario(UUID workspaceId, List<Integer> dias, int desde, int hasta) {
         if (dias == null || dias.isEmpty()) {
@@ -299,8 +331,13 @@ public class AgenteService {
      * @return si quedó en algún sitio; {@code false} = sigue pendiente
      */
     boolean procesar(MediaAsset asset, Workspace w, List<SocialAccount> destino, boolean forzar) {
+        return procesar(asset, w, destino, forzar, null);
+    }
+
+    /** @param cambio lo que la persona pidió cambiar ("¿Le cambiamos algo?"), o nulo */
+    boolean procesar(MediaAsset asset, Workspace w, List<SocialAccount> destino, boolean forzar, Cambio cambio) {
         if (asset.getType() == com.metricol.api.enums.MediaType.VIDEO) {
-            return procesarVideo(asset, w, forzar);
+            return procesarVideo(asset, w, forzar, cambio);
         }
         if (destino.isEmpty()) {
             marcar(asset, EtapaAgente.OBSERVACION, "No tienes redes conectadas que publiquen fotos.");
@@ -336,6 +373,7 @@ public class AgenteService {
         // La IA ya calificó la foto; el decisor resuelve qué necesita.
         DecisorDelAgente.Decision decision = DecisorDelAgente.decidir(revision.diagnostico(),
                 new DecisorDelAgente.Contexto(disenosDisponibles(w), ajusteDeDiseno(w)));
+        decision = conCambio(decision, cambio, disenosDisponibles(w));
         if (decision.tratamiento() == DecisorDelAgente.Tratamiento.OBSERVACION) {
             marcar(asset, EtapaAgente.OBSERVACION, decision.explicacion());
             return true;
@@ -344,7 +382,7 @@ public class AgenteService {
         try {
             Set<Platform> redes = destino.stream().map(SocialAccount::getPlatform)
                     .collect(Collectors.toCollection(LinkedHashSet::new));
-            String encargo = encargo(revision);
+            String encargo = conCambio(encargo(revision), cambio);
             String porQue = forzar ? "Me dijiste que va." : "Va con tu marca: " + sinPunto(revision.motivo()) + ".";
 
             if (decision.tratamiento() == DecisorDelAgente.Tratamiento.DISENO) {
@@ -427,6 +465,10 @@ public class AgenteService {
      * </ol>
      */
     boolean procesarVideo(MediaAsset video, Workspace w, boolean forzar) {
+        return procesarVideo(video, w, forzar, null);
+    }
+
+    boolean procesarVideo(MediaAsset video, Workspace w, boolean forzar, Cambio cambio) {
         FfmpegImagen.MedidasVideo m = medidor.medir(video);
         if (m == null) {
             marcar(video, EtapaAgente.OBSERVACION, "No pude leer este video (formato o archivo dañado). Prueba subirlo otra vez.");
@@ -505,8 +547,8 @@ public class AgenteService {
 
             // El texto, con lo que se ve Y lo que se dice: así un precio o una
             // promoción que se menciona en voz alta llega al caption.
-            String encargo = "Haz una publicacion para las redes del negocio con este video: "
-                    + (analisis.idea().isBlank() ? "una publicacion con este video" : analisis.idea());
+            String encargo = conCambio("Haz una publicacion para las redes del negocio con este video: "
+                    + (analisis.idea().isBlank() ? "una publicacion con este video" : analisis.idea()), cambio);
             List<String> queSeVe = new ArrayList<>();
             if (!analisis.descripcion().isBlank()) {
                 queSeVe.add(analisis.descripcion());
@@ -703,22 +745,67 @@ public class AgenteService {
         LocalDateTime limite = LocalDateTime.now().plusMinutes(30);
         for (Post p : posts.propuestasDelAgente()) {
             if (p.getFechaPropuesta() != null && p.getFechaPropuesta().isBefore(limite)) {
-                List<LocalDateTime> tomados = new ArrayList<>(posts.huecosTomados(LocalDateTime.now()));
-                tomados.remove(p.getFechaPropuesta());
-                LocalDateTime nueva = CalendarioDelAgente.siguienteHueco(LocalDateTime.now(), tomados,
-                        limites.maxPorDia(), horario(w));
-                p.setFechaPropuesta(nueva);
-                posts.save(p);
+                moverA(p, huecoSin(w, p).cuando());
             }
         }
     }
 
+    /**
+     * Al quedar un hueco libre (se descartó o se rehízo una propuesta), las que
+     * vienen después se adelantan si caben antes, respetando horario, topes y
+     * mezcla. Sin esto el calendario quedaba con un día vacío en medio y lo
+     * demás esperando de más.
+     *
+     * @return cuántas se movieron
+     */
+    int replanear(Workspace w) {
+        int movidas = 0;
+        // En orden: cada una ve ya dónde quedaron las anteriores.
+        for (Post p : posts.propuestasDelAgente()) {
+            if (p.getFechaPropuesta() == null) {
+                continue;
+            }
+            LocalDateTime antes = huecoSin(w, p).cuando();
+            if (antes.isBefore(p.getFechaPropuesta())) {
+                moverA(p, antes);
+                movidas++;
+            }
+        }
+        return movidas;
+    }
+
+    /** El mejor hueco para esta propuesta, sin contarla a ella misma como ocupada. */
+    private CalendarioDelAgente.Hueco huecoSin(Workspace w, Post p) {
+        LocalDateTime ahora = LocalDateTime.now();
+        List<CalendarioDelAgente.Tomado> tomados = new ArrayList<>();
+        boolean quitada = false;
+        for (Object[] r : posts.tomadosConCategoria(ahora)) {
+            LocalDateTime cuando = (LocalDateTime) r[0];
+            if (!quitada && cuando != null && cuando.equals(p.getFechaPropuesta())) {
+                quitada = true;
+                continue;
+            }
+            tomados.add(new CalendarioDelAgente.Tomado(cuando, (String) r[1]));
+        }
+        return CalendarioDelAgente.siguienteHueco(ahora, tomados, limites.maxPorDia(), horario(w),
+                CalendarioDelAgente.Categoria.de(p.getAgenteCategoria()));
+    }
+
+    /** La mueve de fecha y corrige la fecha que dice su explicación, para que no mienta. */
+    private void moverA(Post p, LocalDateTime nueva) {
+        LocalDateTime vieja = p.getFechaPropuesta();
+        p.setFechaPropuesta(nueva);
+        if (vieja != null && p.getAgenteMotivo() != null) {
+            p.setAgenteMotivo(p.getAgenteMotivo().replace(FECHA.format(vieja), FECHA.format(nueva)));
+        }
+        posts.save(p);
+    }
+
     // ------------------------------------------------------------ la bandeja
 
-    /** De solo lectura y con transacción: la respuesta recorre los destinos, que son perezosos. */
-    @Transactional(readOnly = true)
+    /** Lo que espera aprobación en la cuenta actual. La transacción la abre PostService (ver ahí por qué). */
     public List<PostResponse> propuestas() {
-        return posts.propuestasDelAgente().stream().map(postService::respuesta).toList();
+        return postService.propuestasDelAgente(p -> true);
     }
 
     public List<MediaAssetResponse> archivos(EtapaAgente etapa) {
@@ -775,8 +862,13 @@ public class AgenteService {
                 .orElseThrow(() -> new ResourceNotFoundException("Propuesta no encontrada."));
         postService.delete(postId);
         etapaDeSusFotos(post, EtapaAgente.DESCARTADA, "La descartaste tú.");
+        UUID workspaceId = post.getTenantId() == null ? null : UUID.fromString(post.getTenantId());
         if (DecisorDelAgente.Tratamiento.DISENO.name().equals(post.getAgenteTratamiento())) {
-            aprender(post.getTenantId() == null ? null : UUID.fromString(post.getTenantId()), +1);
+            aprender(workspaceId, +1);
+        }
+        // Quedó un hueco: lo que venía después se adelanta.
+        if (workspaceId != null) {
+            workspaces.findById(workspaceId).ifPresent(this::replanear);
         }
     }
 
@@ -815,6 +907,93 @@ public class AgenteService {
         if (!procesar(asset, workspace(workspaceId), destino, true)) {
             throw new IllegalStateException("No pude prepararla ahora; lo intento de nuevo en un rato.");
         }
+    }
+
+    // ------------------------------------------------------------ ¿le cambiamos algo?
+
+    /**
+     * Rehace una propuesta con lo que la persona pidió: se quita la propuesta
+     * (y sus otras versiones, si era un diseño) y la foto original se vuelve a
+     * procesar con el cambio. El texto del cambio llega a quien escribe y al
+     * diseño; "sin logo", "tal cual", "diséñala"... cambian además la decisión.
+     *
+     * @return la propuesta nueva (o sus versiones)
+     */
+    public List<PostResponse> cambiar(UUID postId, String texto, UUID workspaceId) {
+        Cambio cambio = Cambio.de(texto);
+        if (cambio.vacio()) {
+            throw new IllegalArgumentException("Escribe qué le cambiamos.");
+        }
+        Post post = posts.findByIdAndDeletedAtIsNull(postId)
+                .orElseThrow(() -> new ResourceNotFoundException("Propuesta no encontrada."));
+        if (!post.delAgente() || post.getStatus() != com.metricol.api.enums.PostStatus.DRAFT) {
+            throw new IllegalStateException("Esta publicación ya no está esperando aprobación.");
+        }
+        String original = post.getAgenteFotoUrl() != null ? post.getAgenteFotoUrl() : post.getMediaUrls().get(0);
+        MediaAsset asset = assets.findByUrlIn(List.of(original)).stream().findFirst()
+                .orElseThrow(() -> new IllegalStateException("Ya no encuentro la foto original de esta propuesta."));
+
+        // Las versiones de un mismo diseño salen de la misma foto: se rehacen juntas.
+        for (Post hermana : posts.propuestasDelAgente()) {
+            if (original.equals(hermana.getAgenteFotoUrl())) {
+                postService.delete(hermana.getId());
+            }
+        }
+        // Las de antes de existir agenteFotoUrl no salen en el recorrido de arriba.
+        if (posts.findByIdAndDeletedAtIsNull(postId).isPresent()) {
+            postService.delete(postId);
+        }
+
+        cupoIa.exigirCupo();
+        asset.setAgenteEtapa(null);
+        Workspace w = workspace(workspaceId);
+        if (!procesar(asset, w, cuentasParaFotos(), true, cambio)) {
+            throw new IllegalStateException("No pude rehacerla ahora; lo intento de nuevo en un rato.");
+        }
+        replanear(w);
+        return propuestasDe(original);
+    }
+
+    /** Las propuestas que salieron de una foto. */
+    public List<PostResponse> propuestasDe(String fotoOriginal) {
+        return postService.propuestasDelAgente(p -> fotoOriginal.equals(p.getAgenteFotoUrl()));
+    }
+
+    /** El encargo para quien escribe, con lo que la persona pidió cambiar al final. */
+    static String conCambio(String encargo, Cambio cambio) {
+        if (cambio == null || cambio.vacio()) {
+            return encargo;
+        }
+        return encargo + ". Cambios que pidio el dueno (respetalos): " + cambio.texto();
+    }
+
+    /** La decisión del decisor, con lo que la persona pidió encima. Lo que pidió manda. */
+    static DecisorDelAgente.Decision conCambio(DecisorDelAgente.Decision d, Cambio c, int disenosDisponibles) {
+        if (c == null) {
+            return d;
+        }
+        List<String> pasos = new ArrayList<>(d.pasos());
+        DecisorDelAgente.Tratamiento t = d.tratamiento();
+        boolean logo = d.logo();
+        if (Boolean.TRUE.equals(c.diseno()) && t != DecisorDelAgente.Tratamiento.DISENO) {
+            if (disenosDisponibles >= 1) {
+                t = DecisorDelAgente.Tratamiento.DISENO;
+                pasos.add("Me pediste diseño: la diseño con IA.");
+            } else {
+                pasos.add("Me pediste diseño, pero no quedan créditos esta semana.");
+            }
+        } else if (Boolean.FALSE.equals(c.diseno()) && t == DecisorDelAgente.Tratamiento.DISENO) {
+            t = DecisorDelAgente.Tratamiento.TAL_CUAL;
+            pasos.add("Me pediste sin diseño: va tal cual.");
+        }
+        if (c.logo() != null && c.logo() != logo) {
+            logo = c.logo();
+            pasos.add(logo ? "Me pediste el logo: se lo pongo." : "Me pediste sin logo: se lo quito.");
+        }
+        if (!c.vacio()) {
+            pasos.add("Apliqué lo que pediste: «" + c.texto() + "».");
+        }
+        return new DecisorDelAgente.Decision(t, logo, d.prioridad(), pasos);
     }
 
     // ------------------------------------------------------------ probar a mano

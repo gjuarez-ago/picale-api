@@ -838,4 +838,14 @@ public class PostService {
     public PostResponse respuesta(Post post) {
         return toResponse(post);
     }
+
+    /**
+     * Las propuestas del agente que pasan el filtro, ya como respuesta. Aquí y
+     * con transacción, no en el agente: la respuesta recorre los destinos, que
+     * son perezosos, y una llamada del agente a sí mismo no abriría la suya.
+     */
+    @Transactional(readOnly = true)
+    public List<PostResponse> propuestasDelAgente(java.util.function.Predicate<Post> filtro) {
+        return postRepository.propuestasDelAgente().stream().filter(filtro).map(this::toResponse).toList();
+    }
 }

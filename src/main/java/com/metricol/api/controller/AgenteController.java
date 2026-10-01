@@ -76,6 +76,60 @@ public class AgenteController {
     public record HorarioPedido(List<Integer> dias, int desde, int hasta) {
     }
 
+    public record CambioPedido(String cambio) {
+    }
+
+    /** ¿Le cambiamos algo? El agente rehace la propuesta con lo que se pidió. */
+    @PostMapping("/propuestas/{id}/cambiar")
+    public ResponseEntity<ApiResponse<List<PostResponse>>> cambiar(
+            @AuthenticationPrincipal User currentUser, @PathVariable UUID id, @RequestBody CambioPedido pedido) {
+        permisos.exigir(currentUser, Permission.POST_CREATE);
+        return ResponseEntity.ok(ApiResponse.success(agente.cambiar(id, pedido.cambio(), ws(currentUser))));
+    }
+
+    /**
+     * La bandeja de todas las cuentas: lo que espera aprobación en cada una,
+     * con lo que la persona puede hacer en cada cuenta según su rol ahí.
+     */
+    @GetMapping("/todas")
+    public ResponseEntity<ApiResponse<List<AgenteService.PropuestaDeCuenta>>> todas(
+            @AuthenticationPrincipal User currentUser) {
+        return ResponseEntity.ok(ApiResponse.success(agente.bandejaDeTodas(membresias.misWorkspaces(currentUser))));
+    }
+
+    /** Aprobar desde la bandeja de todas, en la cuenta que sea, sin cambiarse a ella. */
+    @PostMapping("/cuentas/{cuentaId}/propuestas/{id}/aprobar")
+    public ResponseEntity<ApiResponse<PostResponse>> aprobarEn(
+            @AuthenticationPrincipal User currentUser, @PathVariable UUID cuentaId, @PathVariable UUID id) {
+        exigirEn(currentUser, cuentaId, "POST_SCHEDULE");
+        PostResponse[] hecho = new PostResponse[1];
+        com.metricol.api.config.TenantIdentifierResolver.comoTenant(cuentaId.toString(),
+                () -> hecho[0] = agente.aprobar(id, cuentaId));
+        return ResponseEntity.ok(ApiResponse.success(hecho[0]));
+    }
+
+    @PostMapping("/cuentas/{cuentaId}/propuestas/{id}/descartar")
+    public ResponseEntity<ApiResponse<Void>> descartarEn(
+            @AuthenticationPrincipal User currentUser, @PathVariable UUID cuentaId, @PathVariable UUID id) {
+        exigirEn(currentUser, cuentaId, "POST_DELETE");
+        com.metricol.api.config.TenantIdentifierResolver.comoTenant(cuentaId.toString(), () -> agente.descartar(id));
+        return ResponseEntity.ok(ApiResponse.success(null));
+    }
+
+    /**
+     * El permiso en ESA cuenta, no en la actual: la persona puede ser dueña en
+     * una y solo redactora en otra. Una cuenta que no es suya se ve igual que
+     * una sin permiso.
+     */
+    private void exigirEn(User currentUser, UUID cuentaId, String permiso) {
+        boolean puede = membresias.misWorkspaces(currentUser).stream()
+                .anyMatch(m -> m.id().equals(cuentaId) && !m.archivado()
+                        && m.permisos() != null && m.permisos().contains(permiso));
+        if (!puede) {
+            throw new com.metricol.api.exception.ForbiddenException("No tienes permiso para hacer esto en esa cuenta.");
+        }
+    }
+
     @PutMapping("/horario")
     public ResponseEntity<ApiResponse<AgenteService.Estado>> horario(
             @AuthenticationPrincipal User currentUser, @RequestBody HorarioPedido pedido) {

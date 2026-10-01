@@ -585,6 +585,75 @@ class AgenteServiceTest {
     }
 
     @Test
+    @DisplayName("¿Le cambiamos algo?: rehace la propuesta con el cambio, que llega a quien escribe")
+    void cambiar() {
+        enElWorkspace(() -> {
+            conInstagram();
+            agente.encender(ws.getId(), true);
+            MediaAsset depa = foto("cambio.jpg");
+            revisaComo(RevisorDeMarca.Veredicto.VA, "es tu producto");
+            agente.vuelta(ws.getId());
+            Post antes = posts.propuestasDelAgente().get(0);
+
+            List<PostResponse> nuevas = agente.cambiar(antes.getId(), "sin logo, menciona Cancún", ws.getId());
+
+            assertThat(nuevas).hasSize(1);
+            assertThat(nuevas.get(0).getId()).isNotEqualTo(antes.getId());
+            assertThat(nuevas.get(0).getAgenteMotivo()).contains("«sin logo, menciona Cancún»");
+            assertThat(posts.findByIdAndDeletedAtIsNull(antes.getId())).isEmpty();
+            org.mockito.Mockito.verify(redactor).redactar(
+                    org.mockito.ArgumentMatchers.contains("menciona Cancún"), any(), any(), any());
+            // Sin logo: no se pidió la copia sellada para la nueva.
+            assertThat(nuevas.get(0).getMediaUrls()).containsExactly(depa.getUrl());
+        });
+    }
+
+    @Test
+    @DisplayName("al descartar, lo que venía después se adelanta al hueco libre y su fecha se corrige")
+    void replanearAlDescartar() {
+        enElWorkspace(() -> {
+            conInstagram();
+            agente.encender(ws.getId(), true);
+            foto("r-1.jpg");
+            foto("r-2.jpg");
+            when(revisor.revisar(anyString(), any(), anyBoolean())).thenReturn(new RevisorDeMarca.Revision(
+                    RevisorDeMarca.Veredicto.VA, "va", "x", "y", "LUGAR"));
+            agente.vuelta(ws.getId());
+            List<Post> dos = posts.propuestasDelAgente();
+            LocalDateTime hueco = dos.get(0).getFechaPropuesta();
+
+            agente.descartar(dos.get(0).getId());
+
+            Post segunda = posts.findById(dos.get(1).getId()).orElseThrow();
+            assertThat(segunda.getFechaPropuesta()).isEqualTo(hueco);
+            assertThat(segunda.getAgenteMotivo()).contains(
+                    java.time.format.DateTimeFormatter.ofPattern("EEE d MMM, HH:mm", java.util.Locale.forLanguageTag("es-MX"))
+                            .format(hueco));
+        });
+    }
+
+    @Test
+    @DisplayName("la bandeja de todas las cuentas trae cada propuesta con lo que la persona puede hacer en esa cuenta")
+    void bandejaDeTodas() {
+        enElWorkspace(() -> {
+            conInstagram();
+            agente.encender(ws.getId(), true);
+            foto("t.jpg");
+            revisaComo(RevisorDeMarca.Veredicto.VA, "va");
+            agente.vuelta(ws.getId());
+        });
+        var mia = new com.metricol.api.models.response.MiWorkspaceResponse(ws.getId(), "Vivento prueba", null, "#0035D7",
+                List.of(), null, List.of("POST_CREATE", "POST_SCHEDULE"), false, false);
+
+        var bandeja = agente.bandejaDeTodas(List.of(mia));
+
+        assertThat(bandeja).hasSize(1);
+        assertThat(bandeja.get(0).cuenta()).isEqualTo("Vivento prueba");
+        assertThat(bandeja.get(0).puedeAprobar()).isTrue();
+        assertThat(bandeja.get(0).puedeDescartar()).isFalse();
+    }
+
+    @Test
     @DisplayName("revisar ahora pide el agente encendido")
     void vueltaAhoraApagado() {
         enElWorkspace(() -> org.assertj.core.api.Assertions.assertThatThrownBy(() -> agente.vueltaAhora(ws.getId()))
