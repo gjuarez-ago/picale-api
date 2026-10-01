@@ -399,6 +399,34 @@ public class UploadPostConnectService {
     }
 
     /**
+     * Borra el perfil de un espacio en upload-post, con las redes que tenga
+     * conectadas. Lo usa el borrado definitivo, después de borrar la base.
+     *
+     * @return si upload-post lo confirmó (o ya no existía); {@code false} si no
+     *         se pudo, para avisarlo, nunca para frenar el borrado
+     */
+    public boolean borrarPerfil(String username) {
+        if (username == null || username.isBlank() || !props.isConfigured()) {
+            return true;
+        }
+        try {
+            restClient.method(org.springframework.http.HttpMethod.DELETE)
+                    .uri("/users")
+                    .contentType(MediaType.APPLICATION_JSON)
+                    .body(Map.of("username", username))
+                    .retrieve()
+                    .body(String.class);
+            log.warn("Perfil {} borrado de upload-post", username);
+            return true;
+        } catch (HttpClientErrorException.NotFound ex) {
+            return true;
+        } catch (RestClientException ex) {
+            log.error("No se pudo borrar el perfil {} de upload-post: {}", username, ex.getMessage());
+            return false;
+        }
+    }
+
+    /**
      * Silencioso a propósito cuando el perfil ya existía: no hay forma de
      * distinguir "ya existe" de otros 4xx sin acoplarse al texto exacto del
      * error, y de todos modos el paso siguiente falla con su propio mensaje

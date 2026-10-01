@@ -19,9 +19,26 @@ import com.metricol.api.exception.ForbiddenException;
 @Service
 public class RootAccessService {
 
+    private final AdministradoresService administradores;
+
+    public RootAccessService(AdministradoresService administradores) {
+        this.administradores = administradores;
+    }
+
     public void exigir(User usuario) {
         if (usuario == null || !usuario.isPlatformAdmin()) {
             throw new ForbiddenException("Solo quien administra la plataforma puede entrar aquí.");
+        }
+    }
+
+    /**
+     * Lo que no se puede deshacer —borrar organizaciones, espacios y personas—
+     * es solo de la cuenta raíz, no de cualquiera que administre la plataforma.
+     */
+    public void exigirRaiz(User usuario) {
+        exigir(usuario);
+        if (!administradores.esRaiz(usuario)) {
+            throw new ForbiddenException("Solo la cuenta raíz puede eliminar.");
         }
     }
 }

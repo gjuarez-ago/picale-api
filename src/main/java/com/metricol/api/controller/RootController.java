@@ -19,6 +19,7 @@ import com.metricol.api.entity.User;
 import com.metricol.api.models.request.root.AdministradorRequest;
 import com.metricol.api.models.request.root.AjusteDeCreditosRequest;
 import com.metricol.api.models.request.root.CupoRequest;
+import com.metricol.api.models.request.root.EliminarRequest;
 import com.metricol.api.models.request.root.LicenciaRequest;
 import com.metricol.api.models.request.root.SinLimitesRequest;
 import com.metricol.api.models.response.ApiResponse;
@@ -26,6 +27,7 @@ import com.metricol.api.models.response.root.AdministradorResponse;
 import com.metricol.api.models.response.root.OrganizacionDetalleResponse;
 import com.metricol.api.models.response.root.OrganizacionResumenResponse;
 import com.metricol.api.service.root.AdministradoresService;
+import com.metricol.api.service.root.EliminacionDefinitiva;
 import com.metricol.api.service.root.RootAccessService;
 import com.metricol.api.service.root.RootAdminService;
 
@@ -50,11 +52,14 @@ public class RootController {
     private final RootAccessService acceso;
     private final RootAdminService admin;
     private final AdministradoresService administradores;
+    private final EliminacionDefinitiva eliminacion;
 
-    public RootController(RootAccessService acceso, RootAdminService admin, AdministradoresService administradores) {
+    public RootController(RootAccessService acceso, RootAdminService admin, AdministradoresService administradores,
+            EliminacionDefinitiva eliminacion) {
         this.acceso = acceso;
         this.admin = admin;
         this.administradores = administradores;
+        this.eliminacion = eliminacion;
     }
 
     @GetMapping("/organizaciones")
@@ -127,5 +132,35 @@ public class RootController {
             @AuthenticationPrincipal User currentUser, @PathVariable UUID userId) {
         acceso.exigir(currentUser);
         return ResponseEntity.ok(ApiResponse.success(administradores.quitar(userId, currentUser)));
+    }
+
+    // ------------------------------------------------------------------ borrar de verdad
+    // Solo la cuenta raíz, con el nombre (o el correo) escrito para confirmar. No se deshace.
+
+    @PostMapping("/organizaciones/{id}/eliminar")
+    public ResponseEntity<ApiResponse<EliminacionDefinitiva.Resultado>> eliminarOrganizacion(
+            @AuthenticationPrincipal User currentUser, @PathVariable UUID id,
+            @Valid @RequestBody EliminarRequest request) {
+        acceso.exigirRaiz(currentUser);
+        return ResponseEntity.ok(ApiResponse.success(
+                eliminacion.eliminarOrganizacion(currentUser, id, request.getConfirmacion())));
+    }
+
+    @PostMapping("/espacios/{workspaceId}/eliminar")
+    public ResponseEntity<ApiResponse<EliminacionDefinitiva.Resultado>> eliminarEspacio(
+            @AuthenticationPrincipal User currentUser, @PathVariable UUID workspaceId,
+            @Valid @RequestBody EliminarRequest request) {
+        acceso.exigirRaiz(currentUser);
+        return ResponseEntity.ok(ApiResponse.success(
+                eliminacion.eliminarEspacio(currentUser, workspaceId, request.getConfirmacion())));
+    }
+
+    @PostMapping("/usuarios/{userId}/eliminar")
+    public ResponseEntity<ApiResponse<EliminacionDefinitiva.Resultado>> eliminarUsuario(
+            @AuthenticationPrincipal User currentUser, @PathVariable UUID userId,
+            @Valid @RequestBody EliminarRequest request) {
+        acceso.exigirRaiz(currentUser);
+        return ResponseEntity.ok(ApiResponse.success(
+                eliminacion.eliminarUsuario(currentUser, userId, request.getConfirmacion())));
     }
 }

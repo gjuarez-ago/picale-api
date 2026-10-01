@@ -210,6 +210,27 @@ public class StripeClient {
         return get("/subscriptions/" + suscripcion);
     }
 
+    /**
+     * Cancela la suscripción YA, sin esperar al fin del periodo y sin
+     * prorratear. Es lo que hace el borrado definitivo de un espacio: no puede
+     * quedar cobrándose algo que ya no existe. Una que ya estaba cancelada no
+     * se toca.
+     */
+    public void cancelarYa(String suscripcion) {
+        String estado = obtenerSuscripcion(suscripcion).path("status").asText("");
+        if ("canceled".equals(estado) || "incomplete_expired".equals(estado)) {
+            return;
+        }
+        exigirDisponible();
+        try {
+            rest.delete().uri("/subscriptions/" + suscripcion)
+                    .header("Authorization", "Bearer " + props.getSecretKey().strip())
+                    .retrieve().body(String.class);
+        } catch (RestClientResponseException ex) {
+            throw fallo("/subscriptions/" + suscripcion, ex);
+        }
+    }
+
     // ------------------------------------------------------------------
     // Lo de abajo
     // ------------------------------------------------------------------

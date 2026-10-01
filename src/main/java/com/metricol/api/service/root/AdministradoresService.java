@@ -101,7 +101,9 @@ public class AdministradoresService {
         return listar(quien);
     }
 
-    private boolean esRaiz(User u) {
-        return correoRaiz != null && correoRaiz.equals(Correos.normalizar(u.getEmail()));
+    /** La cuenta raíz: la única que puede borrar de verdad (ver {@code EliminacionDefinitiva}). */
+    public boolean esRaiz(User u) {
+        return u != null && u.getEmail() != null && correoRaiz != null
+                && correoRaiz.equals(Correos.normalizar(u.getEmail()));
     }
 }
