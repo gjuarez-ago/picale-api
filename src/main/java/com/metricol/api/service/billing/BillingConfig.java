@@ -57,18 +57,23 @@ public class BillingConfig {
     public static final String DIAS_PRUEBA_EXISTENTES = "billing.trial_days.existing";
     public static final String DIAS_GRACIA = "billing.grace_days";
     public static final String CREDITOS_MENSUALES = "billing.credits.monthly_per_license";
+    /** Cuántos créditos gasta una generación de imagen. 1 crédito = $1 MXN; una imagen, 5. */
+    public static final String POR_GENERACION = "billing.credits.per_generation";
 
     private static final Duration VIGENCIA_DE_LA_CACHE = Duration.ofSeconds(30);
 
     private final BillingSettingRepository ajustes;
     private final CreditPackRepository paquetes;
+    private final com.metricol.api.repository.ImageCreditsRepository saldos;
 
     private volatile Map<String, String> cache = Map.of();
     private volatile Instant cargado = Instant.EPOCH;
 
-    public BillingConfig(BillingSettingRepository ajustes, CreditPackRepository paquetes) {
+    public BillingConfig(BillingSettingRepository ajustes, CreditPackRepository paquetes,
+            com.metricol.api.repository.ImageCreditsRepository saldos) {
         this.ajustes = ajustes;
         this.paquetes = paquetes;
+        this.saldos = saldos;
     }
 
     // ------------------------------------------------------------------
@@ -104,12 +109,12 @@ public class BillingConfig {
 
     /** Precio del primer negocio, en la unidad menor de la moneda. Es lo que se cobra y lo que ve el público. */
     public int listaDeLicencia() {
-        return Math.max(0, entero(LISTA_LICENCIA, 34900));
+        return Math.max(0, entero(LISTA_LICENCIA, 28900));
     }
 
     /** Precio de cada negocio adicional. */
     public int listaDeAdicional() {
-        return Math.max(0, entero(LISTA_ADICIONAL, 24900));
+        return Math.max(0, entero(LISTA_ADICIONAL, 18900));
     }
 
     /** Días gratis para quien se registra. */
@@ -127,9 +132,14 @@ public class BillingConfig {
         return Math.max(0, entero(DIAS_GRACIA, 7));
     }
 
-    /** Créditos de imagen que trae cada licencia cada mes. */
+    /** Créditos que trae cada licencia cada mes (1 crédito = $1 MXN). */
     public int creditosMensuales() {
-        return Math.max(0, entero(CREDITOS_MENSUALES, 5));
+        return Math.max(0, entero(CREDITOS_MENSUALES, 30));
+    }
+
+    /** Créditos que gasta una generación de imagen. Nunca menos de 1. */
+    public int creditosPorGeneracion() {
+        return Math.max(1, entero(POR_GENERACION, 5));
     }
 
     public String texto(String clave, String porDefecto) {
@@ -207,8 +217,14 @@ public class BillingConfig {
             }
             case CREDITOS_MENSUALES -> {
                 int creditos = entero(clave, valor);
-                if (creditos < 0 || creditos > 1000) {
-                    throw new IllegalArgumentException("Los créditos al mes van de 0 a 1000.");
+                if (creditos < 0 || creditos > 10000) {
+                    throw new IllegalArgumentException("Los créditos al mes van de 0 a 10000.");
+                }
+            }
+            case POR_GENERACION -> {
+                int creditos = entero(clave, valor);
+                if (creditos < 1 || creditos > 100) {
+                    throw new IllegalArgumentException("Los créditos por imagen van de 1 a 100.");
                 }
             }
             default -> {
@@ -255,6 +271,7 @@ public class BillingConfig {
     @Transactional
     public void sembrar() {
         try {
+            pasarACreditosEnPesos();
             int nuevos = 0;
             for (Map.Entry<String, String[]> e : semillas().entrySet()) {
                 if (ajustes.existsById(e.getKey())) {
@@ -286,9 +303,9 @@ public class BillingConfig {
         s.put(MONEDA, new String[] { "mxn", "Moneda de las licencias y los paquetes (la de los precios de Stripe)." });
         s.put(IVA_INCLUIDO, new String[] { "true",
                 "Los precios ya incluyen el IVA (el cliente paga lo que ve). Solo cambia el texto en pantalla: 'IVA incluido' o 'mas IVA'." });
-        s.put(LISTA_LICENCIA, new String[] { "34900",
-                "Precio mensual del primer negocio, en centavos (34900 = 349.00). Es lo que se cobra y lo que ensena la pagina de planes; quien ya esta suscrito conserva el que pago al entrar." });
-        s.put(LISTA_ADICIONAL, new String[] { "24900",
+        s.put(LISTA_LICENCIA, new String[] { "28900",
+                "Precio mensual del primer negocio, en centavos (28900 = 289.00). Es lo que se cobra y lo que ensena la pagina de planes; quien ya esta suscrito conserva el que pago al entrar." });
+        s.put(LISTA_ADICIONAL, new String[] { "18900",
                 "Precio mensual de cada negocio adicional, en centavos. Igual al del primero = sin descuento por adicional." });
         s.put(DIAS_DE_AVISO, new String[] { "5",
                 "Dias antes de que termine una prueba o una licencia que no se renueva para empezar a avisar en el panel." });
@@ -296,8 +313,61 @@ public class BillingConfig {
         s.put(DIAS_PRUEBA_EXISTENTES, new String[] { "14",
                 "Dias gratis para los workspaces que ya existian al encender los cobros." });
         s.put(DIAS_GRACIA, new String[] { "7", "Dias que se sigue usando un workspace tras un cobro fallido." });
-        s.put(CREDITOS_MENSUALES, new String[] { "5", "Creditos de imagen (1 = 1 generacion) que trae cada licencia al mes." });
+        s.put(CREDITOS_MENSUALES, new String[] { "30",
+                "Creditos (1 credito = 1 peso) que trae cada licencia al mes. No se acumulan." });
+        s.put(POR_GENERACION, new String[] { "5", "Creditos que gasta una generacion de imagen con IA." });
         return s;
+    }
+
+    /** Los paquetes que se venden: nombre, créditos y precio en centavos (1 crédito = $1). */
+    private static final Object[][] PAQUETES = {
+            { "Arranque", 39, 3900 },
+            { "Constante", 79, 7900 },
+            { "A tope", 149, 14900 } };
+
+    /**
+     * Una sola vez, en una base que viene de "1 crédito = 1 imagen": pasa todo a
+     * "1 crédito = $1, una imagen = 5 créditos". Lo marca la ausencia del ajuste
+     * de créditos por generación en una base que ya tenía los demás.
+     *
+     * <ul>
+     * <li>Los saldos se multiplican: nadie pierde las imágenes que tenía.</li>
+     * <li>Los paquetes pasan a valer lo que cuestan (39, 79 y 149 créditos).</li>
+     * <li>El plan queda en $289, el adicional en $189 y 30 créditos al mes.</li>
+     * </ul>
+     *
+     * Quien ya está suscrito conserva el importe con el que entró: el precio
+     * viaja con cada cobro nuevo, no con las suscripciones existentes.
+     */
+    private void pasarACreditosEnPesos() {
+        if (!ajustes.existsById(CREDITOS_MENSUALES) || ajustes.existsById(POR_GENERACION)) {
+            return;
+        }
+        int factor = 5;
+        int multiplicados = saldos.multiplicarSaldos(factor);
+        fijar(LISTA_LICENCIA, "28900");
+        fijar(LISTA_ADICIONAL, "18900");
+        fijar(CREDITOS_MENSUALES, "30");
+        for (CreditPack p : paquetes.findAll()) {
+            for (Object[] nuevo : PAQUETES) {
+                if (nuevo[0].equals(p.getName())) {
+                    p.setCredits((Integer) nuevo[1]);
+                    p.setPriceMinor((Integer) nuevo[2]);
+                }
+            }
+            p.setUpdatedAt(LocalDateTime.now());
+            paquetes.save(p);
+        }
+        log.info("Creditos pasados a pesos (x{}): {} saldo(s), plan a $289 y {} paquete(s)",
+                factor, multiplicados, paquetes.count());
+    }
+
+    private void fijar(String clave, String valor) {
+        ajustes.findById(clave).ifPresent(fila -> {
+            fila.setValor(valor);
+            fila.setUpdatedAt(LocalDateTime.now());
+            ajustes.save(fila);
+        });
     }
 
     private void sembrarPaquetes() {
@@ -305,18 +375,16 @@ public class BillingConfig {
             return;
         }
         // Apagados: se venden cuando se encienden (Stripe no necesita nada previo: la API crea el producto).
-        // Precios pensados sobre el costo de una generacion (unos 2.4 pesos entre director de arte
-        // e imagenes) mas la comision de Stripe: cerca de 60 % de margen y con descuento por volumen.
+        // 1 crédito = $1 y una imagen gasta 5: $5 por imagen contra unos $2.4 de costo (director de
+        // arte e imágenes) más la comisión de Stripe.
         int orden = 1;
-        String[] nombres = { "Arranque", "Constante", "A tope" };
-        int[] creditos = { 10, 25, 50 };
-        int[] precios = { 7900, 17900, 32900 };
-        for (int i = 0; i < creditos.length; i++) {
+        for (Object[] p : PAQUETES) {
+            int creditos = (Integer) p[1];
             paquetes.save(CreditPack.builder()
-                    .code("PACK_" + creditos[i])
-                    .name(nombres[i])
-                    .credits(creditos[i])
-                    .priceMinor(precios[i])
+                    .code("PACK_" + creditos)
+                    .name((String) p[0])
+                    .credits(creditos)
+                    .priceMinor((Integer) p[2])
                     .active(false)
                     .sortOrder(orden++)
                     .build());

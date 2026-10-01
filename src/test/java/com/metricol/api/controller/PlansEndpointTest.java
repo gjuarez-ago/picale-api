@@ -28,8 +28,10 @@ class PlansEndpointTest {
     void planesSinSesion() throws Exception {
         mvc.perform(get("/api/v1/billing/plans"))
                 .andExpect(status().isOk())
-                .andExpect(jsonPath("$.result.licenseMinor").value(34900))
-                .andExpect(jsonPath("$.result.extraMinor").value(24900))
+                .andExpect(jsonPath("$.result.licenseMinor").value(28900))
+                .andExpect(jsonPath("$.result.extraMinor").value(18900))
+                .andExpect(jsonPath("$.result.monthlyCredits").value(30))
+                .andExpect(jsonPath("$.result.creditsPerImage").value(5))
                 .andExpect(jsonPath("$.result.graceDays").value(7))
                 .andExpect(jsonPath("$.result.taxIncluded").value(true))
                 .andExpect(jsonPath("$.result.currency").value("mxn"));

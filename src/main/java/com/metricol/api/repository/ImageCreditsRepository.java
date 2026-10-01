@@ -18,4 +18,13 @@ public interface ImageCreditsRepository extends JpaRepository<ImageCredits, UUID
     @Lock(LockModeType.PESSIMISTIC_WRITE)
     @Query("select c from ImageCredits c where c.workspaceId = :id")
     Optional<ImageCredits> bloquear(@Param("id") UUID workspaceId);
+
+    /**
+     * Multiplica todos los saldos. Es el paso de "1 crédito = 1 imagen" a
+     * "1 crédito = $1": quien tenía 3 imágenes conserva 3 imágenes (15 créditos).
+     * Corre una sola vez, desde {@code BillingConfig}.
+     */
+    @org.springframework.data.jpa.repository.Modifying
+    @Query("update ImageCredits c set c.monthlyBalance = c.monthlyBalance * :factor, c.packBalance = c.packBalance * :factor")
+    int multiplicarSaldos(@Param("factor") int factor);
 }

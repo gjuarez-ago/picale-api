@@ -26,7 +26,7 @@ class StripeProductCatalogTest {
     void preparar() {
         stripe = mock(StripeClient.class);
         config = mock(BillingConfig.class);
-        when(config.creditosMensuales()).thenReturn(5);
+        when(config.creditosMensuales()).thenReturn(30);
         catalogo = new StripeProductCatalog(stripe, config);
     }
 
@@ -36,7 +36,7 @@ class StripeProductCatalogTest {
         assertThat(catalogo.productoDeLicencia(false)).isEqualTo("picale_licencia");
         assertThat(catalogo.productoDeLicencia(true)).isEqualTo("picale_licencia_adicional");
 
-        verify(stripe).asegurarProducto(eq("picale_licencia"), eq("Pícale · Licencia de negocio"), contains("5 imágenes"));
+        verify(stripe).asegurarProducto(eq("picale_licencia"), eq("Pícale · Licencia de negocio"), contains("30 créditos"));
         verify(stripe).asegurarProducto(eq("picale_licencia_adicional"), contains("adicional"), anyString());
     }
 

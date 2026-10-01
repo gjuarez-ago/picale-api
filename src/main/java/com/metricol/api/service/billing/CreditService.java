@@ -15,11 +15,12 @@ import com.metricol.api.repository.CreditMovementRepository;
 import com.metricol.api.repository.ImageCreditsRepository;
 
 /**
- * Los créditos de imagen: 1 crédito = 1 generación.
+ * Los créditos: 1 crédito = $1 MXN, y una generación de imagen gasta
+ * {@link BillingConfig#creditosPorGeneracion()} (5).
  *
  * <p>Con los cobros apagados no hay créditos ni tope: todo pasa. Encendidos,
- * cada generación gasta un crédito —primero de los mensuales, luego de los de
- * paquete— y si la generación no produce nada se devuelve.
+ * cada generación gasta sus créditos —primero de los mensuales, luego de los de
+ * paquete, y puede tomar de las dos— y si no produce nada se devuelven.
  *
  * <p>Todo movimiento queda en {@code credit_movements} con una referencia, y la
  * misma referencia nunca cuenta dos veces: un aviso de Stripe repetido no regala
@@ -67,8 +68,13 @@ public class CreditService {
         return sinLimites.deWorkspace(workspaceId);
     }
 
+    /** Cuántos créditos gasta una generación de imagen. */
+    public int porGeneracion() {
+        return config.creditosPorGeneracion();
+    }
+
     /**
-     * Cuántas generaciones puede pagar el workspace ahora, o
+     * Cuántas GENERACIONES (no créditos) puede pagar el workspace ahora, o
      * {@code Integer.MAX_VALUE} si los cobros están apagados o no tiene
      * límites. Es lo que mira el agente antes de decidir diseñar.
      */
@@ -76,15 +82,20 @@ public class CreditService {
         if (!config.habilitado() || sinLimites.deWorkspace(workspaceId)) {
             return Integer.MAX_VALUE;
         }
-        return saldo(workspaceId).total();
+        return saldo(workspaceId).total() / porGeneracion();
+    }
+
+    /** La referencia del segundo movimiento, cuando una generación toma de las dos bolsas. */
+    private static String segunda(String referencia) {
+        return referencia + ":paquete";
     }
 
     /**
-     * Gasta el crédito de una generación. Devuelve cuántos quedan, o
-     * {@code Integer.MAX_VALUE} si los cobros están apagados.
+     * Gasta los créditos de una generación. Devuelve cuántas generaciones más
+     * se pueden pagar, o {@code Integer.MAX_VALUE} si los cobros están apagados.
      *
      * @param referencia identifica la generación: con ella se puede devolver
-     * @throws QuotaExceededException si no queda ninguno
+     * @throws QuotaExceededException si no alcanza para una
      */
     @Transactional
     public int consumirGeneracion(UUID workspaceId, String referencia) {
@@ -92,36 +103,43 @@ public class CreditService {
             return Integer.MAX_VALUE;
         }
         // Reintentar la misma generación no la cobra dos veces.
+        int costo = porGeneracion();
         if (movimientos.existsByWorkspaceIdAndMotivoAndReferencia(workspaceId, CreditMovement.GENERACION, referencia)) {
-            return saldo(workspaceId).total();
+            return saldo(workspaceId).total() / costo;
         }
 
         LocalDateTime ahora = LocalDateTime.now();
         ImageCredits c = obtener(workspaceId);
         int mensuales = c.mensualesVigentes(ahora);
         int paquete = Math.max(0, c.getPackBalance());
-        if (mensuales + paquete < 1) {
+        if (mensuales + paquete < costo) {
             throw new QuotaExceededException("CREDITS_EXHAUSTED",
                     // Sin "compra": este mensaje lo lee también la app móvil, que no vende ni manda a pagar.
                     "Ya usaste los créditos de imagen de este espacio. Revisa la situación de tu cuenta o escribe a soporte.");
         }
 
-        String bolsa;
-        if (mensuales > 0) {
-            c.setMonthlyBalance(mensuales - 1);
-            bolsa = CreditMovement.MENSUAL;
-        } else {
-            // Los mensuales vencidos que sobraban ya no valen: se dejan en cero.
-            c.setMonthlyBalance(0);
-            c.setPackBalance(paquete - 1);
-            bolsa = CreditMovement.PAQUETE;
-        }
+        // Primero los del mes, que vencen; lo que falte, del paquete. Cada bolsa
+        // con su movimiento, para devolver a cada una lo que dio.
+        int deMensuales = Math.min(mensuales, costo);
+        int dePaquete = costo - deMensuales;
+        // Los mensuales vencidos que sobraban ya no valen: se dejan en cero.
+        c.setMonthlyBalance(mensuales - deMensuales);
+        c.setPackBalance(paquete - dePaquete);
         c.setUpdatedAt(ahora);
         creditos.save(c);
-        movimientos.save(CreditMovement.builder()
-                .workspaceId(workspaceId).delta(-1).bolsa(bolsa)
-                .motivo(CreditMovement.GENERACION).referencia(referencia).build());
-        return Math.max(0, c.mensualesVigentes(ahora) + Math.max(0, c.getPackBalance()));
+        String ref = referencia;
+        if (deMensuales > 0) {
+            movimientos.save(CreditMovement.builder()
+                    .workspaceId(workspaceId).delta(-deMensuales).bolsa(CreditMovement.MENSUAL)
+                    .motivo(CreditMovement.GENERACION).referencia(ref).build());
+            ref = segunda(referencia);
+        }
+        if (dePaquete > 0) {
+            movimientos.save(CreditMovement.builder()
+                    .workspaceId(workspaceId).delta(-dePaquete).bolsa(CreditMovement.PAQUETE)
+                    .motivo(CreditMovement.GENERACION).referencia(ref).build());
+        }
+        return Math.max(0, c.mensualesVigentes(ahora) + Math.max(0, c.getPackBalance())) / costo;
     }
 
     /**
@@ -130,23 +148,30 @@ public class CreditService {
      */
     @Transactional
     public void devolverGeneracion(UUID workspaceId, String referencia) {
+        devolver(workspaceId, referencia);
+        devolver(workspaceId, segunda(referencia));
+    }
+
+    /** Devuelve un movimiento de gasto, lo que tomó y a la bolsa de la que salió. */
+    private void devolver(UUID workspaceId, String referencia) {
         Optional<CreditMovement> gasto = movimientos.findByWorkspaceIdAndMotivoAndReferencia(
                 workspaceId, CreditMovement.GENERACION, referencia);
         if (gasto.isEmpty()
                 || movimientos.existsByWorkspaceIdAndMotivoAndReferencia(workspaceId, CreditMovement.DEVOLUCION, referencia)) {
             return;
         }
+        int cantidad = Math.max(1, Math.abs(gasto.get().getDelta()));
         ImageCredits c = obtener(workspaceId);
         String bolsa = gasto.get().getBolsa();
         if (CreditMovement.MENSUAL.equals(bolsa)) {
-            c.setMonthlyBalance(Math.max(0, c.getMonthlyBalance()) + 1);
+            c.setMonthlyBalance(Math.max(0, c.getMonthlyBalance()) + cantidad);
         } else {
-            c.setPackBalance(Math.max(0, c.getPackBalance()) + 1);
+            c.setPackBalance(Math.max(0, c.getPackBalance()) + cantidad);
         }
         c.setUpdatedAt(LocalDateTime.now());
         creditos.save(c);
         movimientos.save(CreditMovement.builder()
-                .workspaceId(workspaceId).delta(1).bolsa(bolsa)
+                .workspaceId(workspaceId).delta(cantidad).bolsa(bolsa)
                 .motivo(CreditMovement.DEVOLUCION).referencia(referencia).build());
     }
 

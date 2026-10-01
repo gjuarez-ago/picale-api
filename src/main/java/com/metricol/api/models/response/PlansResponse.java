@@ -13,8 +13,10 @@ public record PlansResponse(
         boolean taxIncluded,
         /** Días gratis al registrarse. 0 = sin prueba. */
         int trialDays,
-        /** Créditos de imagen que trae cada licencia cada mes. */
+        /** Créditos (1 = $1) que trae cada licencia cada mes. */
         int monthlyCredits,
+        /** Créditos que gasta una imagen con IA. */
+        int creditsPerImage,
         /** Días que se sigue usando un espacio después de un cobro fallido, antes de archivarlo. */
         int graceDays,
         /** Primer negocio, en la unidad menor de la moneda (34900 = $349.00). */

@@ -17,9 +17,16 @@ cobros apagados la aplicación se comporta como siempre: nadie paga, nadie se ar
   (`billing_reason=subscription_update`) se ignora para no reiniciar los créditos. **Probar en modo de
   prueba de Stripe antes de encender los cobros reales**: contratar con N días por delante y comprobar
   que la próxima cobranza cae N días después del mes pagado.
-- **Créditos de imagen**: 1 crédito = 1 generación (con todas sus versiones). La licencia trae
-  5 al mes (no se acumulan, terminan con el periodo). Los **paquetes** (10 / 25 / 50) no vencen.
-  Si una generación no produce ninguna versión, el crédito se devuelve.
+- **Plan**: $289 MXN al mes el primer negocio y $189 cada negocio adicional.
+- **Créditos**: 1 crédito = $1 MXN. Una generación de imagen (con todas sus versiones) gasta
+  5 (`billing.credits.per_generation`). La licencia trae **30 al mes** (no se acumulan, terminan
+  con el periodo). Los **paquetes** Arranque 39 ($39), Constante 79 ($79) y A tope 149 ($149) se
+  acumulan y no vencen. Si una generación no produce ninguna versión, los créditos se devuelven,
+  a la bolsa de la que salieron (una generación puede tomar de las dos).
+- **Paso a pesos (oct 2026)**: al arrancar, una base que venía de "1 crédito = 1 imagen" se
+  migra una sola vez (`BillingConfig.pasarACreditosEnPesos`): los saldos se multiplican por 5,
+  los paquetes quedan en 39/79/149 y el plan en $289/$189 con 30 créditos. Quien ya está
+  suscrito conserva el importe con el que entró.
 - **Cancelar** apaga la renovación: se usa hasta el fin de lo pagado. **Sin reembolsos.**
 - **Cobro fallido**: 7 días de gracia; pasados, el espacio se **archiva** (nunca se borra) y al
   pagar se restaura.

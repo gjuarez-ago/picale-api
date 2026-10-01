@@ -57,6 +57,7 @@ class CreditServiceTest {
     void preparar() {
         workspace = UUID.randomUUID();
         when(config.habilitado()).thenReturn(true);
+        when(config.creditosPorGeneracion()).thenReturn(5);
     }
 
     private static LocalDateTime enUnMes() {
@@ -83,60 +84,88 @@ class CreditServiceTest {
     }
 
     @Test
-    @DisplayName("1 crédito = 1 generación: gasta uno y dice cuántos quedan")
+    @DisplayName("una imagen gasta 5 créditos y dice cuántas imágenes más alcanzan")
     void gastaUno() {
-        creditos.otorgarMensuales(workspace, 5, enUnMes(), "inv-1");
+        creditos.otorgarMensuales(workspace, 30, enUnMes(), "inv-1");
 
-        assertThat(creditos.consumirGeneracion(workspace, "g1")).isEqualTo(4);
-        assertThat(creditos.consumirGeneracion(workspace, "g2")).isEqualTo(3);
-        assertThat(creditos.saldo(workspace).mensuales()).isEqualTo(3);
+        assertThat(creditos.consumirGeneracion(workspace, "g1")).isEqualTo(5);
+        assertThat(creditos.consumirGeneracion(workspace, "g2")).isEqualTo(4);
+        assertThat(creditos.saldo(workspace).mensuales()).isEqualTo(20);
+        assertThat(creditos.disponibles(workspace)).isEqualTo(4);
     }
 
     @Test
     @DisplayName("reintentar la misma generación no la cobra dos veces")
     void mismaReferenciaNoCobraDosVeces() {
-        creditos.otorgarMensuales(workspace, 5, enUnMes(), "inv-1");
+        creditos.otorgarMensuales(workspace, 30, enUnMes(), "inv-1");
 
         creditos.consumirGeneracion(workspace, "g1");
         creditos.consumirGeneracion(workspace, "g1");
 
-        assertThat(creditos.saldo(workspace).total()).isEqualTo(4);
+        assertThat(creditos.saldo(workspace).total()).isEqualTo(25);
     }
 
     @Test
-    @DisplayName("se acaban a los cinco, y el sexto se rechaza")
+    @DisplayName("los 30 del mes son 6 imágenes; la séptima se rechaza")
     void seAcaban() {
-        creditos.otorgarMensuales(workspace, 5, enUnMes(), "inv-1");
-        for (int i = 1; i <= 5; i++) {
+        creditos.otorgarMensuales(workspace, 30, enUnMes(), "inv-1");
+        for (int i = 1; i <= 6; i++) {
             creditos.consumirGeneracion(workspace, "g" + i);
         }
 
         assertThat(creditos.saldo(workspace).total()).isZero();
-        assertThatThrownBy(() -> creditos.consumirGeneracion(workspace, "g6"))
+        assertThatThrownBy(() -> creditos.consumirGeneracion(workspace, "g7"))
                 .isInstanceOf(QuotaExceededException.class);
+    }
+
+    @Test
+    @DisplayName("con menos de 5 créditos no alcanza para una imagen, y no se toca el saldo")
+    void noAlcanza() {
+        creditos.agregarPaquete(workspace, 4, "cs_1");
+
+        assertThatThrownBy(() -> creditos.consumirGeneracion(workspace, "g1"))
+                .isInstanceOf(QuotaExceededException.class);
+        assertThat(creditos.saldo(workspace).paquete()).isEqualTo(4);
+        assertThat(creditos.disponibles(workspace)).isZero();
     }
 
     @Test
     @DisplayName("los mensuales se gastan primero y los de paquete después")
     void primeroLosMensuales() {
-        creditos.otorgarMensuales(workspace, 1, enUnMes(), "inv-1");
-        creditos.agregarPaquete(workspace, 10, "cs_1");
+        creditos.otorgarMensuales(workspace, 5, enUnMes(), "inv-1");
+        creditos.agregarPaquete(workspace, 39, "cs_1");
 
         creditos.consumirGeneracion(workspace, "g1");
         assertThat(creditos.saldo(workspace).mensuales()).isZero();
-        assertThat(creditos.saldo(workspace).paquete()).isEqualTo(10);
+        assertThat(creditos.saldo(workspace).paquete()).isEqualTo(39);
 
         creditos.consumirGeneracion(workspace, "g2");
-        assertThat(creditos.saldo(workspace).paquete()).isEqualTo(9);
+        assertThat(creditos.saldo(workspace).paquete()).isEqualTo(34);
+    }
+
+    @Test
+    @DisplayName("una imagen puede tomar de las dos bolsas, y al devolverla cada una recupera lo suyo")
+    void deLasDosBolsas() {
+        creditos.otorgarMensuales(workspace, 2, enUnMes(), "inv-1");
+        creditos.agregarPaquete(workspace, 39, "cs_1");
+
+        creditos.consumirGeneracion(workspace, "g1");
+        assertThat(creditos.saldo(workspace).mensuales()).isZero();
+        assertThat(creditos.saldo(workspace).paquete()).isEqualTo(36);
+
+        creditos.devolverGeneracion(workspace, "g1");
+        creditos.devolverGeneracion(workspace, "g1");
+        assertThat(creditos.saldo(workspace).mensuales()).isEqualTo(2);
+        assertThat(creditos.saldo(workspace).paquete()).isEqualTo(39);
     }
 
     @Test
     @DisplayName("un paquete comprado se suma una sola vez aunque Stripe avise dos")
     void paqueteIdempotente() {
-        assertThat(creditos.agregarPaquete(workspace, 25, "cs_1")).isTrue();
-        assertThat(creditos.agregarPaquete(workspace, 25, "cs_1")).isFalse();
+        assertThat(creditos.agregarPaquete(workspace, 79, "cs_1")).isTrue();
+        assertThat(creditos.agregarPaquete(workspace, 79, "cs_1")).isFalse();
 
-        assertThat(creditos.saldo(workspace).paquete()).isEqualTo(25);
+        assertThat(creditos.saldo(workspace).paquete()).isEqualTo(79);
         // Un paquete de cero o negativo no es una compra.
         assertThat(creditos.agregarPaquete(workspace, 0, "cs_2")).isFalse();
     }
@@ -144,45 +173,45 @@ class CreditServiceTest {
     @Test
     @DisplayName("los créditos del mes se reinician, no se acumulan; y la misma factura no los da dos veces")
     void mensualesNoSeAcumulan() {
-        creditos.otorgarMensuales(workspace, 5, enUnMes(), "inv-1");
+        creditos.otorgarMensuales(workspace, 30, enUnMes(), "inv-1");
         creditos.consumirGeneracion(workspace, "g1");
-        assertThat(creditos.saldo(workspace).mensuales()).isEqualTo(4);
+        assertThat(creditos.saldo(workspace).mensuales()).isEqualTo(25);
 
-        // Renovación: vuelven a 5, no a 9.
-        assertThat(creditos.otorgarMensuales(workspace, 5, enUnMes(), "inv-2")).isTrue();
-        assertThat(creditos.saldo(workspace).mensuales()).isEqualTo(5);
+        // Renovación: vuelven a 30, no a 55.
+        assertThat(creditos.otorgarMensuales(workspace, 30, enUnMes(), "inv-2")).isTrue();
+        assertThat(creditos.saldo(workspace).mensuales()).isEqualTo(30);
 
         // El mismo aviso repetido no los repone otra vez.
         creditos.consumirGeneracion(workspace, "g2");
-        assertThat(creditos.otorgarMensuales(workspace, 5, enUnMes(), "inv-2")).isFalse();
-        assertThat(creditos.saldo(workspace).mensuales()).isEqualTo(4);
+        assertThat(creditos.otorgarMensuales(workspace, 30, enUnMes(), "inv-2")).isFalse();
+        assertThat(creditos.saldo(workspace).mensuales()).isEqualTo(25);
     }
 
     @Test
     @DisplayName("los mensuales vencidos ya no valen, pero los de paquete sí")
     void mensualesVencidos() {
-        creditos.otorgarMensuales(workspace, 5, LocalDateTime.now().minusDays(1), "inv-1");
-        creditos.agregarPaquete(workspace, 3, "cs_1");
+        creditos.otorgarMensuales(workspace, 30, LocalDateTime.now().minusDays(1), "inv-1");
+        creditos.agregarPaquete(workspace, 15, "cs_1");
 
         assertThat(creditos.saldo(workspace).mensuales()).isZero();
-        assertThat(creditos.saldo(workspace).total()).isEqualTo(3);
+        assertThat(creditos.saldo(workspace).total()).isEqualTo(15);
 
         creditos.consumirGeneracion(workspace, "g1");
-        assertThat(creditos.saldo(workspace).paquete()).isEqualTo(2);
+        assertThat(creditos.saldo(workspace).paquete()).isEqualTo(10);
     }
 
     @Test
-    @DisplayName("si la generación no produjo nada el crédito vuelve a su bolsa, una sola vez")
+    @DisplayName("si la generación no produjo nada los créditos vuelven a su bolsa, una sola vez")
     void devolucion() {
-        creditos.otorgarMensuales(workspace, 5, enUnMes(), "inv-1");
-        creditos.agregarPaquete(workspace, 10, "cs_1");
+        creditos.otorgarMensuales(workspace, 30, enUnMes(), "inv-1");
+        creditos.agregarPaquete(workspace, 39, "cs_1");
 
         creditos.consumirGeneracion(workspace, "g1"); // sale de los mensuales
         creditos.devolverGeneracion(workspace, "g1");
         creditos.devolverGeneracion(workspace, "g1"); // repetir no duplica
 
-        assertThat(creditos.saldo(workspace).mensuales()).isEqualTo(5);
-        assertThat(creditos.saldo(workspace).paquete()).isEqualTo(10);
+        assertThat(creditos.saldo(workspace).mensuales()).isEqualTo(30);
+        assertThat(creditos.saldo(workspace).paquete()).isEqualTo(39);
     }
 
     @Test
@@ -195,13 +224,13 @@ class CreditServiceTest {
     @Test
     @DisplayName("la devolución vuelve a la bolsa de paquete cuando de ahí salió")
     void devolucionDePaquete() {
-        creditos.agregarPaquete(workspace, 2, "cs_1");
+        creditos.agregarPaquete(workspace, 10, "cs_1");
 
         creditos.consumirGeneracion(workspace, "g1");
-        assertThat(creditos.saldo(workspace).paquete()).isEqualTo(1);
+        assertThat(creditos.saldo(workspace).paquete()).isEqualTo(5);
         creditos.devolverGeneracion(workspace, "g1");
 
-        assertThat(creditos.saldo(workspace).paquete()).isEqualTo(2);
+        assertThat(creditos.saldo(workspace).paquete()).isEqualTo(10);
         assertThat(creditos.saldo(workspace).mensuales()).isZero();
     }
 
@@ -209,7 +238,7 @@ class CreditServiceTest {
     @DisplayName("cada workspace tiene los suyos")
     void separadosPorWorkspace() {
         UUID otro = UUID.randomUUID();
-        creditos.otorgarMensuales(workspace, 5, enUnMes(), "inv-1");
+        creditos.otorgarMensuales(workspace, 30, enUnMes(), "inv-1");
 
         assertThat(creditos.saldo(otro).total()).isZero();
         assertThatThrownBy(() -> creditos.consumirGeneracion(otro, "g1"))

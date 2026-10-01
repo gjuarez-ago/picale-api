@@ -31,6 +31,7 @@ class BillingConfigTest {
 
     private BillingSettingRepository ajustes;
     private CreditPackRepository paquetes;
+    private com.metricol.api.repository.ImageCreditsRepository saldos;
     private BillingConfig config;
 
     /** La tabla de mentira. */
@@ -40,7 +41,8 @@ class BillingConfigTest {
     void preparar() {
         ajustes = mock(BillingSettingRepository.class);
         paquetes = mock(CreditPackRepository.class);
-        config = new BillingConfig(ajustes, paquetes);
+        saldos = mock(com.metricol.api.repository.ImageCreditsRepository.class);
+        config = new BillingConfig(ajustes, paquetes, saldos);
 
         when(ajustes.findAll()).thenAnswer(i -> new ArrayList<>(tabla.values()));
         when(ajustes.findById(anyString())).thenAnswer(i -> Optional.ofNullable(tabla.get((String) i.getArgument(0))));
@@ -65,7 +67,8 @@ class BillingConfigTest {
         assertThat(config.diasDePruebaAlRegistrarse()).isEqualTo(14);
         assertThat(config.diasDePruebaDeLosExistentes()).isEqualTo(14);
         assertThat(config.diasDeGracia()).isEqualTo(7);
-        assertThat(config.creditosMensuales()).isEqualTo(5);
+        assertThat(config.creditosMensuales()).isEqualTo(30);
+        assertThat(config.creditosPorGeneracion()).isEqualTo(5);
     }
 
     @Test
@@ -127,13 +130,15 @@ class BillingConfigTest {
     }
 
     @Test
-    @DisplayName("siembra los precios (349 y 249) y los días de aviso")
+    @DisplayName("siembra los precios (289 y 189), 30 créditos al mes, 5 por imagen y los días de aviso")
     void preciosDeLista() {
         when(paquetes.count()).thenReturn(0L);
         config.sembrar();
 
-        assertThat(config.listaDeLicencia()).isEqualTo(34900);
-        assertThat(config.listaDeAdicional()).isEqualTo(24900);
+        assertThat(config.listaDeLicencia()).isEqualTo(28900);
+        assertThat(config.listaDeAdicional()).isEqualTo(18900);
+        assertThat(config.creditosMensuales()).isEqualTo(30);
+        assertThat(config.creditosPorGeneracion()).isEqualTo(5);
         assertThat(config.diasDeAviso()).isEqualTo(5);
         assertThat(tabla).containsKeys(BillingConfig.LISTA_LICENCIA, BillingConfig.LISTA_ADICIONAL, BillingConfig.DIAS_DE_AVISO);
         // Los precios ya no son ids de Stripe: la API crea los productos y manda el monto.
@@ -184,6 +189,9 @@ class BillingConfigTest {
                 .isInstanceOf(IllegalArgumentException.class);
         assertThatThrownBy(() -> config.guardar(BillingConfig.CREDITOS_MENSUALES, "cinco"))
                 .isInstanceOf(IllegalArgumentException.class);
+        poner(BillingConfig.POR_GENERACION, "5");
+        assertThatThrownBy(() -> config.guardar(BillingConfig.POR_GENERACION, "0"))
+                .isInstanceOf(IllegalArgumentException.class);
         assertThat(config.habilitado()).isFalse();
 
         poner(BillingConfig.MONEDA, "mxn");
@@ -196,7 +204,7 @@ class BillingConfigTest {
     void precioDeListaMalEscrito() {
         poner(BillingConfig.LISTA_LICENCIA, "trescientos");
         poner(BillingConfig.LISTA_ADICIONAL, "-5");
-        assertThat(config.listaDeLicencia()).isEqualTo(34900);
+        assertThat(config.listaDeLicencia()).isEqualTo(28900);
         assertThat(config.listaDeAdicional()).isZero();
     }
 
@@ -208,8 +216,8 @@ class BillingConfigTest {
 
         org.mockito.ArgumentCaptor<CreditPack> guardados = org.mockito.ArgumentCaptor.forClass(CreditPack.class);
         verify(paquetes, times(3)).save(guardados.capture());
-        assertThat(guardados.getAllValues()).extracting(CreditPack::getCredits).containsExactly(10, 25, 50);
-        assertThat(guardados.getAllValues()).extracting(CreditPack::getPriceMinor).containsExactly(7900, 17900, 32900);
+        assertThat(guardados.getAllValues()).extracting(CreditPack::getCredits).containsExactly(39, 79, 149);
+        assertThat(guardados.getAllValues()).extracting(CreditPack::getPriceMinor).containsExactly(3900, 7900, 14900);
         assertThat(guardados.getAllValues()).allMatch(p -> !p.isActive());
 
         when(paquetes.count()).thenReturn(3L);
@@ -227,5 +235,41 @@ class BillingConfigTest {
 
         assertThat(config.paquetesEnVenta()).containsExactly(listo);
         verify(paquetes, never()).save(any());
+    }
+
+    @Test
+    @DisplayName("una base de '1 crédito = 1 imagen' pasa a pesos una sola vez: saldos x5, paquetes y plan nuevos")
+    void pasarAPesos() {
+        poner(BillingConfig.CREDITOS_MENSUALES, "5");
+        poner(BillingConfig.LISTA_LICENCIA, "34900");
+        poner(BillingConfig.LISTA_ADICIONAL, "24900");
+        CreditPack arranque = CreditPack.builder().code("PACK_10").name("Arranque").credits(10).priceMinor(7900).build();
+        CreditPack aTope = CreditPack.builder().code("PACK_50").name("A tope").credits(50).priceMinor(32900).build();
+        when(paquetes.findAll()).thenReturn(List.of(arranque, aTope));
+        when(paquetes.count()).thenReturn(2L);
+
+        config.sembrar();
+
+        verify(saldos).multiplicarSaldos(5);
+        assertThat(config.creditosMensuales()).isEqualTo(30);
+        assertThat(config.listaDeLicencia()).isEqualTo(28900);
+        assertThat(config.listaDeAdicional()).isEqualTo(18900);
+        assertThat(arranque.getCredits()).isEqualTo(39);
+        assertThat(arranque.getPriceMinor()).isEqualTo(3900);
+        assertThat(aTope.getCredits()).isEqualTo(149);
+        assertThat(aTope.getPriceMinor()).isEqualTo(14900);
+        assertThat(tabla).containsKey(BillingConfig.POR_GENERACION);
+
+        // La segunda vez ya no: nadie multiplica dos veces.
+        config.sembrar();
+        verify(saldos, times(1)).multiplicarSaldos(5);
+    }
+
+    @Test
+    @DisplayName("una base nueva no se migra: nace ya en pesos")
+    void baseNuevaNoSeMigra() {
+        when(paquetes.count()).thenReturn(0L);
+        config.sembrar();
+        verify(saldos, never()).multiplicarSaldos(org.mockito.ArgumentMatchers.anyInt());
     }
 }

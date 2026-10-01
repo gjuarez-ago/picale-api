@@ -9,7 +9,7 @@ Estado: **fase 1 construida en la rama `agente`, sin desplegar.** Ya funciona:
   se arregla, fuerza visual, si ya es un arte, si el mensaje necesita leerse en la imagen,
   intención) y un decisor con reglas fijas resuelve tal cual, retoque, diseño u observación, y
   si lleva logo. Cada propuesta explica el camino paso a paso. El retoque es ffmpeg (0
-  créditos); el diseño, 1 crédito.
+  créditos); el diseño, 5 créditos (una generación).
 - **Ritmo de créditos** (`RitmoDeCreditos`): lo que queda del mes repartido entre las semanas
   que faltan, uno siempre de reserva. Las candidatas a diseño de prioridad media o baja dejan
   un crédito libre para una urgente.
@@ -241,19 +241,19 @@ aprende algo mal, se corrige ahí.
 
 ## Créditos
 
-Hoy **1 crédito = 1 generación con todas sus versiones** (una imagen por proporción), y la
-licencia trae **5 al mes**; los paquetes de 10, 25 y 50 no vencen (ver [cobros.md](cobros.md)).
-Cada crédito vale **$5 MXN**: los 5 del mes son $25 de diseño incluidos en la licencia, y un
-diseño extra le cuesta $5 al cliente.
+**1 crédito = $1 MXN** y una generación con todas sus versiones (una imagen por proporción)
+gasta **5**. La licencia trae **30 al mes** (6 generaciones); los paquetes de 39, 79 y 149 no
+vencen (ver [cobros.md](cobros.md)). El agente cuenta en generaciones:
+`CreditService.disponibles` ya divide el saldo entre lo que cuesta una.
 
-Con 5 al mes el diseño con IA es escaso, así que el agente lo raciona:
+Con 6 al mes el diseño con IA es escaso, así que el agente lo raciona:
 
 | Qué hace el agente | Créditos | Costo para nosotros |
 |---|---|---|
 | Revisar cada archivo (marca, cuidado, calidad) | 0 | Una llamada de visión; tope diario `limits.ai.max_calls_per_day` |
 | Tal cual: ajustar a la medida de cada red, logo | 0 | Proceso de ffmpeg en el servidor |
 | Texto de cada red | 0 | Una llamada de texto |
-| Diseño con IA | 1 por generación ($5 MXN) | La generación de imagen; tope diario `limits.ai.max_images_per_day` |
+| Diseño con IA | 5 por generación ($5 MXN) | La generación de imagen; tope diario `limits.ai.max_images_per_day` |
 
 Reglas de gasto:
 

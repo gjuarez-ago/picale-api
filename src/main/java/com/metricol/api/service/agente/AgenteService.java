@@ -682,7 +682,7 @@ public class AgenteService {
 
             Set<Platform> deEsta = new LinkedHashSet<>(v.redes());
             deEsta.retainAll(redes);
-            String motivo = porQue + " " + decision.explicacion() + " (1 crédito) " + cuandoYDonde(deEsta, hueco);
+            String motivo = porQue + " " + decision.explicacion() + " (" + creditos.porGeneracion() + " créditos) " + cuandoYDonde(deEsta, hueco);
             Post creada = postService.crearPropuesta(pedido, fecha, motivo, asset.getUrl(),
                     DecisorDelAgente.Tratamiento.DISENO.name(), categoria == null ? null : categoria.name());
             creada.setAgenteDisenoId(disenoId);

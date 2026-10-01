@@ -40,14 +40,14 @@ public class StripeProductCatalog {
     public String productoDeLicencia(boolean adicional) {
         String id = adicional ? LICENCIA_ADICIONAL : LICENCIA;
         asegurar(id, adicional ? "Pícale · Licencia de negocio adicional" : "Pícale · Licencia de negocio",
-                "Publica en todas tus redes con IA. Incluye " + config.creditosMensuales() + " imágenes con IA al mes.");
+                "Publica en todas tus redes con IA. Incluye " + config.creditosMensuales() + " créditos al mes.");
         return id;
     }
 
     /** El producto de un paquete de créditos. */
     public String productoDePaquete(CreditPack paquete) {
         String id = "picale_paquete_" + paquete.getCode().toLowerCase().replaceAll("[^a-z0-9]+", "_");
-        asegurar(id, "Pícale · Paquete " + paquete.getName(), paquete.getCredits() + " créditos de imagen con IA. No vencen.");
+        asegurar(id, "Pícale · Paquete " + paquete.getName(), paquete.getCredits() + " créditos para el agente y la IA. No vencen.");
         return id;
     }
 

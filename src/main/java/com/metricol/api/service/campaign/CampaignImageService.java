@@ -374,7 +374,7 @@ public class CampaignImageService {
         Referencia logo = posicionLogo == null ? null : cargarLogo(logoUrl);
 
         // El crédito se gasta al final, cuando ya no puede fallar nada de lo que se valida: una
-        // petición mal armada no cuesta un crédito. 1 crédito = 1 generación, salgan las versiones
+        // petición mal armada no cuesta un crédito. Una generación cuesta lo mismo (5 créditos), salgan las versiones
         // que salgan. Con los cobros apagados no hace nada.
         String referenciaCredito = UUID.randomUUID().toString();
         restantes = Math.min(restantes, creditos.consumirGeneracion(workspace.getId(), referenciaCredito));

@@ -130,7 +130,7 @@ public class BillingService {
                 .map(p -> new PlansResponse.CreditPackPlan(p.getCode(), p.getName(), p.getCredits(), p.getPriceMinor()))
                 .toList();
         return new PlansResponse(config.moneda(), config.impuestoIncluido(), config.diasDePruebaAlRegistrarse(), config.creditosMensuales(),
-                config.diasDeGracia(), config.listaDeLicencia(), config.listaDeAdicional(), packs);
+                config.creditosPorGeneracion(), config.diasDeGracia(), config.listaDeLicencia(), config.listaDeAdicional(), packs);
     }
 
     // ------------------------------------------------------------------

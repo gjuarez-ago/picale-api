@@ -389,7 +389,8 @@ class BillingServiceTest {
         when(config.listaDeLicencia()).thenReturn(34900);
         when(config.listaDeAdicional()).thenReturn(24900);
         when(config.diasDePruebaAlRegistrarse()).thenReturn(14);
-        when(config.creditosMensuales()).thenReturn(5);
+        when(config.creditosMensuales()).thenReturn(30);
+        when(config.creditosPorGeneracion()).thenReturn(5);
         when(config.diasDeGracia()).thenReturn(7);
         when(config.impuestoIncluido()).thenReturn(true);
         CreditPack listo = CreditPack.builder().code("PACK_10").name("Arranque").credits(10).priceMinor(7900).active(true).build();
@@ -402,7 +403,8 @@ class BillingServiceTest {
         assertThat(p.licenseMinor()).isEqualTo(34900);
         assertThat(p.extraMinor()).isEqualTo(24900);
         assertThat(p.trialDays()).isEqualTo(14);
-        assertThat(p.monthlyCredits()).isEqualTo(5);
+        assertThat(p.monthlyCredits()).isEqualTo(30);
+        assertThat(p.creditsPerImage()).isEqualTo(5);
         assertThat(p.graceDays()).isEqualTo(7);
         assertThat(p.taxIncluded()).isTrue();
 
