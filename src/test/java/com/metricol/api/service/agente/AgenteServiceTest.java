@@ -89,6 +89,9 @@ class AgenteServiceTest {
     @MockitoBean
     private R2StorageService storage;
 
+    @MockitoBean
+    private com.metricol.api.service.campaign.LogoSobreFoto logo;
+
     private Workspace ws;
     private final List<UUID> assetsCreados = new ArrayList<>();
     private final List<UUID> cuentasCreadas = new ArrayList<>();
@@ -237,6 +240,65 @@ class AgenteServiceTest {
             UUID deLaSegunda = segunda.getMediaUrls().get(0).endsWith("una.jpg") ? una.getId() : otra.getId();
             assertThat(assets.findById(deLaSegunda)).get()
                     .extracting(MediaAsset::getAgenteEtapa).isEqualTo(EtapaAgente.DESCARTADA);
+        });
+    }
+
+    @Test
+    @DisplayName("si la IA dice que lleva logo, se publica la copia sellada y la original sigue siendo la que cuenta")
+    void conLogo() {
+        enElWorkspace(() -> {
+            conInstagram();
+            agente.encender(ws.getId(), true);
+            MediaAsset depa = foto("depa-logo.jpg");
+            String sellada = "https://cdn.test/media/" + ws.getId() + "/con-logo-depa-logo.jpg";
+            when(logo.sellar(any(), any(), any())).thenReturn(sellada);
+            when(revisor.revisar(anyString(), any(), anyBoolean())).thenReturn(new RevisorDeMarca.Revision(
+                    RevisorDeMarca.Veredicto.VA, "es tu producto", "Un depa", "Presumir el depa", "PRODUCTO",
+                    true, "es foto de producto"));
+
+            agente.vuelta(ws.getId());
+
+            Post p = posts.propuestasDelAgente().get(0);
+            assertThat(p.getMediaUrls()).containsExactly(sellada);
+            assertThat(p.getAgenteMotivo()).contains("Le puse tu logo: es foto de producto");
+
+            agente.descartar(p.getId());
+            assertThat(assets.findById(depa.getId())).get()
+                    .extracting(MediaAsset::getAgenteEtapa).isEqualTo(EtapaAgente.DESCARTADA);
+        });
+    }
+
+    @Test
+    @DisplayName("la pausa de emergencia apaga el agente y devuelve lo programado a Por aprobar")
+    void pausaDeEmergencia() {
+        enElWorkspace(() -> {
+            conInstagram();
+            agente.encender(ws.getId(), true);
+            foto("pausa.jpg");
+            revisaComo(RevisorDeMarca.Veredicto.VA, "va");
+            agente.vuelta(ws.getId());
+            Post p = posts.propuestasDelAgente().get(0);
+            agente.aprobar(p.getId(), ws.getId());
+            assertThat(posts.propuestasDelAgente()).isEmpty();
+
+            assertThat(agente.pausar(ws.getId())).isEqualTo(1);
+
+            assertThat(agente.estado(ws.getId()).activo()).isFalse();
+            assertThat(posts.propuestasDelAgente()).extracting(Post::getId).containsExactly(p.getId());
+            assertThat(jobs.existsByPostIdAndStatusIn(p.getId(), VIVOS)).isFalse();
+        });
+    }
+
+    @Test
+    @DisplayName("el horario se guarda y se ve en el estado; sin días no se puede")
+    void horario() {
+        enElWorkspace(() -> {
+            var e = agente.guardarHorario(ws.getId(), List.of(1, 2, 3, 4, 5), 10, 19);
+            assertThat(e.dias()).containsExactly(1, 2, 3, 4, 5);
+            assertThat(e.horaDesde()).isEqualTo(10);
+            assertThat(e.horaHasta()).isEqualTo(19);
+            org.assertj.core.api.Assertions.assertThatThrownBy(() -> agente.guardarHorario(ws.getId(), List.of(), 9, 20))
+                    .isInstanceOf(IllegalArgumentException.class);
         });
     }
 

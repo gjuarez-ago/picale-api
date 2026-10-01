@@ -40,6 +40,7 @@ import com.metricol.api.service.PostService;
 import com.metricol.api.service.ai.AiQuotaGuard;
 import com.metricol.api.service.ai.MarcaDelNegocio;
 import com.metricol.api.service.ai.Redactor;
+import com.metricol.api.service.campaign.LogoSobreFoto;
 import com.metricol.api.service.limits.LimitesConfigurables;
 import com.metricol.api.service.publishing.FormatRulesService;
 
@@ -85,11 +86,13 @@ public class AgenteService {
     private final FormatRulesService formatos;
     private final LimitesConfigurables limites;
     private final AiQuotaGuard cupoIa;
+    private final LogoSobreFoto logo;
 
     public AgenteService(WorkspaceRepository workspaces, MediaAssetRepository assets, PostRepository posts,
             SocialAccountRepository cuentas, RevisorDeMarca revisor, Redactor redactor, PostService postService,
             MediaService mediaService, FormatRulesService formatos, LimitesConfigurables limites,
-            AiQuotaGuard cupoIa) {
+            AiQuotaGuard cupoIa, LogoSobreFoto logo) {
+        this.logo = logo;
         this.workspaces = workspaces;
         this.assets = assets;
         this.posts = posts;
@@ -105,8 +108,13 @@ public class AgenteService {
 
     // ------------------------------------------------------------ el switch
 
+    /**
+     * @param dias      días en que publica, 1 = lunes … 7 = domingo
+     * @param programadas lo que el agente ya dejó programado y todavía no sale: lo que congela la pausa
+     */
     public record Estado(boolean activo, LocalDateTime desde, long porRevisar, long propuestas,
-            long enObservacion, long descartadas, int marcaPercent) {
+            long enObservacion, long descartadas, int marcaPercent, List<Integer> dias, int horaDesde,
+            int horaHasta, long programadas) {
     }
 
     public Estado estado(UUID workspaceId) {
@@ -114,9 +122,55 @@ public class AgenteService {
         long porRevisar = w.conAgente() && w.getAgenteDesde() != null
                 ? assets.porRevisarDelAgente(w.getAgenteDesde())
                 : 0;
+        CalendarioDelAgente.Horario h = horario(w);
         return new Estado(w.conAgente(), w.getAgenteDesde(), porRevisar, posts.propuestasDelAgente().size(),
                 assets.countByAgenteEtapa(EtapaAgente.OBSERVACION), assets.countByAgenteEtapa(EtapaAgente.DESCARTADA),
-                BrandService.completitud(w).percent());
+                BrandService.completitud(w).percent(),
+                h.dias().stream().map(java.time.DayOfWeek::getValue).sorted().toList(), h.desde(), h.hasta(),
+                posts.programadasDelAgente().size());
+    }
+
+    /** El horario del negocio: qué días y entre qué horas propone publicar. */
+    public Estado guardarHorario(UUID workspaceId, List<Integer> dias, int desde, int hasta) {
+        if (dias == null || dias.isEmpty()) {
+            throw new IllegalArgumentException("Elige al menos un día para publicar.");
+        }
+        if (desde < 0 || hasta > 24 || hasta <= desde) {
+            throw new IllegalArgumentException("La hora de fin tiene que ser después de la de inicio.");
+        }
+        Workspace w = workspace(workspaceId);
+        w.setAgenteDias(dias.stream().filter(d -> d >= 1 && d <= 7).distinct().sorted()
+                .map(String::valueOf).collect(Collectors.joining(",")));
+        w.setAgenteHoraDesde(desde);
+        w.setAgenteHoraHasta(hasta);
+        workspaces.save(w);
+        return estado(workspaceId);
+    }
+
+    /**
+     * Pausa de emergencia: apaga el agente y devuelve a "Por aprobar" todo lo
+     * que había dejado programado y todavía no sale. Para una crisis, un luto
+     * o un día en que publicar una promoción queda mal. Nada se pierde: se
+     * vuelve a aprobar cuando pase.
+     *
+     * @return cuántas se congelaron
+     */
+    public int pausar(UUID workspaceId) {
+        Workspace w = workspace(workspaceId);
+        w.setAgenteActivo(false);
+        workspaces.save(w);
+        int congeladas = 0;
+        for (Post p : posts.programadasDelAgente()) {
+            try {
+                postService.cancel(p.getId());
+                etapaDeSusFotos(p, EtapaAgente.PROPUESTA, null);
+                congeladas++;
+            } catch (RuntimeException yaSaliendo) {
+                // La que ya está saliendo no se puede parar: sale.
+                log.info("La pausa no alcanzó a {}: {}", p.getId(), yaSaliendo.getMessage());
+            }
+        }
+        return congeladas;
     }
 
     /**
@@ -147,7 +201,7 @@ public class AgenteService {
         if (!w.conAgente() || w.getAgenteDesde() == null) {
             return 0;
         }
-        reacomodarVencidas();
+        reacomodarVencidas(w);
 
         List<SocialAccount> destino = cuentasParaFotos();
         if (destino.isEmpty()) {
@@ -202,21 +256,25 @@ public class AgenteService {
                     redes, negocio);
 
             LocalDateTime fecha = CalendarioDelAgente.siguienteHueco(LocalDateTime.now(),
-                    posts.huecosTomados(LocalDateTime.now()), limites.maxPorDia());
+                    posts.huecosTomados(LocalDateTime.now()), limites.maxPorDia(), horario(w));
+
+            // El logo lo decide la IA; se pega el archivo real sobre una copia.
+            // Si no se puede (sin logo guardado, logo ilegible), va sin él.
+            String sellada = revision.logo() ? logo.sellar(asset, w.getLogoUrl(), w.getId()) : null;
 
             PostSaveRequest pedido = new PostSaveRequest();
             pedido.setCaption(texto(borrador));
             pedido.setTitulo(borrador.titulo());
             pedido.setBrief(encargo);
-            pedido.setMediaUrls(List.of(asset.getUrl()));
+            pedido.setMediaUrls(List.of(sellada != null ? sellada : asset.getUrl()));
             pedido.setFormat(PostFormat.PHOTO.name());
             pedido.setSocialAccountIds(destino.stream().map(SocialAccount::getId).toList());
             Map<String, String> porRed = new LinkedHashMap<>();
             borrador.textos().forEach((red, t) -> porRed.put(red.name(), t));
             pedido.setCaptionsPorRed(porRed);
 
-            String motivo = motivo(forzar, revision, redes, fecha);
-            postService.crearPropuesta(pedido, fecha, motivo);
+            String motivo = motivo(forzar, revision, redes, fecha, sellada != null);
+            postService.crearPropuesta(pedido, fecha, motivo, asset.getUrl());
 
             if (asset.getDescripcionIa() == null || asset.getDescripcionIa().isBlank()) {
                 asset.setDescripcionIa(revision.descripcion().isBlank() ? null : revision.descripcion());
@@ -235,14 +293,14 @@ public class AgenteService {
      * siguiente hueco libre. Así no hay que hacer nada para que una semana sin
      * revisar no se pierda.
      */
-    void reacomodarVencidas() {
+    void reacomodarVencidas(Workspace w) {
         LocalDateTime limite = LocalDateTime.now().plusMinutes(30);
         for (Post p : posts.propuestasDelAgente()) {
             if (p.getFechaPropuesta() != null && p.getFechaPropuesta().isBefore(limite)) {
                 List<LocalDateTime> tomados = new ArrayList<>(posts.huecosTomados(LocalDateTime.now()));
                 tomados.remove(p.getFechaPropuesta());
                 LocalDateTime nueva = CalendarioDelAgente.siguienteHueco(LocalDateTime.now(), tomados,
-                        limites.maxPorDia());
+                        limites.maxPorDia(), horario(w));
                 p.setFechaPropuesta(nueva);
                 posts.save(p);
             }
@@ -272,7 +330,8 @@ public class AgenteService {
         if (cuando == null || cuando.isBefore(LocalDateTime.now().plusMinutes(10))) {
             List<LocalDateTime> tomados = new ArrayList<>(posts.huecosTomados(LocalDateTime.now()));
             tomados.remove(cuando);
-            cuando = CalendarioDelAgente.siguienteHueco(LocalDateTime.now(), tomados, limites.maxPorDia());
+            cuando = CalendarioDelAgente.siguienteHueco(LocalDateTime.now(), tomados, limites.maxPorDia(),
+                    horario(workspace(workspaceId)));
         }
         PostResponse hecho = postService.programarPropuesta(postId, cuando, workspaceId);
         etapaDeSusFotos(post, EtapaAgente.APROBADA, null);
@@ -364,11 +423,37 @@ public class AgenteService {
                 .orElse(b.titulo() == null ? "Publicacion" : b.titulo());
     }
 
-    static String motivo(boolean forzar, RevisorDeMarca.Revision r, Set<Platform> redes, LocalDateTime fecha) {
+    static String motivo(boolean forzar, RevisorDeMarca.Revision r, Set<Platform> redes, LocalDateTime fecha,
+            boolean conLogo) {
         String porQue = forzar ? "Me dijiste que va." : "Va con tu marca: " + sinPunto(r.motivo()) + ".";
+        String logo;
+        if (conLogo) {
+            logo = " Le puse tu logo" + (r.porQueLogo().isBlank() ? "" : ": " + sinPunto(r.porQueLogo())) + ".";
+        } else if (r.logo()) {
+            logo = " Iba con tu logo, pero no hay uno guardado en tu marca.";
+        } else {
+            logo = " Sin logo" + (r.porQueLogo().isBlank() ? "" : ": " + sinPunto(r.porQueLogo())) + ".";
+        }
         String donde = redes.size() > 1 ? "En todas tus redes" : "En " + redes.iterator().next().getLabel();
-        return porQue + " La dejé tal cual, sin diseño. " + donde + ", el " + FECHA.format(fecha)
+        return porQue + logo + " Foto tal cual, sin diseño. " + donde + ", el " + FECHA.format(fecha)
                 + ": el primer hueco libre.";
+    }
+
+    /** El horario del negocio guardado en la cuenta, o cualquier día de 9 a 21. */
+    static CalendarioDelAgente.Horario horario(Workspace w) {
+        Set<java.time.DayOfWeek> dias = java.util.EnumSet.noneOf(java.time.DayOfWeek.class);
+        if (w.getAgenteDias() != null) {
+            for (String d : w.getAgenteDias().split(",")) {
+                try {
+                    dias.add(java.time.DayOfWeek.of(Integer.parseInt(d.strip())));
+                } catch (RuntimeException ignorado) {
+                    // Un día ilegible no tumba el resto.
+                }
+            }
+        }
+        return new CalendarioDelAgente.Horario(dias,
+                w.getAgenteHoraDesde() == null ? 9 : w.getAgenteHoraDesde(),
+                w.getAgenteHoraHasta() == null ? 21 : w.getAgenteHoraHasta());
     }
 
     private static String sinPunto(String s) {
@@ -382,8 +467,10 @@ public class AgenteService {
         assets.save(asset);
     }
 
+    /** La foto original de la propuesta (no la copia con logo): esa es la que cambia de etapa. */
     private void etapaDeSusFotos(Post post, EtapaAgente etapa, String motivo) {
-        for (MediaAsset a : assets.findByUrlIn(post.getMediaUrls())) {
+        List<String> urls = post.getAgenteFotoUrl() != null ? List.of(post.getAgenteFotoUrl()) : post.getMediaUrls();
+        for (MediaAsset a : assets.findByUrlIn(urls)) {
             marcar(a, etapa, motivo == null ? a.getAgenteMotivo() : motivo);
         }
     }

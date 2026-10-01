@@ -48,6 +48,25 @@ class CalendarioDelAgenteTest {
     }
 
     @Test
+    @DisplayName("respeta el horario del negocio: de lunes a viernes, de 9 a 14, solo cabe la de las 11")
+    void horarioDelNegocio() {
+        var horario = new CalendarioDelAgente.Horario(java.util.EnumSet.range(java.time.DayOfWeek.MONDAY,
+                java.time.DayOfWeek.FRIDAY), 9, 14);
+        LocalDateTime viernes10 = LocalDateTime.of(2026, 10, 9, 10, 0);
+        // El viernes a las 10 ya no da tiempo para las 11; el fin de semana no se publica.
+        assertThat(CalendarioDelAgente.siguienteHueco(viernes10, List.of(), 2, horario))
+                .isEqualTo(LocalDateTime.of(2026, 10, 12, 11, 0));
+    }
+
+    @Test
+    @DisplayName("un horario que no cubre las horas fijas publica a la mitad de su horario")
+    void horarioAngosto() {
+        var horario = new CalendarioDelAgente.Horario(null, 13, 17);
+        assertThat(CalendarioDelAgente.siguienteHueco(LUNES_9AM, List.of(), 2, horario))
+                .isEqualTo(LocalDateTime.of(2026, 10, 5, 15, 0));
+    }
+
+    @Test
     @DisplayName("no se pone a menos de dos horas de algo que ya estaba programado")
     void respetaLoProgramado() {
         List<LocalDateTime> programado = List.of(LocalDateTime.of(2026, 10, 5, 17, 30));

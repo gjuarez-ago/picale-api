@@ -174,6 +174,19 @@ public class Workspace {
      */
     private LocalDateTime agenteDesde;
 
+    /**
+     * Qué días publica el agente, como números de día ISO separados por coma
+     * (1 = lunes … 7 = domingo). Nulo = todos.
+     */
+    @Column(length = 20)
+    private String agenteDias;
+
+    /** Desde qué hora publica (0–23). Nulo = 9. */
+    private Integer agenteHoraDesde;
+
+    /** Hasta qué hora publica (1–24). Nulo = 21. */
+    private Integer agenteHoraHasta;
+
     public boolean conAgente() {
         return Boolean.TRUE.equals(agenteActivo);
     }

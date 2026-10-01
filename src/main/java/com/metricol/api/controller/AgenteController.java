@@ -61,6 +61,25 @@ public class AgenteController {
         return ResponseEntity.ok(ApiResponse.success(agente.encender(ws(currentUser), pedido.activo())));
     }
 
+    public record HorarioPedido(List<Integer> dias, int desde, int hasta) {
+    }
+
+    @PutMapping("/horario")
+    public ResponseEntity<ApiResponse<AgenteService.Estado>> horario(
+            @AuthenticationPrincipal User currentUser, @RequestBody HorarioPedido pedido) {
+        permisos.exigir(currentUser, Permission.WORKSPACE_EDIT);
+        return ResponseEntity.ok(ApiResponse.success(
+                agente.guardarHorario(ws(currentUser), pedido.dias(), pedido.desde(), pedido.hasta())));
+    }
+
+    /** Pausa de emergencia: apaga el agente y devuelve a "Por aprobar" lo que había programado. */
+    @PostMapping("/pausar")
+    public ResponseEntity<ApiResponse<AgenteService.Estado>> pausar(@AuthenticationPrincipal User currentUser) {
+        permisos.exigir(currentUser, Permission.POST_SCHEDULE);
+        agente.pausar(ws(currentUser));
+        return ResponseEntity.ok(ApiResponse.success(agente.estado(ws(currentUser))));
+    }
+
     @GetMapping("/propuestas")
     public ResponseEntity<ApiResponse<List<PostResponse>>> propuestas() {
         return ResponseEntity.ok(ApiResponse.success(agente.propuestas()));

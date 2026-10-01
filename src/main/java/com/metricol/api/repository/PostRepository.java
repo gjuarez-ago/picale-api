@@ -37,6 +37,15 @@ public interface PostRepository extends JpaRepository<Post, UUID> {
             """)
     List<Post> propuestasDelAgente();
 
+    /** Lo que el agente propuso, ya aprobado, y que todavía no sale: lo que congela la pausa. */
+    @Query("""
+            select p from Post p
+            where p.deletedAt is null and p.propuestaAgente = true
+              and p.status in (com.metricol.api.enums.PostStatus.SCHEDULED, com.metricol.api.enums.PostStatus.QUEUED)
+            order by p.scheduledAt asc
+            """)
+    List<Post> programadasDelAgente();
+
     /**
      * Los huecos ya tomados desde {@code desde}: lo programado o en cola, y lo
      * que el agente ya propuso. Con esto el agente no apila dos en la misma

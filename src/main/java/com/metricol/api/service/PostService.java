@@ -260,12 +260,13 @@ public class PostService {
      * aprobar sin sorpresas. Como borrador no ocupa cupo ni entra a la cola.
      */
     @Transactional
-    public Post crearPropuesta(PostSaveRequest request, LocalDateTime fecha, String motivo) {
+    public Post crearPropuesta(PostSaveRequest request, LocalDateTime fecha, String motivo, String fotoOriginal) {
         Post post = Post.builder().build();
         applyRequest(post, request);
         post.setStatus(PostStatus.DRAFT);
         post.setPropuestaAgente(true);
         post.setFechaPropuesta(fecha);
+        post.setAgenteFotoUrl(fotoOriginal);
         post.setAgenteMotivo(motivo == null || motivo.length() <= 1000 ? motivo : motivo.substring(0, 1000));
         return postRepository.saveAndFlush(post);
     }

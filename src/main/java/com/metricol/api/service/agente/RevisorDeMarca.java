@@ -39,8 +39,16 @@ public class RevisorDeMarca {
      * @param descripcion qué se ve, para quien escribe el texto
      * @param idea        qué comunicaría un community manager con esta foto
      * @param tipo        producto, lugar, equipo, evento, promoción, testimonio u otro
+     * @param logo        si conviene ponerle el logo del negocio
+     * @param porQueLogo  por qué sí o por qué no, para la persona
      */
-    public record Revision(Veredicto veredicto, String motivo, String descripcion, String idea, String tipo) {
+    public record Revision(Veredicto veredicto, String motivo, String descripcion, String idea, String tipo,
+            boolean logo, String porQueLogo) {
+
+        /** Sin decisión de logo: las pruebas y lo que no la necesita. */
+        public Revision(Veredicto veredicto, String motivo, String descripcion, String idea, String tipo) {
+            this(veredicto, motivo, descripcion, idea, tipo, false, "");
+        }
     }
 
     private static final String SISTEMA = """
@@ -52,7 +60,14 @@ public class RevisorDeMarca {
              "motivo": "una frase para el dueno, en espanol, diciendo por que",
              "descripcion": "que se ve, concreto, una o dos frases",
              "idea": "que comunicarias con esta foto, en una frase, como encargo para quien escribe",
-             "tipo": "PRODUCTO" | "LUGAR" | "EQUIPO" | "EVENTO" | "PROMOCION" | "TESTIMONIO" | "OTRO"}
+             "tipo": "PRODUCTO" | "LUGAR" | "EQUIPO" | "EVENTO" | "PROMOCION" | "TESTIMONIO" | "OTRO",
+             "logo": true | false,
+             "porQueLogo": "una frase corta: por que si o por que no lleva el logo"}
+
+            LOGO: si en fotos de producto, promociones y piezas que alguien
+            compartiria fuera de la cuenta, donde importa que se sepa de quien
+            es. No en fotos del equipo, del local, de eventos o testimonios, ni
+            en fotos que ya traen un logo o mucho texto encima.
 
             VA: encaja con lo que el negocio vende o con su dia a dia (su
             producto, su local, su equipo, sus clientes, sus eventos).
@@ -155,7 +170,9 @@ public class RevisorDeMarca {
                 recortar(n.path("motivo").asText(""), 400),
                 recortar(n.path("descripcion").asText(""), 900),
                 recortar(n.path("idea").asText(""), 400),
-                n.path("tipo").asText("OTRO").strip().toUpperCase(Locale.ROOT));
+                n.path("tipo").asText("OTRO").strip().toUpperCase(Locale.ROOT),
+                n.path("logo").asBoolean(false),
+                recortar(n.path("porQueLogo").asText(""), 200));
     }
 
     private static String recortar(String s, int max) {

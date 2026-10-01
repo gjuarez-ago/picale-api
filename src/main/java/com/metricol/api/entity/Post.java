@@ -278,6 +278,14 @@ public class Post {
     @Column(length = 1000)
     private String agenteMotivo;
 
+    /**
+     * La foto que subió la persona y de la que salió la propuesta. Puede no
+     * ser la que se publica: con logo, la publicada es una copia sellada. Con
+     * esto aprobar o descartar le cambia la etapa a la original.
+     */
+    @Column(length = 1000)
+    private String agenteFotoUrl;
+
     public boolean delAgente() {
         return Boolean.TRUE.equals(propuestaAgente);
     }
