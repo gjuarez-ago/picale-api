@@ -294,6 +294,13 @@ public class Post {
     @Column(length = 20)
     private String agenteTratamiento;
 
+    /**
+     * De qué clase es, para la mezcla de la semana: PROMOCION, VENTA,
+     * DIA_A_DIA o COMUNIDAD. Nula en lo hecho a mano, que cuenta como neutra.
+     */
+    @Column(length = 20)
+    private String agenteCategoria;
+
     public boolean delAgente() {
         return Boolean.TRUE.equals(propuestaAgente);
     }

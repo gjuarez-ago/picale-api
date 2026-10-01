@@ -76,6 +76,18 @@ public interface PostRepository extends JpaRepository<Post, UUID> {
             """)
     List<LocalDateTime> huecosTomados(LocalDateTime desde);
 
+    /** Como {@link #huecosTomados}, con la categoría de cada uno para la mezcla: [fecha, categoría]. */
+    @Query("""
+            select coalesce(p.scheduledAt, p.fechaPropuesta), p.agenteCategoria
+            from Post p
+            where p.deletedAt is null
+              and ((p.status in (com.metricol.api.enums.PostStatus.SCHEDULED, com.metricol.api.enums.PostStatus.QUEUED)
+                    and p.scheduledAt >= :desde)
+                or (p.status = com.metricol.api.enums.PostStatus.DRAFT and p.propuestaAgente = true
+                    and p.fechaPropuesta >= :desde))
+            """)
+    List<Object[]> tomadosConCategoria(LocalDateTime desde);
+
     /** Una publicación por su id, si la persona todavía la tiene. */
     java.util.Optional<Post> findByIdAndDeletedAtIsNull(UUID id);
 

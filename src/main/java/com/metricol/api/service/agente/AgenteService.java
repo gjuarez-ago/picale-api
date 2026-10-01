@@ -337,7 +337,8 @@ public class AgenteService {
             String porQue = forzar ? "Me dijiste que va." : "Va con tu marca: " + sinPunto(revision.motivo()) + ".";
 
             if (decision.tratamiento() == DecisorDelAgente.Tratamiento.DISENO) {
-                if (proponerDiseno(asset, w, destino, redes, encargo, decision, porQue)) {
+                if (proponerDiseno(asset, w, destino, redes, encargo, decision, porQue,
+                        categoria(revision.diagnostico()))) {
                     marcar(asset, EtapaAgente.PROPUESTA, "Le hice diseño con IA.");
                     return true;
                 }
@@ -350,8 +351,8 @@ public class AgenteService {
                     revision.descripcion().isBlank() ? List.of() : List.of(revision.descripcion()),
                     redes, negocio);
 
-            LocalDateTime fecha = CalendarioDelAgente.siguienteHueco(LocalDateTime.now(),
-                    posts.huecosTomados(LocalDateTime.now()), limites.maxPorDia(), horario(w));
+            CalendarioDelAgente.Hueco hueco = hueco(w, categoria(revision.diagnostico()));
+            LocalDateTime fecha = hueco.cuando();
 
             // Retoque y logo sobre copias: la original no se toca. Lo que no se
             // pueda (ffmpeg, un logo ilegible) se salta sin perder la propuesta.
@@ -386,8 +387,9 @@ public class AgenteService {
             borrador.textos().forEach((red, t) -> porRed.put(red.name(), t));
             pedido.setCaptionsPorRed(porRed);
 
-            String motivo = porQue + " " + String.join(" ", pasos) + " " + cuandoYDonde(redes, fecha);
-            postService.crearPropuesta(pedido, fecha, motivo, asset.getUrl(), decision.tratamiento().name());
+            String motivo = porQue + " " + String.join(" ", pasos) + " " + cuandoYDonde(redes, hueco);
+            postService.crearPropuesta(pedido, fecha, motivo, asset.getUrl(), decision.tratamiento().name(),
+                    categoria(revision.diagnostico()).name());
 
             if (asset.getDescripcionIa() == null || asset.getDescripcionIa().isBlank()) {
                 asset.setDescripcionIa(revision.descripcion().isBlank() ? null : revision.descripcion());
@@ -461,8 +463,8 @@ public class AgenteService {
             String encargo = encargo(revision) + " (es un video vertical de " + segundos + " segundos)";
             Redactor.Borrador borrador = redactor.redactar(encargo,
                     revision.descripcion().isBlank() ? List.of() : List.of(revision.descripcion()), redes, negocio);
-            LocalDateTime fecha = CalendarioDelAgente.siguienteHueco(LocalDateTime.now(),
-                    posts.huecosTomados(LocalDateTime.now()), limites.maxPorDia(), horario(w));
+            CalendarioDelAgente.Hueco hueco = hueco(w, categoria(revision.diagnostico()));
+            LocalDateTime fecha = hueco.cuando();
 
             PostSaveRequest pedido = new PostSaveRequest();
             pedido.setCaption(texto(borrador));
@@ -482,9 +484,9 @@ public class AgenteService {
                             .distinct().collect(Collectors.joining(" y ")) + " no: dura más de lo que acepta."
                     : "";
             String motivo = porQue + " Es un video vertical de " + segundos + " s: lo propongo como Reel, tal cual"
-                    + " (los videos todavía no llevan logo ni recorte)." + fuera + " " + cuandoYDonde(redes, fecha);
+                    + " (los videos todavía no llevan logo ni recorte)." + fuera + " " + cuandoYDonde(redes, hueco);
             postService.crearPropuesta(pedido, fecha, motivo, video.getUrl(),
-                    DecisorDelAgente.Tratamiento.TAL_CUAL.name());
+                    DecisorDelAgente.Tratamiento.TAL_CUAL.name(), categoria(revision.diagnostico()).name());
             marcar(video, EtapaAgente.PROPUESTA, motivo);
             return true;
         } catch (RuntimeException ex) {
@@ -502,7 +504,7 @@ public class AgenteService {
      * @return si salió; {@code false} = va tal cual, sin gastar
      */
     private boolean proponerDiseno(MediaAsset asset, Workspace w, List<SocialAccount> destino, Set<Platform> redes,
-            String encargo, DecisorDelAgente.Decision decision, String porQue) {
+            String encargo, DecisorDelAgente.Decision decision, String porQue, CalendarioDelAgente.Categoria categoria) {
         CampaignImageService.Diseno diseno;
         try {
             diseno = generador.disenarParaElAgente(w, new CampaignImageRequest(1,
@@ -520,8 +522,8 @@ public class AgenteService {
             return false;
         }
 
-        LocalDateTime fecha = CalendarioDelAgente.siguienteHueco(LocalDateTime.now(),
-                posts.huecosTomados(LocalDateTime.now()), limites.maxPorDia(), horario(w));
+        CalendarioDelAgente.Hueco hueco = hueco(w, categoria);
+        LocalDateTime fecha = hueco.cuando();
         int hechas = 0;
         for (CampaignImageService.Diseno.Version v : diseno.versiones()) {
             List<SocialAccount> suyas = destino.stream().filter(c -> v.redes().contains(c.getPlatform())).toList();
@@ -549,19 +551,54 @@ public class AgenteService {
 
             Set<Platform> deEsta = new LinkedHashSet<>(v.redes());
             deEsta.retainAll(redes);
-            String motivo = porQue + " " + decision.explicacion() + " (1 crédito) " + cuandoYDonde(deEsta, fecha);
-            postService.crearPropuesta(pedido, fecha, motivo, asset.getUrl(), DecisorDelAgente.Tratamiento.DISENO.name());
+            String motivo = porQue + " " + decision.explicacion() + " (1 crédito) " + cuandoYDonde(deEsta, hueco);
+            postService.crearPropuesta(pedido, fecha, motivo, asset.getUrl(), DecisorDelAgente.Tratamiento.DISENO.name(),
+                    categoria == null ? null : categoria.name());
             hechas++;
         }
         return hechas > 0;
     }
 
-    /** «En todas tus redes, el jue 2 oct, 11:00: el primer hueco libre.» */
-    static String cuandoYDonde(Set<Platform> redes, LocalDateTime fecha) {
+    /** «Para Instagram y Facebook, el jue 2 oct, 11:00: el primer hueco libre.» O por qué se movió. */
+    static String cuandoYDonde(Set<Platform> redes, CalendarioDelAgente.Hueco hueco) {
         String donde = redes.size() > 1
                 ? "Para " + redes.stream().map(Platform::getLabel).collect(Collectors.joining(", "))
                 : "Para " + redes.iterator().next().getLabel();
-        return donde + ", el " + FECHA.format(fecha) + ": el primer hueco libre.";
+        return donde + ", el " + FECHA.format(hueco.cuando()) + ": "
+                + (hueco.razon() == null ? "el primer hueco libre." : sinMayuscula(hueco.razon()));
+    }
+
+    private static String sinMayuscula(String s) {
+        return s.isEmpty() ? s : Character.toLowerCase(s.charAt(0)) + s.substring(1);
+    }
+
+    /** El siguiente hueco que respeta el horario, los topes y la mezcla de la semana. */
+    private CalendarioDelAgente.Hueco hueco(Workspace w, CalendarioDelAgente.Categoria categoria) {
+        LocalDateTime ahora = LocalDateTime.now();
+        List<CalendarioDelAgente.Tomado> tomados = posts.tomadosConCategoria(ahora).stream()
+                .map(r -> new CalendarioDelAgente.Tomado((LocalDateTime) r[0], (String) r[1]))
+                .toList();
+        return CalendarioDelAgente.siguienteHueco(ahora, tomados, limites.maxPorDia(), horario(w), categoria);
+    }
+
+    /**
+     * De qué clase es la publicación, para la mezcla: promoción, venta (producto
+     * o intención de vender), comunidad (equipo, evento, testimonio) o día a día.
+     */
+    static CalendarioDelAgente.Categoria categoria(DecisorDelAgente.Diagnostico d) {
+        if (d == null) {
+            return CalendarioDelAgente.Categoria.DIA_A_DIA;
+        }
+        return switch (d.tipo()) {
+            case "PROMOCION" -> CalendarioDelAgente.Categoria.PROMOCION;
+            case "PRODUCTO" -> CalendarioDelAgente.Categoria.VENTA;
+            case "EQUIPO", "EVENTO", "TESTIMONIO" -> CalendarioDelAgente.Categoria.COMUNIDAD;
+            default -> switch (d.intencion()) {
+                case VENDER -> CalendarioDelAgente.Categoria.VENTA;
+                case COMUNIDAD, CONFIANZA -> CalendarioDelAgente.Categoria.COMUNIDAD;
+                default -> CalendarioDelAgente.Categoria.DIA_A_DIA;
+            };
+        };
     }
 
     private static List<String> conPaso(List<String> pasos, String otro) {

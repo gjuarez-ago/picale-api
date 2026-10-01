@@ -67,6 +67,45 @@ class CalendarioDelAgenteTest {
     }
 
     @Test
+    @DisplayName("mezcla: una tercera de venta seguida se mueve después de algo que no es venta, y dice por qué")
+    void tresDeVenta() {
+        var ventas = new ArrayList<>(List.of(
+                new CalendarioDelAgente.Tomado(LocalDateTime.of(2026, 10, 5, 18, 0), "VENTA"),
+                new CalendarioDelAgente.Tomado(LocalDateTime.of(2026, 10, 6, 11, 0), "PROMOCION"),
+                new CalendarioDelAgente.Tomado(LocalDateTime.of(2026, 10, 7, 11, 0), "COMUNIDAD")));
+        var h = CalendarioDelAgente.siguienteHueco(LUNES_9AM, ventas, 2, CalendarioDelAgente.Horario.SIEMPRE,
+                CalendarioDelAgente.Categoria.VENTA);
+        // El martes a las 18 sería la tercera de venta seguida; el miércoles a las 18, después de la de comunidad, no.
+        assertThat(h.cuando()).isEqualTo(LocalDateTime.of(2026, 10, 7, 18, 0));
+        assertThat(h.razon()).contains("tres de venta seguidas");
+    }
+
+    @Test
+    @DisplayName("mezcla: dos promociones no van seguidas")
+    void dosPromociones() {
+        var promo = List.of(new CalendarioDelAgente.Tomado(LocalDateTime.of(2026, 10, 5, 18, 0), "PROMOCION"));
+        var h = CalendarioDelAgente.siguienteHueco(LUNES_9AM, promo, 2, CalendarioDelAgente.Horario.SIEMPRE,
+                CalendarioDelAgente.Categoria.PROMOCION);
+        assertThat(h.cuando()).isNotEqualTo(LocalDateTime.of(2026, 10, 6, 11, 0));
+        assertThat(h.razon()).contains("dos promociones seguidas");
+    }
+
+    @Test
+    @DisplayName("mezcla: lo hecho a mano (sin categoría) corta la racha; y lo que no es venta va al primer hueco")
+    void neutras() {
+        var linea = List.of(
+                new CalendarioDelAgente.Tomado(LocalDateTime.of(2026, 10, 5, 18, 0), "VENTA"),
+                new CalendarioDelAgente.Tomado(LocalDateTime.of(2026, 10, 6, 11, 0), null));
+        var venta = CalendarioDelAgente.siguienteHueco(LUNES_9AM, linea, 2, CalendarioDelAgente.Horario.SIEMPRE,
+                CalendarioDelAgente.Categoria.VENTA);
+        assertThat(venta.cuando()).isEqualTo(LocalDateTime.of(2026, 10, 6, 18, 0));
+        assertThat(venta.razon()).isNull();
+        var comunidad = CalendarioDelAgente.siguienteHueco(LUNES_9AM, linea, 2, CalendarioDelAgente.Horario.SIEMPRE,
+                CalendarioDelAgente.Categoria.COMUNIDAD);
+        assertThat(comunidad.razon()).isNull();
+    }
+
+    @Test
     @DisplayName("no se pone a menos de dos horas de algo que ya estaba programado")
     void respetaLoProgramado() {
         List<LocalDateTime> programado = List.of(LocalDateTime.of(2026, 10, 5, 17, 30));

@@ -30,7 +30,13 @@ Estado: **fase 1 construida en la rama `agente`, sin desplegar.** Ya funciona:
   de menos de 3 s, ilegible o más largo que todas tus redes: a Observación con el porqué. Por
   ahora tal cual: sin marca de agua ni recorte. (`MedidorDeVideo`, `AgenteService.procesarVideo`)
 
-Todavía no: carruseles, la mezcla de contenido (70 / 20 / 10), lo que aprende de la marca
+- **Mezcla de contenido:** cada propuesta lleva su categoría (promoción, venta, comunidad, día a
+  día) y el calendario nunca pone tres de venta seguidas ni dos promociones seguidas ("seguidas"
+  = a menos de 3 días, sin otra en medio). Si el primer hueco rompe la mezcla toma el siguiente
+  que la cumpla y lo dice en la propuesta; si en dos meses ninguno cumple, el primero libre. Lo
+  hecho a mano cuenta como neutro. (`CalendarioDelAgente.siguienteHueco` con categoría)
+
+Todavía no: carruseles, lo que aprende de la marca
 y la aprobación automática por confianza. El código está en `service/agente/`, `AgenteController`,
 `service/campaign/LogoSobreFoto`, `service/media/HuellaDeImagen` y `service/media/RetoqueDeFoto`;
 en la web,

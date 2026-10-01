@@ -262,6 +262,12 @@ public class PostService {
     @Transactional
     public Post crearPropuesta(PostSaveRequest request, LocalDateTime fecha, String motivo, String fotoOriginal,
             String tratamiento) {
+        return crearPropuesta(request, fecha, motivo, fotoOriginal, tratamiento, null);
+    }
+
+    @Transactional
+    public Post crearPropuesta(PostSaveRequest request, LocalDateTime fecha, String motivo, String fotoOriginal,
+            String tratamiento, String categoria) {
         Post post = Post.builder().build();
         applyRequest(post, request);
         post.setStatus(PostStatus.DRAFT);
@@ -269,6 +275,7 @@ public class PostService {
         post.setFechaPropuesta(fecha);
         post.setAgenteFotoUrl(fotoOriginal);
         post.setAgenteTratamiento(tratamiento);
+        post.setAgenteCategoria(categoria);
         post.setAgenteMotivo(motivo == null || motivo.length() <= 1000 ? motivo : motivo.substring(0, 1000));
         return postRepository.saveAndFlush(post);
     }
