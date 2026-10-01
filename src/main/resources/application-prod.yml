@@ -119,7 +119,7 @@ uploadpost:
 # Si se cambia de modelo hay que cambiar tambien su precio.
 openai:
   api-key: ${OPENAI_API_KEY:}
-  model: ${OPENAI_API_MODEL:gpt-4o-mini}
+  model: ${OPENAI_API_MODEL:gpt-4.1-mini}
   pricing:
     input-usd-per-million: ${OPENAI_PRICING_INPUT_PER_1M_USD:0}
     output-usd-per-million: ${OPENAI_PRICING_OUTPUT_PER_1M_USD:0}
@@ -130,6 +130,8 @@ openai:
   image-input-fidelity: ${OPENAI_IMAGE_INPUT_FIDELITY:}
   # Director de arte: mira las fotos y arma el plan. Si falla o tarda mas de lo
   # indicado, la campana sigue sin el con el prompt de siempre.
+  # Pasa a texto lo que se dice en los videos (el Analista del agente). Debe estar permitido en el proyecto.
+  transcription-model: ${OPENAI_TRANSCRIPTION_MODEL:gpt-4o-mini-transcribe}
   director-model: ${OPENAI_DIRECTOR_MODEL:gpt-5-mini}
   director-reasoning-effort: ${OPENAI_DIRECTOR_REASONING_EFFORT:low}
   director-timeout-seconds: ${OPENAI_DIRECTOR_TIMEOUT_SECONDS:25}
