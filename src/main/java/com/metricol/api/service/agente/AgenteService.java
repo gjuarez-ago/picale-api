@@ -403,7 +403,7 @@ public class AgenteService {
 
             if (decision.tratamiento() == DecisorDelAgente.Tratamiento.DISENO) {
                 if (proponerDiseno(asset, w, destino, redes, encargo, decision, porQue,
-                        categoria(revision.diagnostico()), ubicacionPara(w, redes, revision.tipo()))) {
+                        categoria(revision.diagnostico()), revision.tipo())) {
                     marcar(asset, EtapaAgente.PROPUESTA, "Le hice diseño con IA.");
                     return true;
                 }
@@ -624,7 +624,7 @@ public class AgenteService {
      */
     private boolean proponerDiseno(MediaAsset asset, Workspace w, List<SocialAccount> destino, Set<Platform> redes,
             String encargo, DecisorDelAgente.Decision decision, String porQue, CalendarioDelAgente.Categoria categoria,
-            ConUbicacion lugar) {
+            String tipo) {
         CampaignImageService.Diseno diseno;
         try {
             diseno = generador.disenarParaElAgente(w, new CampaignImageRequest(1,
@@ -649,8 +649,8 @@ public class AgenteService {
         String disenoId = UUID.randomUUID().toString();
         List<Post> creadas = new ArrayList<>();
         try {
-            crearVersiones(diseno, destino, redes, encargo, decision, porQue, categoria, hueco, fecha, asset,
-                    disenoId, creadas, lugar);
+            crearVersiones(w, diseno, destino, redes, encargo, decision, porQue, categoria, hueco, fecha, asset,
+                    disenoId, creadas, tipo);
         } catch (RuntimeException ex) {
             // A medias no se queda: si una versión no se pudo guardar, se quitan
             // las que sí, y la foto sigue tal cual (el diseño ya se pagó, eso no
@@ -662,10 +662,10 @@ public class AgenteService {
         return !creadas.isEmpty();
     }
 
-    private void crearVersiones(CampaignImageService.Diseno diseno, List<SocialAccount> destino, Set<Platform> redes,
+    private void crearVersiones(Workspace w, CampaignImageService.Diseno diseno, List<SocialAccount> destino, Set<Platform> redes,
             String encargo, DecisorDelAgente.Decision decision, String porQue, CalendarioDelAgente.Categoria categoria,
             CalendarioDelAgente.Hueco hueco, LocalDateTime fecha, MediaAsset asset, String disenoId, List<Post> creadas,
-            ConUbicacion lugar) {
+            String tipo) {
         for (CampaignImageService.Diseno.Version v : diseno.versiones()) {
             List<SocialAccount> suyas = destino.stream().filter(c -> v.redes().contains(c.getPlatform())).toList();
             if (suyas.isEmpty()) {
@@ -689,10 +689,12 @@ public class AgenteService {
             pedido.setFormat(PostFormat.PHOTO.name());
             pedido.setSocialAccountIds(suyas.stream().map(SocialAccount::getId).toList());
             pedido.setCaptionsPorRed(porRed);
-            pedido.setConUbicacion(lugar.va());
 
             Set<Platform> deEsta = new LinkedHashSet<>(v.redes());
             deEsta.retainAll(redes);
+            // Cada versión va a sus redes: una solo para Facebook no lleva ubicación.
+            ConUbicacion lugar = ubicacionPara(w, deEsta, tipo);
+            pedido.setConUbicacion(lugar.va());
             String motivo = porQue + " " + decision.explicacion() + " (" + creditos.porGeneracion() + " créditos)"
                     + lugar.frase() + " " + cuandoYDonde(deEsta, hueco);
             Post creada = postService.crearPropuesta(pedido, fecha, motivo, asset.getUrl(),
@@ -702,24 +704,33 @@ public class AgenteService {
         }
     }
 
-    /** Si la publicación sale con la ubicación del negocio, y cómo se dice en el porqué («» si no aplica). */
-    record ConUbicacion(boolean va, String frase) {
+    /**
+     * Si la publicación sale con la ubicación del negocio, y cómo se dice en el porqué («» si no aplica).
+     *
+     * @param va {@code true}/{@code false} cuando se decidió por lo que se ve; {@code null} cuando
+     *           todavía no aplica (el negocio no la puso, o ninguna red de esta publicación tiene
+     *           lugar). Nulo no se guarda como "sin ubicación": si después la configura, sale con ella.
+     */
+    record ConUbicacion(Boolean va, String frase) {
     }
 
     /**
-     * La ubicación va solo si el negocio tiene local (y la puso), alguna red del
-     * envío la admite, y lo que se ve es del negocio ({@link UbicacionEnLaPublicacion}).
+     * La ubicación va solo si el negocio tiene local, alguna red del envío
+     * tiene su lugar guardado, y lo que se ve es del negocio ({@link UbicacionEnLaPublicacion}).
+     * Que lo que se ve no sea del local sí se guarda: esa publicación no la lleva aunque luego haya.
      */
     static ConUbicacion ubicacionPara(Workspace w, Set<Platform> redes, String tipo) {
-        boolean puesta = com.metricol.api.service.social.Ubicacion.de(w).alguna();
-        boolean redQueLaAdmite = redes.contains(Platform.INSTAGRAM) || redes.contains(Platform.TIKTOK);
-        if (!puesta || !redQueLaAdmite) {
-            return new ConUbicacion(false, "");
+        if (!UbicacionEnLaPublicacion.va(tipo)) {
+            boolean puesta = com.metricol.api.service.social.Ubicacion.de(w).alguna();
+            return new ConUbicacion(false, puesta ? " Sin ubicación: lo que se ve no es de tu local." : "");
         }
-        if (UbicacionEnLaPublicacion.va(tipo)) {
-            return new ConUbicacion(true, " Le puse tu ubicación: es de tu negocio.");
+        com.metricol.api.service.social.Ubicacion u = com.metricol.api.service.social.Ubicacion.de(w);
+        boolean conLugar = (u.enInstagram() && redes.contains(Platform.INSTAGRAM))
+                || (u.enTiktok() && redes.contains(Platform.TIKTOK));
+        if (!conLugar) {
+            return new ConUbicacion(null, "");
         }
-        return new ConUbicacion(false, " Sin ubicación: lo que se ve no es de tu local.");
+        return new ConUbicacion(true, " Le puse tu ubicación: es de tu negocio.");
     }
 
     /** «Para Instagram y Facebook, el jue 2 oct, 11:00: el primer hueco libre.» O por qué se movió. */

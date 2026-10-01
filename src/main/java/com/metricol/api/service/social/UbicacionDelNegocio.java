@@ -70,6 +70,9 @@ public class UbicacionDelNegocio {
         if ((tiktokId == null) != (tiktokNombre == null)) {
             throw new IllegalArgumentException("Elige el lugar de TikTok de la lista: TikTok pide su id y su nombre.");
         }
+        if (Boolean.TRUE.equals(pedido.activa()) && idInstagram == null && tiktokId == null) {
+            throw new IllegalArgumentException("Pon al menos un lugar: el enlace de Instagram o tu lugar de TikTok.");
+        }
         String nombre = limpio(pedido.nombre());
         if (nombre == null) {
             nombre = tiktokNombre;

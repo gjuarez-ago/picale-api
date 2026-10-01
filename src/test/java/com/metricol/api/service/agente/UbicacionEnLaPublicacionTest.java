@@ -43,15 +43,29 @@ class UbicacionEnLaPublicacionTest {
     }
 
     @Test
-    @DisplayName("sin local, o solo a redes que no la admiten, ni la pone ni dice nada")
-    void sinLocal() {
+    @DisplayName("si todavía no aplica (sin local, o sin lugar para sus redes) no se guarda como 'sin ubicación'")
+    void todaviaNoAplica() {
         AgenteService.ConUbicacion apagada = AgenteService.ubicacionPara(conLocal(false), Set.of(Platform.INSTAGRAM), "LUGAR");
-        assertThat(apagada.va()).isFalse();
+        assertThat(apagada.va()).as("nulo: si luego pone su local, esta propuesta sale con él").isNull();
         assertThat(apagada.frase()).isEmpty();
         assertThat(Ubicacion.de(conLocal(false)).alguna()).as("apagada no se manda").isFalse();
 
         AgenteService.ConUbicacion soloFacebook = AgenteService.ubicacionPara(conLocal(true), Set.of(Platform.FACEBOOK), "LUGAR");
-        assertThat(soloFacebook.va()).isFalse();
+        assertThat(soloFacebook.va()).isNull();
         assertThat(soloFacebook.frase()).isEmpty();
+
+        // Lugar guardado solo en TikTok y la publicación va a Instagram: no se dice "le puse tu ubicación".
+        Workspace soloTiktok = Workspace.builder().name("Tacos").ubicacionActiva(true)
+                .ubicacionTiktokId("4220").ubicacionTiktokNombre("Tacos El Güero").build();
+        AgenteService.ConUbicacion aInstagram = AgenteService.ubicacionPara(soloTiktok, Set.of(Platform.INSTAGRAM), "PRODUCTO");
+        assertThat(aInstagram.va()).isNull();
+        assertThat(aInstagram.frase()).isEmpty();
+        assertThat(AgenteService.ubicacionPara(soloTiktok, Set.of(Platform.TIKTOK), "PRODUCTO").va()).isTrue();
+    }
+
+    @Test
+    @DisplayName("lo que no es del local se guarda como 'sin ubicación' aunque todavía no haya local")
+    void noEsDelLocal() {
+        assertThat(AgenteService.ubicacionPara(conLocal(false), Set.of(Platform.INSTAGRAM), "TESTIMONIO").va()).isFalse();
     }
 }
