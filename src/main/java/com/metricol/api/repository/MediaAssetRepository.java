@@ -226,14 +226,15 @@ public interface MediaAssetRepository extends JpaRepository<MediaAsset, UUID> {
      * Lo que le toca revisar al agente en el workspace actual: fotos subidas
      * por la persona desde que se encendió, que nadie ha usado ni él ha visto.
      *
-     * <p>Solo fotos por ahora: un video necesita su duración para saber a qué
-     * formato va, y eso llega en la siguiente vuelta del agente.
+     * <p>Fotos, y videos que ya tienen portada: la IA mira el video por su
+     * fotograma, así que uno recién subido espera unos segundos a tenerlo.
      */
     @Query("""
             select m from MediaAsset m
             where m.status = com.metricol.api.enums.MediaAssetStatus.READY
               and m.archivedAt is null
-              and m.type = com.metricol.api.enums.MediaType.IMAGE
+              and (m.type = com.metricol.api.enums.MediaType.IMAGE
+                   or (m.type = com.metricol.api.enums.MediaType.VIDEO and m.thumbnailUrl is not null))
               and (m.generadaPorIa is null or m.generadaPorIa = false)
               and (m.agenteEtapa is null or m.agenteEtapa = com.metricol.api.enums.EtapaAgente.PENDIENTE)
               and m.createdAt >= :desde
@@ -249,7 +250,8 @@ public interface MediaAssetRepository extends JpaRepository<MediaAsset, UUID> {
             select count(m) from MediaAsset m
             where m.status = com.metricol.api.enums.MediaAssetStatus.READY
               and m.archivedAt is null
-              and m.type = com.metricol.api.enums.MediaType.IMAGE
+              and (m.type = com.metricol.api.enums.MediaType.IMAGE
+                   or (m.type = com.metricol.api.enums.MediaType.VIDEO and m.thumbnailUrl is not null))
               and (m.generadaPorIa is null or m.generadaPorIa = false)
               and (m.agenteEtapa is null or m.agenteEtapa = com.metricol.api.enums.EtapaAgente.PENDIENTE)
               and m.createdAt >= :desde

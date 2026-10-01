@@ -233,6 +233,71 @@ public class FfmpegImagen {
         }
     }
 
+    /**
+     * Cómo es un video: tamaño tal como se ve (con la rotación del teléfono ya
+     * aplicada) y duración.
+     */
+    public record MedidasVideo(int ancho, int alto, double segundos) {
+        public boolean vertical() {
+            return alto > ancho;
+        }
+    }
+
+    /**
+     * Mide un video sin bajarlo entero: ffprobe lee la cabecera, de un archivo
+     * o de una URL pública (lee solo lo que necesita).
+     *
+     * <p>La rotación importa: un teléfono graba vertical guardando 1920×1080 y
+     * una marca de "gíralo 90°". Sin leerla, todo video de teléfono parecería
+     * horizontal.
+     *
+     * @return las medidas, o {@code null} si no se pudo leer
+     */
+    public MedidasVideo medirVideo(String fuente) {
+        List<String> comando = List.of(
+                props.getFfprobe(),
+                "-v", "error",
+                "-select_streams", "v:0",
+                "-show_entries", "stream=width,height:stream_side_data=rotation:stream_tags=rotate:format=duration",
+                "-of", "default=noprint_wrappers=1",
+                fuente);
+        String salida = ejecutar(comando, "ffprobe");
+        if (salida == null) {
+            return null;
+        }
+        int ancho = 0;
+        int alto = 0;
+        int rotacion = 0;
+        double segundos = 0;
+        for (String linea : salida.split("\\R")) {
+            String[] partes = linea.strip().split("=", 2);
+            if (partes.length != 2) {
+                continue;
+            }
+            try {
+                switch (partes[0]) {
+                    case "width" -> ancho = Integer.parseInt(partes[1]);
+                    case "height" -> alto = Integer.parseInt(partes[1]);
+                    case "rotation", "TAG:rotate" -> rotacion = (int) Double.parseDouble(partes[1]);
+                    case "duration" -> segundos = Double.parseDouble(partes[1]);
+                    default -> { }
+                }
+            } catch (NumberFormatException ignorado) {
+                // "N/A" en una entrada que el archivo no trae.
+            }
+        }
+        if (ancho <= 0 || alto <= 0 || segundos <= 0) {
+            log.warn("ffprobe no dio medidas de video útiles: {}", recortar(salida));
+            return null;
+        }
+        if (Math.abs(rotacion) % 180 == 90) {
+            int t = ancho;
+            ancho = alto;
+            alto = t;
+        }
+        return new MedidasVideo(ancho, alto, segundos);
+    }
+
     /** ¿Está ffmpeg donde dice la configuración? */
     public boolean disponible() {
         Boolean sabido = hayFfmpeg;

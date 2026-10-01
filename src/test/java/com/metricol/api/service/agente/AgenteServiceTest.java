@@ -101,6 +101,62 @@ class AgenteServiceTest {
     @MockitoBean
     private com.metricol.api.service.media.RetoqueDeFoto retoque;
 
+    @MockitoBean
+    private com.metricol.api.service.media.MedidorDeVideo medidor;
+
+    private MediaAsset video(String nombre) {
+        MediaAsset a = assets.save(MediaAsset.builder()
+                .fileName(nombre)
+                .url("https://cdn.test/media/" + ws.getId() + "/" + nombre)
+                .storageKey("media/" + ws.getId() + "/" + nombre)
+                .thumbnailUrl("https://cdn.test/derivados/miniaturas/" + nombre + ".jpg")
+                .type(MediaType.VIDEO).contentType("video/mp4").sizeBytes(4096L)
+                .status(MediaAssetStatus.READY).build());
+        assetsCreados.add(a.getId());
+        return a;
+    }
+
+    @Test
+    @DisplayName("un video vertical se propone como Reel, con su duración y mirado por su portada")
+    void videoVertical() {
+        enElWorkspace(() -> {
+            conInstagram();
+            agente.encender(ws.getId(), true);
+            MediaAsset v = video("recorrido.mp4");
+            when(medidor.medir(any())).thenReturn(new com.metricol.api.service.media.FfmpegImagen.MedidasVideo(1080, 1920, 20.4));
+            revisaComo(RevisorDeMarca.Veredicto.VA, "es un recorrido del depa");
+
+            agente.vuelta(ws.getId());
+
+            Post p = posts.propuestasDelAgente().get(0);
+            assertThat(p.getFormat()).isEqualTo(com.metricol.api.enums.PostFormat.REEL);
+            assertThat(p.getVideoDurationSeconds()).isEqualTo(20);
+            assertThat(p.getMediaUrls()).containsExactly(v.getUrl());
+            assertThat(p.getAgenteMotivo()).contains("Es un video vertical de 20 s: lo propongo como Reel");
+            org.mockito.Mockito.verify(revisor).revisar(org.mockito.ArgumentMatchers.eq(v.getThumbnailUrl()), any(), anyBoolean());
+        });
+    }
+
+    @Test
+    @DisplayName("un video horizontal o ilegible va a Observación con el porqué, sin gastar en la IA")
+    void videoQueNoSale() {
+        enElWorkspace(() -> {
+            conInstagram();
+            agente.encender(ws.getId(), true);
+            MediaAsset horizontal = video("horizontal.mp4");
+            when(medidor.medir(any())).thenReturn(new com.metricol.api.service.media.FfmpegImagen.MedidasVideo(1920, 1080, 15));
+
+            agente.vuelta(ws.getId());
+
+            assertThat(posts.propuestasDelAgente()).isEmpty();
+            assertThat(assets.findById(horizontal.getId())).get().satisfies(a -> {
+                assertThat(a.getAgenteEtapa()).isEqualTo(EtapaAgente.OBSERVACION);
+                assertThat(a.getAgenteMotivo()).contains("horizontal");
+            });
+            org.mockito.Mockito.verifyNoInteractions(revisor);
+        });
+    }
+
     private Workspace ws;
     private final List<UUID> assetsCreados = new ArrayList<>();
     private final List<UUID> cuentasCreadas = new ArrayList<>();

@@ -45,6 +45,8 @@ import com.metricol.api.service.billing.CreditService;
 import com.metricol.api.service.campaign.CampaignImageService;
 import com.metricol.api.service.campaign.LogoSobreFoto;
 import com.metricol.api.service.media.HuellaDeImagen;
+import com.metricol.api.service.media.FfmpegImagen;
+import com.metricol.api.service.media.MedidorDeVideo;
 import com.metricol.api.service.media.RetoqueDeFoto;
 import com.metricol.api.service.limits.LimitesConfigurables;
 import com.metricol.api.service.publishing.FormatRulesService;
@@ -100,13 +102,18 @@ public class AgenteService {
     private final CampaignImageService generador;
     private final CreditService creditos;
     private final RetoqueDeFoto retoque;
+    private final MedidorDeVideo medidor;
+    private final com.metricol.api.config.VideoLimitsProperties videoLimites;
 
     public AgenteService(WorkspaceRepository workspaces, MediaAssetRepository assets, PostRepository posts,
             SocialAccountRepository cuentas, RevisorDeMarca revisor, Redactor redactor, PostService postService,
             MediaService mediaService, FormatRulesService formatos, LimitesConfigurables limites,
             AiQuotaGuard cupoIa, LogoSobreFoto logo, HuellaDeImagen huellas, CampaignImageService generador,
-            CreditService creditos, RetoqueDeFoto retoque) {
+            CreditService creditos, RetoqueDeFoto retoque, MedidorDeVideo medidor,
+            com.metricol.api.config.VideoLimitsProperties videoLimites) {
         this.retoque = retoque;
+        this.medidor = medidor;
+        this.videoLimites = videoLimites;
         this.logo = logo;
         this.huellas = huellas;
         this.generador = generador;
@@ -253,7 +260,7 @@ public class AgenteService {
         reacomodarVencidas(w);
 
         List<SocialAccount> destino = cuentasParaFotos();
-        if (destino.isEmpty()) {
+        if (destino.isEmpty() && cuentasPara(PostFormat.REEL).isEmpty()) {
             // Sin redes no hay a dónde proponer: ni se gasta en revisar.
             return 0;
         }
@@ -281,6 +288,13 @@ public class AgenteService {
      * @return si quedó en algún sitio; {@code false} = sigue pendiente
      */
     boolean procesar(MediaAsset asset, Workspace w, List<SocialAccount> destino, boolean forzar) {
+        if (asset.getType() == com.metricol.api.enums.MediaType.VIDEO) {
+            return procesarVideo(asset, w, forzar);
+        }
+        if (destino.isEmpty()) {
+            marcar(asset, EtapaAgente.OBSERVACION, "No tienes redes conectadas que publiquen fotos.");
+            return true;
+        }
         // Repetidas, antes de gastar en la IA: la misma toma subida dos veces no
         // son dos publicaciones. Se queda la que llegó primero. Si la persona
         // la rescata (forzar), va aunque se parezca.
@@ -383,6 +397,99 @@ public class AgenteService {
         } catch (RuntimeException ex) {
             log.warn("El agente no pudo preparar la propuesta de {}: {}", asset.getId(), ex.toString());
             marcar(asset, EtapaAgente.PENDIENTE, "No pude preparar la publicación; lo vuelvo a intentar en un rato.");
+            return false;
+        }
+    }
+
+    /**
+     * Un video: se mide (orientación y duración), la IA lo mira por su portada
+     * contra la marca, y se propone como Reel en las redes que aceptan su
+     * duración. Por ahora tal cual: sin recorte, sin marca de agua.
+     *
+     * <p>Lo que no puede salir como Reel no se fuerza: un video horizontal o
+     * demasiado corto va a Observación con el porqué, para que la persona lo
+     * vuelva a grabar o lo publique a mano.
+     */
+    boolean procesarVideo(MediaAsset video, Workspace w, boolean forzar) {
+        FfmpegImagen.MedidasVideo m = medidor.medir(video);
+        if (m == null) {
+            marcar(video, EtapaAgente.OBSERVACION, "No pude leer este video (formato o archivo dañado). Prueba subirlo otra vez.");
+            return true;
+        }
+        int segundos = (int) Math.round(m.segundos());
+        FormatRulesService.Regla reel = formatos.de(PostFormat.REEL);
+        if (!m.vertical()) {
+            marcar(video, EtapaAgente.OBSERVACION, "Es un video horizontal: Reels y TikTok piden vertical. "
+                    + "Grábalo en vertical o publícalo a mano.");
+            return true;
+        }
+        if (reel.minSegundos() != null && segundos < reel.minSegundos()) {
+            marcar(video, EtapaAgente.OBSERVACION, "Dura " + segundos + " s y un Reel necesita al menos "
+                    + reel.minSegundos() + " s.");
+            return true;
+        }
+
+        // Solo las redes que aceptan esa duración: un video de 3 minutos no
+        // tumba la propuesta, sale en las que sí lo admiten.
+        List<SocialAccount> todas = cuentasPara(PostFormat.REEL);
+        List<SocialAccount> destino = todas.stream().filter(c -> !videoLimites.excede(c.getPlatform(), segundos))
+                .toList();
+        if (destino.isEmpty()) {
+            marcar(video, EtapaAgente.OBSERVACION, todas.isEmpty()
+                    ? "No tienes redes conectadas que publiquen video."
+                    : "Dura " + segundos + " s: es más largo de lo que aceptan tus redes. Recórtalo y vuelve a subirlo.");
+            return true;
+        }
+
+        Redactor.Negocio negocio = negocio(w);
+        boolean marcaCompleta = BrandService.completitud(w).percent() >= MARCA_SUFICIENTE;
+        RevisorDeMarca.Revision revision = revisor.revisar(video.getThumbnailUrl(), negocio, marcaCompleta);
+        if (revision == null) {
+            marcar(video, EtapaAgente.PENDIENTE, "No pude revisarlo todavía; lo vuelvo a intentar en un rato.");
+            return false;
+        }
+        if (!forzar && revision.veredicto() != RevisorDeMarca.Veredicto.VA) {
+            marcar(video, revision.veredicto() == RevisorDeMarca.Veredicto.OBSERVACION
+                    ? EtapaAgente.OBSERVACION
+                    : EtapaAgente.DESCARTADA, revision.motivo());
+            return true;
+        }
+
+        try {
+            Set<Platform> redes = destino.stream().map(SocialAccount::getPlatform)
+                    .collect(Collectors.toCollection(LinkedHashSet::new));
+            String encargo = encargo(revision) + " (es un video vertical de " + segundos + " segundos)";
+            Redactor.Borrador borrador = redactor.redactar(encargo,
+                    revision.descripcion().isBlank() ? List.of() : List.of(revision.descripcion()), redes, negocio);
+            LocalDateTime fecha = CalendarioDelAgente.siguienteHueco(LocalDateTime.now(),
+                    posts.huecosTomados(LocalDateTime.now()), limites.maxPorDia(), horario(w));
+
+            PostSaveRequest pedido = new PostSaveRequest();
+            pedido.setCaption(texto(borrador));
+            pedido.setTitulo(borrador.titulo());
+            pedido.setBrief(encargo);
+            pedido.setMediaUrls(List.of(video.getUrl()));
+            pedido.setFormat(PostFormat.REEL.name());
+            pedido.setVideoDurationSeconds(segundos);
+            pedido.setSocialAccountIds(destino.stream().map(SocialAccount::getId).toList());
+            Map<String, String> porRed = new LinkedHashMap<>();
+            borrador.textos().forEach((red, t) -> porRed.put(red.name(), t));
+            pedido.setCaptionsPorRed(porRed);
+
+            String porQue = forzar ? "Me dijiste que va." : "Va con tu marca: " + sinPunto(revision.motivo()) + ".";
+            String fuera = todas.size() > destino.size()
+                    ? " " + todas.stream().filter(c -> !destino.contains(c)).map(c -> c.getPlatform().getLabel())
+                            .distinct().collect(Collectors.joining(" y ")) + " no: dura más de lo que acepta."
+                    : "";
+            String motivo = porQue + " Es un video vertical de " + segundos + " s: lo propongo como Reel, tal cual"
+                    + " (los videos todavía no llevan logo ni recorte)." + fuera + " " + cuandoYDonde(redes, fecha);
+            postService.crearPropuesta(pedido, fecha, motivo, video.getUrl(),
+                    DecisorDelAgente.Tratamiento.TAL_CUAL.name());
+            marcar(video, EtapaAgente.PROPUESTA, motivo);
+            return true;
+        } catch (RuntimeException ex) {
+            log.warn("El agente no pudo preparar la propuesta del video {}: {}", video.getId(), ex.toString());
+            marcar(video, EtapaAgente.PENDIENTE, "No pude preparar la publicación; lo vuelvo a intentar en un rato.");
             return false;
         }
     }
@@ -608,7 +715,7 @@ public class AgenteService {
             return;
         }
         List<SocialAccount> destino = cuentasParaFotos();
-        if (destino.isEmpty()) {
+        if (destino.isEmpty() && asset.getType() != com.metricol.api.enums.MediaType.VIDEO) {
             throw new IllegalStateException("Conecta al menos una red para que pueda proponer esta foto.");
         }
         if (!procesar(asset, workspace(workspaceId), destino, true)) {
@@ -631,8 +738,9 @@ public class AgenteService {
     public Resultado revisarAhora(UUID assetId, UUID workspaceId) {
         MediaAsset asset = assets.findById(assetId)
                 .orElseThrow(() -> new ResourceNotFoundException("Archivo no encontrado."));
-        if (asset.getType() != com.metricol.api.enums.MediaType.IMAGE) {
-            throw new IllegalArgumentException("Por ahora el agente revisa fotos; los videos llegan después.");
+        boolean esVideo = asset.getType() == com.metricol.api.enums.MediaType.VIDEO;
+        if (esVideo && (asset.getThumbnailUrl() == null || asset.getThumbnailUrl().isBlank())) {
+            throw new IllegalStateException("Este video todavía no tiene portada; en unos segundos ya se puede revisar.");
         }
         if (asset.deLaIa()) {
             throw new IllegalArgumentException("Esta imagen la hizo la IA: el agente solo revisa lo que subes tú.");
@@ -644,7 +752,7 @@ public class AgenteService {
             throw new IllegalStateException("Ya está en una publicación: no la vuelvo a proponer.");
         }
         List<SocialAccount> destino = cuentasParaFotos();
-        if (destino.isEmpty()) {
+        if (!esVideo && destino.isEmpty()) {
             throw new IllegalStateException("Conecta al menos una red que acepte fotos para que pueda proponerla.");
         }
         cupoIa.exigirCupo();
@@ -691,11 +799,16 @@ public class AgenteService {
 
     /** Las cuentas a las que puede ir una foto: conectadas, encendidas, con página y que acepten fotos. */
     private List<SocialAccount> cuentasParaFotos() {
+        return cuentasPara(PostFormat.PHOTO);
+    }
+
+    /** Las cuentas que pueden recibir ese formato: conectadas, encendidas y con página. */
+    private List<SocialAccount> cuentasPara(PostFormat formato) {
         return cuentas.findAll().stream()
                 .filter(c -> c.getStatus() == SocialAccountStatus.CONNECTED)
                 .filter(c -> !c.apagadaPorLaPersona())
                 .filter(c -> !c.sinPagina())
-                .filter(c -> formatos.admite(PostFormat.PHOTO, c.getPlatform()))
+                .filter(c -> formatos.admite(formato, c.getPlatform()))
                 .toList();
     }
 

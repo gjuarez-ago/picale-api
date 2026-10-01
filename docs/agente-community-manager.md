@@ -22,7 +22,15 @@ Estado: **fase 1 construida en la rama `agente`, sin desplegar.** Ya funciona:
 - Propuestas que vencen sin aprobar se mueven solas al siguiente hueco.
 - Pausa de emergencia, el resumen de todas las cuentas y la pantalla **Agente** de la web.
 
-Todavía no: videos, carruseles, la mezcla de contenido (70 / 20 / 10), lo que aprende de la marca
+**Fase 2, en curso:**
+
+- **Videos:** el agente mide cada video con ffprobe (orientación con la rotación del teléfono
+  aplicada, y duración) sin bajarlo entero, lo mira por su portada contra la marca y lo propone
+  como Reel en las redes que aceptan su duración (las que no, se quitan y se dice). Horizontal,
+  de menos de 3 s, ilegible o más largo que todas tus redes: a Observación con el porqué. Por
+  ahora tal cual: sin marca de agua ni recorte. (`MedidorDeVideo`, `AgenteService.procesarVideo`)
+
+Todavía no: carruseles, la mezcla de contenido (70 / 20 / 10), lo que aprende de la marca
 y la aprobación automática por confianza. El código está en `service/agente/`, `AgenteController`,
 `service/campaign/LogoSobreFoto`, `service/media/HuellaDeImagen` y `service/media/RetoqueDeFoto`;
 en la web,
