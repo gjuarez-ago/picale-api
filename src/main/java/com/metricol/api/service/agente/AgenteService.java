@@ -604,6 +604,55 @@ public class AgenteService {
         }
     }
 
+    // ------------------------------------------------------------ probar a mano
+
+    /** Lo que hizo el agente con una foto que se le pidió revisar a mano. */
+    public record Resultado(String etapa, String motivo) {
+    }
+
+    /**
+     * Revisa una foto ya, sin esperar al proceso de fondo y aunque el switch
+     * esté apagado: es el botón de probar desde Contenido. Pasa por el mismo
+     * camino que una foto nueva —marca, decisión, texto, fecha— y no se salta
+     * nada que gaste, así que cuesta lo mismo que si la hubiera tomado solo.
+     */
+    public Resultado revisarAhora(UUID assetId, UUID workspaceId) {
+        MediaAsset asset = assets.findById(assetId)
+                .orElseThrow(() -> new ResourceNotFoundException("Archivo no encontrado."));
+        if (asset.getType() != com.metricol.api.enums.MediaType.IMAGE) {
+            throw new IllegalArgumentException("Por ahora el agente revisa fotos; los videos llegan después.");
+        }
+        if (asset.deLaIa()) {
+            throw new IllegalArgumentException("Esta imagen la hizo la IA: el agente solo revisa lo que subes tú.");
+        }
+        if (asset.getAgenteEtapa() == EtapaAgente.PROPUESTA || asset.getAgenteEtapa() == EtapaAgente.APROBADA) {
+            throw new IllegalStateException("Ya la revisé: está en Por aprobar o ya la aprobaste.");
+        }
+        if (posts.existsEnUso(asset.getUrl())) {
+            throw new IllegalStateException("Ya está en una publicación: no la vuelvo a proponer.");
+        }
+        List<SocialAccount> destino = cuentasParaFotos();
+        if (destino.isEmpty()) {
+            throw new IllegalStateException("Conecta al menos una red que acepte fotos para que pueda proponerla.");
+        }
+        cupoIa.exigirCupo();
+        // Una que descartó por repetida se vuelve a mirar: quien la pide a mano quiere verla revisada.
+        asset.setAgenteEtapa(null);
+        procesar(asset, workspace(workspaceId), destino, false);
+        MediaAsset hecho = assets.findById(assetId).orElse(asset);
+        return new Resultado(hecho.getAgenteEtapa() == null ? null : hecho.getAgenteEtapa().name(),
+                hecho.getAgenteMotivo());
+    }
+
+    /** Una vuelta ya, sin esperar los dos minutos: el botón "Revisar ahora". */
+    public int vueltaAhora(UUID workspaceId) {
+        Workspace w = workspace(workspaceId);
+        if (!w.conAgente()) {
+            throw new IllegalStateException("Enciende el agente para que revise lo nuevo.");
+        }
+        return vuelta(workspaceId);
+    }
+
     // ------------------------------------------------------------ piezas
 
     /**

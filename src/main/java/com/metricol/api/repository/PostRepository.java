@@ -46,6 +46,10 @@ public interface PostRepository extends JpaRepository<Post, UUID> {
             """)
     List<Post> programadasDelAgente();
 
+    /** ¿Alguna publicación viva de este workspace usa este archivo? */
+    @Query("select count(p) > 0 from Post p join p.mediaUrls u where u = :url and p.deletedAt is null")
+    boolean existsEnUso(String url);
+
     /**
      * Cuántos diseños hizo el agente desde {@code desde}. Por foto y no por
      * publicación: un diseño son varias versiones, y es un solo crédito.

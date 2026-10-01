@@ -440,6 +440,32 @@ class AgenteServiceTest {
     }
 
     @Test
+    @DisplayName("probar a mano: revisa una foto ya, aunque el agente esté apagado, y dice qué hizo")
+    void revisarAMano() {
+        enElWorkspace(() -> {
+            conInstagram();
+            MediaAsset vieja = foto("de-antes.jpg");
+            revisaComo(RevisorDeMarca.Veredicto.VA, "es tu producto");
+
+            AgenteService.Resultado r = agente.revisarAhora(vieja.getId(), ws.getId());
+
+            assertThat(r.etapa()).isEqualTo("PROPUESTA");
+            assertThat(r.motivo()).contains("Va con tu marca");
+            assertThat(posts.propuestasDelAgente()).hasSize(1);
+            // Ya propuesta: no se vuelve a revisar.
+            org.assertj.core.api.Assertions.assertThatThrownBy(() -> agente.revisarAhora(vieja.getId(), ws.getId()))
+                    .isInstanceOf(IllegalStateException.class).hasMessageContaining("Ya la revisé");
+        });
+    }
+
+    @Test
+    @DisplayName("revisar ahora pide el agente encendido")
+    void vueltaAhoraApagado() {
+        enElWorkspace(() -> org.assertj.core.api.Assertions.assertThatThrownBy(() -> agente.vueltaAhora(ws.getId()))
+                .isInstanceOf(IllegalStateException.class).hasMessageContaining("Enciende el agente"));
+    }
+
+    @Test
     @DisplayName("sin redes conectadas no revisa nada: no hay a dónde proponer")
     void sinRedes() {
         enElWorkspace(() -> {

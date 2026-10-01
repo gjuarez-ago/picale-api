@@ -118,6 +118,24 @@ public class AgenteController {
         return ResponseEntity.ok(ApiResponse.success(null));
     }
 
+    /**
+     * Probar a mano desde Contenido: el agente revisa esta foto ya, aunque esté
+     * apagado. Pide crear, porque lo que sale es un borrador.
+     */
+    @PostMapping("/archivos/{id}/revisar")
+    public ResponseEntity<ApiResponse<AgenteService.Resultado>> revisar(
+            @AuthenticationPrincipal User currentUser, @PathVariable UUID id) {
+        permisos.exigir(currentUser, Permission.POST_CREATE);
+        return ResponseEntity.ok(ApiResponse.success(agente.revisarAhora(id, ws(currentUser))));
+    }
+
+    /** Una vuelta del agente ya, sin esperar al proceso de fondo. Devuelve cuántas revisó. */
+    @PostMapping("/revisar-ahora")
+    public ResponseEntity<ApiResponse<Integer>> revisarAhora(@AuthenticationPrincipal User currentUser) {
+        permisos.exigir(currentUser, Permission.POST_CREATE);
+        return ResponseEntity.ok(ApiResponse.success(agente.vueltaAhora(ws(currentUser))));
+    }
+
     /** {@code etapa}: OBSERVACION o DESCARTADA. */
     @GetMapping("/archivos")
     public ResponseEntity<ApiResponse<List<MediaAssetResponse>>> archivos(@RequestParam EtapaAgente etapa) {
