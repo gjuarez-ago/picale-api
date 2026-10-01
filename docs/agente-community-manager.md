@@ -21,6 +21,13 @@ Estado: **fase 1 construida en la rama `agente`, sin desplegar.** Ya funciona:
   horario del negocio (2 al día como mucho, a las 11 y a las 18 si caben).
 - Propuestas que vencen sin aprobar se mueven solas al siguiente hueco.
 - Pausa de emergencia, el resumen de todas las cuentas y la pantalla **Agente** de la web.
+- **¿Le cambiamos algo?** en cada propuesta: se escribe el cambio y el agente la rehace desde la
+  foto original (`Cambio`: "sin logo", "tal cual", "diséñala" cambian la decisión; el resto
+  llega como instrucción a quien escribe y al diseño).
+- **Bandeja de todas las cuentas** ("Todas mis cuentas"): aprobar y descartar sin entrar a cada
+  una, con el permiso de la persona en CADA cuenta.
+- **Replanear:** al descartar o rehacer, lo que venía después se adelanta al hueco libre.
+- **Atajos de teclado** en la bandeja: J/K moverse, A aprobar, E cambiar, D descartar.
 
 **Fase 2, en curso:**
 
