@@ -262,6 +262,105 @@ class AgenteServiceTest {
     }
 
     @Test
+    @DisplayName("una que alguien ya está revisando no la toma otro: ni el botón ni la vuelta")
+    void candado() {
+        enElWorkspace(() -> {
+            conInstagram();
+            agente.encender(ws.getId(), true);
+            MediaAsset f = foto("ocupada.jpg");
+            revisaComo(RevisorDeMarca.Veredicto.VA, "va");
+            LocalDateTime ahora = LocalDateTime.now();
+            assertThat(assets.tomar(f.getId(), ahora, ahora.minusMinutes(20))).isEqualTo(1);
+
+            assertThat(agente.vuelta(ws.getId())).isZero();
+            assertThat(org.assertj.core.api.Assertions.catchThrowable(() -> agente.revisarAhora(f.getId(), ws.getId())))
+                    .hasMessageContaining("Ya la estoy revisando");
+            assertThat(posts.propuestasDelAgente()).isEmpty();
+
+            // Si quien la tenía se cayó, pasado el candado la retoma la vuelta.
+            MediaAsset tomada = assets.findById(f.getId()).orElseThrow();
+            tomada.setAgenteTomadoEn(ahora.minusMinutes(AgenteService.CANDADO_MINUTOS + 1));
+            assets.save(tomada);
+            assertThat(agente.vuelta(ws.getId())).isEqualTo(1);
+            assertThat(posts.propuestasDelAgente()).hasSize(1);
+        });
+    }
+
+    @Test
+    @DisplayName("una que nunca se puede revisar va a Observación al tercer intento, no se reintenta para siempre")
+    void topeDeIntentos() {
+        enElWorkspace(() -> {
+            conInstagram();
+            agente.encender(ws.getId(), true);
+            MediaAsset f = foto("rota.jpg");
+            when(revisor.revisar(anyString(), any(), anyBoolean())).thenReturn(null);
+
+            agente.vuelta(ws.getId());
+            agente.vuelta(ws.getId());
+            assertThat(assets.findById(f.getId())).get()
+                    .extracting(MediaAsset::getAgenteEtapa).isEqualTo(EtapaAgente.PENDIENTE);
+            agente.vuelta(ws.getId());
+
+            assertThat(assets.findById(f.getId())).get().satisfies(a -> {
+                assertThat(a.getAgenteEtapa()).isEqualTo(EtapaAgente.OBSERVACION);
+                assertThat(a.getAgenteMotivo()).contains("tras 3 intentos");
+            });
+            agente.vuelta(ws.getId());
+            org.mockito.Mockito.verify(revisor, org.mockito.Mockito.times(3)).revisar(anyString(), any(), anyBoolean());
+        });
+    }
+
+    @Test
+    @DisplayName("no se rehace una propuesta si otra versión de la misma foto ya se aprobó")
+    void cambiarConUnaAprobada() {
+        enElWorkspace(() -> {
+            conInstagram();
+            agente.encender(ws.getId(), true);
+            MediaAsset f = foto("doble.jpg");
+            revisaComo(RevisorDeMarca.Veredicto.VA, "va");
+            agente.vuelta(ws.getId());
+            Post aprobada = posts.propuestasDelAgente().get(0);
+            agente.aprobar(aprobada.getId(), ws.getId());
+
+            // Una segunda propuesta de la misma foto (como una versión de un diseño).
+            Post otra = posts.findById(aprobada.getId()).orElseThrow();
+            com.metricol.api.models.request.PostSaveRequest pedido = new com.metricol.api.models.request.PostSaveRequest();
+            pedido.setCaption("otra versión");
+            pedido.setMediaUrls(List.of(f.getUrl()));
+            pedido.setFormat(com.metricol.api.enums.PostFormat.PHOTO.name());
+            pedido.setSocialAccountIds(cuentasCreadas);
+            Post segunda = postService.crearPropuesta(pedido, otra.getScheduledAt().plusDays(1), "v2",
+                    f.getUrl(), "TAL_CUAL", "DIA_A_DIA");
+
+            assertThat(org.assertj.core.api.Assertions.catchThrowable(
+                    () -> agente.cambiar(segunda.getId(), "sin logo", ws.getId())))
+                    .hasMessageContaining("ya está aprobada");
+            assertThat(posts.findByIdAndDeletedAtIsNull(segunda.getId())).isPresent();
+        });
+    }
+
+    @Test
+    @DisplayName("decidir no vuelve a preparar una que ya está en Por aprobar")
+    void decidirSobreUnaPropuesta() {
+        enElWorkspace(() -> {
+            conInstagram();
+            agente.encender(ws.getId(), true);
+            MediaAsset f = foto("ya.jpg");
+            revisaComo(RevisorDeMarca.Veredicto.VA, "va");
+            agente.vuelta(ws.getId());
+
+            assertThat(org.assertj.core.api.Assertions.catchThrowable(() -> agente.decidir(f.getId(), true, ws.getId())))
+                    .isInstanceOf(IllegalStateException.class);
+            assertThat(org.assertj.core.api.Assertions.catchThrowable(() -> agente.decidir(f.getId(), false, ws.getId())))
+                    .isInstanceOf(IllegalStateException.class);
+            assertThat(posts.propuestasDelAgente()).hasSize(1);
+        });
+    }
+
+    @Autowired
+    private com.metricol.api.service.PostService postService;
+
+    @Test
     @DisplayName("apagado no hace nada: ni revisa ni gasta")
     void apagadoNoHaceNada() {
         enElWorkspace(() -> {

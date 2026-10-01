@@ -39,11 +39,14 @@ public class AgenteController {
     private final AgenteService agente;
     private final PermissionService permisos;
     private final WorkspaceMembershipService membresias;
+    private final com.metricol.api.service.agente.CuentaAparte otraCuenta;
 
-    public AgenteController(AgenteService agente, PermissionService permisos, WorkspaceMembershipService membresias) {
+    public AgenteController(AgenteService agente, PermissionService permisos, WorkspaceMembershipService membresias,
+            com.metricol.api.service.agente.CuentaAparte otraCuenta) {
         this.agente = agente;
         this.permisos = permisos;
         this.membresias = membresias;
+        this.otraCuenta = otraCuenta;
     }
 
     /**
@@ -102,17 +105,16 @@ public class AgenteController {
     public ResponseEntity<ApiResponse<PostResponse>> aprobarEn(
             @AuthenticationPrincipal User currentUser, @PathVariable UUID cuentaId, @PathVariable UUID id) {
         exigirEn(currentUser, cuentaId, "POST_SCHEDULE");
-        PostResponse[] hecho = new PostResponse[1];
-        com.metricol.api.config.TenantIdentifierResolver.comoTenant(cuentaId.toString(),
-                () -> hecho[0] = agente.aprobar(id, cuentaId));
-        return ResponseEntity.ok(ApiResponse.success(hecho[0]));
+        // En un hilo limpio: en el de la petición la sesión ya está atada a la
+        // cuenta actual, y la propuesta se buscaría (y se encolaría) en la equivocada.
+        return ResponseEntity.ok(ApiResponse.success(otraCuenta.en(cuentaId, () -> agente.aprobar(id, cuentaId))));
     }
 
     @PostMapping("/cuentas/{cuentaId}/propuestas/{id}/descartar")
     public ResponseEntity<ApiResponse<Void>> descartarEn(
             @AuthenticationPrincipal User currentUser, @PathVariable UUID cuentaId, @PathVariable UUID id) {
         exigirEn(currentUser, cuentaId, "POST_DELETE");
-        com.metricol.api.config.TenantIdentifierResolver.comoTenant(cuentaId.toString(), () -> agente.descartar(id));
+        otraCuenta.en(cuentaId, () -> agente.descartar(id));
         return ResponseEntity.ok(ApiResponse.success(null));
     }
 

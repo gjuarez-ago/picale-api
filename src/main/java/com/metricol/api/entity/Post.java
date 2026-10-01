@@ -295,6 +295,14 @@ public class Post {
     private String agenteTratamiento;
 
     /**
+     * Qué generación de diseño es: las versiones de un mismo diseño (una por
+     * proporción) comparten este id. Son UNA publicación para la persona: se
+     * aprueban, se descartan y se mueven juntas, y cuentan como un crédito.
+     */
+    @Column(length = 36)
+    private String agenteDisenoId;
+
+    /**
      * De qué clase es, para la mezcla de la semana: PROMOCION, VENTA,
      * DIA_A_DIA o COMUNIDAD. Nula en lo hecho a mano, que cuenta como neutra.
      */

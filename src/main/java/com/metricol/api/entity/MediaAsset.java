@@ -141,6 +141,12 @@ public class MediaAsset {
     @Column(length = 500)
     private String agenteMotivo;
 
+    /** Cuándo lo tomó quien lo está revisando (etapa REVISANDO), para soltarlo si se cayó. */
+    private LocalDateTime agenteTomadoEn;
+
+    /** Cuántas veces no se pudo revisar. Al tercero va a Observación en vez de reintentar para siempre. */
+    private Integer agenteIntentos;
+
     /** Cómo se ve, en 64 bits, para encontrar repetidas. Ver {@code HuellaDeImagen}. Nulo = sin calcular. */
     private Long huella;
 

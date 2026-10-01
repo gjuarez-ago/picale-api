@@ -46,6 +46,24 @@ public interface PostRepository extends JpaRepository<Post, UUID> {
             """)
     List<Post> programadasDelAgente();
 
+    /** Cuántas esperan aprobación: para el estado, que se consulta seguido, sin cargar la lista. */
+    @Query("""
+            select count(p) from Post p
+            where p.deletedAt is null and p.propuestaAgente = true
+              and p.status = com.metricol.api.enums.PostStatus.DRAFT
+            """)
+    long contarPropuestasDelAgente();
+
+    @Query("""
+            select count(p) from Post p
+            where p.deletedAt is null and p.propuestaAgente = true
+              and p.status in (com.metricol.api.enums.PostStatus.SCHEDULED, com.metricol.api.enums.PostStatus.QUEUED)
+            """)
+    long contarProgramadasDelAgente();
+
+    /** Todo lo que salió de una foto, en cualquier estado: las versiones de un diseño, aprobadas o no. */
+    List<Post> findByAgenteFotoUrlAndDeletedAtIsNull(String agenteFotoUrl);
+
     /** ¿Alguna publicación viva de este workspace usa este archivo? */
     @Query("select count(p) > 0 from Post p join p.mediaUrls u where u = :url and p.deletedAt is null")
     boolean existsEnUso(String url);
@@ -56,9 +74,11 @@ public interface PostRepository extends JpaRepository<Post, UUID> {
      * Cuentan también los descartados: el crédito ya se gastó.
      */
     @Query("""
-            select count(distinct p.agenteFotoUrl) from Post p
+            select count(distinct coalesce(p.agenteDisenoId, p.agenteFotoUrl)) from Post p
             where p.propuestaAgente = true and p.agenteTratamiento = 'DISENO' and p.createdAt >= :desde
             """)
+    // Por generación (agenteDisenoId) y no por foto: rediseñar la misma foto con
+    // "¿Le cambiamos algo?" es otro crédito y tiene que contar para el tope.
     long disenosDelAgenteDesde(LocalDateTime desde);
 
     /**

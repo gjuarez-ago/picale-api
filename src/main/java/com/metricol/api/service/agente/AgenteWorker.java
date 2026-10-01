@@ -39,11 +39,41 @@ public class AgenteWorker {
         this.agente = agente;
     }
 
+    /**
+     * Su propio hilo. El agente hace trabajo largo —visión, texto, imágenes,
+     * ffmpeg, transcripción de hasta tres minutos—, y el programador de Spring
+     * tiene un solo hilo para todas las tareas: compartido, una vuelta larga
+     * dejaba sin despachar la cola de publicación y lo programado salía tarde.
+     */
+    private final java.util.concurrent.ExecutorService hilo = java.util.concurrent.Executors.newSingleThreadExecutor(t -> {
+        Thread h = new Thread(t, "agente");
+        h.setDaemon(true);
+        return h;
+    });
+
+    /** Una vuelta a la vez: si la anterior sigue, esta se salta. */
+    private final java.util.concurrent.atomic.AtomicBoolean enCurso = new java.util.concurrent.atomic.AtomicBoolean();
+
+    @jakarta.annotation.PreDestroy
+    void cerrar() {
+        hilo.shutdownNow();
+    }
+
     @Scheduled(fixedDelayString = "${app.agente.delay-ms:120000}", initialDelayString = "${app.agente.initial-delay-ms:60000}")
     public void trabajar() {
-        if (!habilitado) {
+        if (!habilitado || !enCurso.compareAndSet(false, true)) {
             return;
         }
+        hilo.submit(() -> {
+            try {
+                vuelta();
+            } finally {
+                enCurso.set(false);
+            }
+        });
+    }
+
+    void vuelta() {
         List<Workspace> encendidas;
         try {
             encendidas = workspaces.conAgenteEncendido();

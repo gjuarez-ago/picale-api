@@ -46,6 +46,13 @@ public class MediaStatusBackfill {
                 log.warn("No se pudo quitar el check de estado de media_assets: {}",
                         ex.getMessage());
             }
+            // Lo mismo con la etapa del agente: REVISANDO llegó después de crear la columna.
+            try {
+                repository.quitarCheckDeEtapaDelAgente();
+            } catch (Exception ex) {
+                log.warn("No se pudo quitar el check de etapa del agente de media_assets: {}",
+                        ex.getMessage());
+            }
 
             try {
                 int actualizados = repository.marcarAntiguosComoListos();

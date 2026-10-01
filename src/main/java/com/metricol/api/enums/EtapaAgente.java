@@ -20,6 +20,13 @@ public enum EtapaAgente {
     /** La persona aprobó su propuesta: ya está programada. */
     APROBADA,
 
-    /** No se pudo revisar (la IA falló o no hay redes). Se reintenta más tarde. */
-    PENDIENTE
+    /** No se pudo revisar (la IA falló o no hay redes). Se reintenta más tarde, hasta tres veces. */
+    PENDIENTE,
+
+    /**
+     * Alguien lo está revisando ahora (el proceso de fondo o un botón). Es el
+     * candado que evita que dos lo revisen a la vez y salgan dos propuestas.
+     * Si quien lo tomó se cae, a los 20 minutos vuelve a estar libre.
+     */
+    REVISANDO
 }

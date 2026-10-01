@@ -83,6 +83,12 @@ public class AgenteService {
     /** Con menos de esto la marca dice muy poco para descartar con criterio. */
     static final int MARCA_SUFICIENTE = 60;
 
+    /** Cuánto dura el candado de quien revisa un archivo; pasado esto se da por caído y otro lo toma. */
+    static final int CANDADO_MINUTOS = 20;
+
+    /** Cuántas veces se reintenta un archivo que no se pudo revisar antes de mandarlo a Observación. */
+    static final int MAX_INTENTOS = 3;
+
     /** Diseños por semana de una cuenta normal mientras los cobros estén apagados. Las maestras no tienen tope. */
     static final int TOPE_SEMANAL_SIN_COBROS = 3;
 
@@ -111,6 +117,8 @@ public class AgenteService {
     private final AnalistaDeVideo analista;
     /** Quien los edita (hoy nadie: {@code SinEditor}). */
     private final EditorDeVideo editor;
+    /** Para leer o actuar en otra cuenta desde una petición web. */
+    private final CuentaAparte otraCuenta;
     private final com.metricol.api.config.VideoLimitsProperties videoLimites;
 
     public AgenteService(WorkspaceRepository workspaces, MediaAssetRepository assets, PostRepository posts,
@@ -119,7 +127,8 @@ public class AgenteService {
             AiQuotaGuard cupoIa, LogoSobreFoto logo, HuellaDeImagen huellas, CampaignImageService generador,
             CreditService creditos, RetoqueDeFoto retoque, MedidorDeVideo medidor,
             com.metricol.api.config.VideoLimitsProperties videoLimites, AnalistaDeVideo analista,
-            EditorDeVideo editor) {
+            EditorDeVideo editor, CuentaAparte otraCuenta) {
+        this.otraCuenta = otraCuenta;
         this.analista = analista;
         this.editor = editor;
         this.retoque = retoque;
@@ -159,11 +168,11 @@ public class AgenteService {
                 ? assets.porRevisarDelAgente(w.getAgenteDesde())
                 : 0;
         CalendarioDelAgente.Horario h = horario(w);
-        return new Estado(w.conAgente(), w.getAgenteDesde(), porRevisar, posts.propuestasDelAgente().size(),
+        return new Estado(w.conAgente(), w.getAgenteDesde(), porRevisar, posts.contarPropuestasDelAgente(),
                 assets.countByAgenteEtapa(EtapaAgente.OBSERVACION), assets.countByAgenteEtapa(EtapaAgente.DESCARTADA),
                 BrandService.completitud(w).percent(),
                 h.dias().stream().map(java.time.DayOfWeek::getValue).sorted().toList(), h.desde(), h.hasta(),
-                posts.programadasDelAgente().size());
+                posts.contarProgramadasDelAgente());
     }
 
     /**
@@ -186,11 +195,10 @@ public class AgenteService {
             if (m.archivado()) {
                 continue;
             }
-            com.metricol.api.config.TenantIdentifierResolver.comoTenant(m.id().toString(), () -> {
-                Estado e = estado(m.id());
-                cuentas.add(new Cuenta(m.id(), m.name(), m.logoUrl(), m.color(), m.activo(), e.activo(),
-                        e.propuestas(), e.enObservacion(), e.porRevisar()));
-            });
+            // En un hilo limpio: en el de la petición la sesión ya está atada a la cuenta actual.
+            Estado e = otraCuenta.en(m.id(), () -> estado(m.id()));
+            cuentas.add(new Cuenta(m.id(), m.name(), m.logoUrl(), m.color(), m.activo(), e.activo(),
+                    e.propuestas(), e.enObservacion(), e.porRevisar()));
         }
         // Lo que más espera, primero: es lo que el community manager va a atender.
         cuentas.sort(java.util.Comparator.comparingLong((Cuenta c) -> -(c.propuestas() + c.enObservacion())));
@@ -218,11 +226,9 @@ public class AgenteService {
             }
             boolean aprueba = m.permisos() != null && m.permisos().contains("POST_SCHEDULE");
             boolean descarta = m.permisos() != null && m.permisos().contains("POST_DELETE");
-            com.metricol.api.config.TenantIdentifierResolver.comoTenant(m.id().toString(), () -> {
-                for (PostResponse p : propuestas()) {
-                    todas.add(new PropuestaDeCuenta(m.id(), m.name(), m.color(), p, aprueba, descarta));
-                }
-            });
+            for (PostResponse p : otraCuenta.en(m.id(), this::propuestas)) {
+                todas.add(new PropuestaDeCuenta(m.id(), m.name(), m.color(), p, aprueba, descarta));
+            }
         }
         todas.sort(java.util.Comparator.comparing((PropuestaDeCuenta p) -> p.propuesta().getFechaPropuesta(),
                 java.util.Comparator.nullsLast(java.util.Comparator.naturalOrder())));
@@ -309,12 +315,18 @@ public class AgenteService {
         }
 
         int hechas = 0;
-        for (MediaAsset asset : assets.paraElAgente(w.getAgenteDesde(), PageRequest.of(0, POR_VUELTA))) {
+        LocalDateTime ahora = LocalDateTime.now();
+        for (MediaAsset asset : assets.paraElAgente(w.getAgenteDesde(), ahora.minusMinutes(CANDADO_MINUTOS),
+                PageRequest.of(0, POR_VUELTA))) {
             try {
                 cupoIa.exigirCupo();
             } catch (RuntimeException topeDelDia) {
                 log.info("El agente de {} llegó al tope de IA del día; sigue mañana.", workspaceId);
                 break;
+            }
+            // Si un botón ("Revisar ahora", "Que la revise") ya la tomó, es suya.
+            if (!tomar(asset)) {
+                continue;
             }
             if (procesar(asset, w, destino, false)) {
                 hechas++;
@@ -623,7 +635,27 @@ public class AgenteService {
 
         CalendarioDelAgente.Hueco hueco = hueco(w, categoria);
         LocalDateTime fecha = hueco.cuando();
-        int hechas = 0;
+        // Un id por generación: las versiones son una publicación (se aprueban,
+        // descartan y mueven juntas) y un solo crédito para el tope semanal.
+        String disenoId = UUID.randomUUID().toString();
+        List<Post> creadas = new ArrayList<>();
+        try {
+            crearVersiones(diseno, destino, redes, encargo, decision, porQue, categoria, hueco, fecha, asset,
+                    disenoId, creadas);
+        } catch (RuntimeException ex) {
+            // A medias no se queda: si una versión no se pudo guardar, se quitan
+            // las que sí, y la foto sigue tal cual (el diseño ya se pagó, eso no
+            // tiene vuelta, pero no habrá propuestas duplicadas en la siguiente vuelta).
+            log.warn("No se pudieron guardar las versiones del diseño de {}: {}", asset.getId(), ex.toString());
+            creadas.forEach(p -> postService.delete(p.getId()));
+            return false;
+        }
+        return !creadas.isEmpty();
+    }
+
+    private void crearVersiones(CampaignImageService.Diseno diseno, List<SocialAccount> destino, Set<Platform> redes,
+            String encargo, DecisorDelAgente.Decision decision, String porQue, CalendarioDelAgente.Categoria categoria,
+            CalendarioDelAgente.Hueco hueco, LocalDateTime fecha, MediaAsset asset, String disenoId, List<Post> creadas) {
         for (CampaignImageService.Diseno.Version v : diseno.versiones()) {
             List<SocialAccount> suyas = destino.stream().filter(c -> v.redes().contains(c.getPlatform())).toList();
             if (suyas.isEmpty()) {
@@ -651,11 +683,11 @@ public class AgenteService {
             Set<Platform> deEsta = new LinkedHashSet<>(v.redes());
             deEsta.retainAll(redes);
             String motivo = porQue + " " + decision.explicacion() + " (1 crédito) " + cuandoYDonde(deEsta, hueco);
-            postService.crearPropuesta(pedido, fecha, motivo, asset.getUrl(), DecisorDelAgente.Tratamiento.DISENO.name(),
-                    categoria == null ? null : categoria.name());
-            hechas++;
+            Post creada = postService.crearPropuesta(pedido, fecha, motivo, asset.getUrl(),
+                    DecisorDelAgente.Tratamiento.DISENO.name(), categoria == null ? null : categoria.name());
+            creada.setAgenteDisenoId(disenoId);
+            creadas.add(posts.save(creada));
         }
-        return hechas > 0;
     }
 
     /** «Para Instagram y Facebook, el jue 2 oct, 11:00: el primer hueco libre.» O por qué se movió. */
@@ -743,10 +775,16 @@ public class AgenteService {
      */
     void reacomodarVencidas(Workspace w) {
         LocalDateTime limite = LocalDateTime.now().plusMinutes(30);
+        java.util.Set<UUID> hechas = new java.util.HashSet<>();
         for (Post p : posts.propuestasDelAgente()) {
-            if (p.getFechaPropuesta() != null && p.getFechaPropuesta().isBefore(limite)) {
-                moverA(p, huecoSin(w, p).cuando());
+            if (hechas.contains(p.getId()) || p.getFechaPropuesta() == null || !p.getFechaPropuesta().isBefore(limite)) {
+                continue;
             }
+            // Las versiones de un diseño se mueven juntas: son una publicación.
+            List<Post> grupo = grupoDe(p);
+            grupo.forEach(g -> hechas.add(g.getId()));
+            LocalDateTime nueva = huecoSin(w, grupo).cuando();
+            grupo.forEach(g -> moverA(g, nueva));
         }
     }
 
@@ -760,35 +798,42 @@ public class AgenteService {
      */
     int replanear(Workspace w) {
         int movidas = 0;
+        java.util.Set<UUID> hechas = new java.util.HashSet<>();
         // En orden: cada una ve ya dónde quedaron las anteriores.
         for (Post p : posts.propuestasDelAgente()) {
-            if (p.getFechaPropuesta() == null) {
+            if (hechas.contains(p.getId()) || p.getFechaPropuesta() == null) {
                 continue;
             }
-            LocalDateTime antes = huecoSin(w, p).cuando();
+            List<Post> grupo = grupoDe(p);
+            grupo.forEach(g -> hechas.add(g.getId()));
+            LocalDateTime antes = huecoSin(w, grupo).cuando();
             if (antes.isBefore(p.getFechaPropuesta())) {
-                moverA(p, antes);
+                grupo.forEach(g -> moverA(g, antes));
                 movidas++;
             }
         }
         return movidas;
     }
 
-    /** El mejor hueco para esta propuesta, sin contarla a ella misma como ocupada. */
-    private CalendarioDelAgente.Hueco huecoSin(Workspace w, Post p) {
+    /**
+     * El mejor hueco para esta publicación, sin contar sus propias versiones
+     * como ocupadas (de un diseño en dos proporciones se quitan las dos).
+     */
+    private CalendarioDelAgente.Hueco huecoSin(Workspace w, List<Post> grupo) {
         LocalDateTime ahora = LocalDateTime.now();
+        LocalDateTime suya = grupo.get(0).getFechaPropuesta();
+        int porQuitar = suya == null ? 0 : grupo.size();
         List<CalendarioDelAgente.Tomado> tomados = new ArrayList<>();
-        boolean quitada = false;
         for (Object[] r : posts.tomadosConCategoria(ahora)) {
             LocalDateTime cuando = (LocalDateTime) r[0];
-            if (!quitada && cuando != null && cuando.equals(p.getFechaPropuesta())) {
-                quitada = true;
+            if (porQuitar > 0 && cuando != null && cuando.equals(suya)) {
+                porQuitar--;
                 continue;
             }
             tomados.add(new CalendarioDelAgente.Tomado(cuando, (String) r[1]));
         }
         return CalendarioDelAgente.siguienteHueco(ahora, tomados, limites.maxPorDia(), horario(w),
-                CalendarioDelAgente.Categoria.de(p.getAgenteCategoria()));
+                CalendarioDelAgente.Categoria.de(grupo.get(0).getAgenteCategoria()));
     }
 
     /** La mueve de fecha y corrige la fecha que dice su explicación, para que no mienta. */
@@ -817,21 +862,49 @@ public class AgenteService {
      * se toma el siguiente hueco; aprobar tarde no debe publicar de golpe.
      */
     public PostResponse aprobar(UUID postId, UUID workspaceId) {
-        Post post = posts.findByIdAndDeletedAtIsNull(postId)
-                .orElseThrow(() -> new ResourceNotFoundException("Propuesta no encontrada."));
+        Post post = propuestaPendiente(postId);
+        List<Post> grupo = grupoDe(post);
         LocalDateTime cuando = post.getFechaPropuesta();
         if (cuando == null || cuando.isBefore(LocalDateTime.now().plusMinutes(10))) {
-            List<LocalDateTime> tomados = new ArrayList<>(posts.huecosTomados(LocalDateTime.now()));
-            tomados.remove(cuando);
-            cuando = CalendarioDelAgente.siguienteHueco(LocalDateTime.now(), tomados, limites.maxPorDia(),
-                    horario(workspace(workspaceId)));
+            cuando = huecoSin(workspace(workspaceId), grupo).cuando();
         }
-        PostResponse hecho = postService.programarPropuesta(postId, cuando, workspaceId);
+        // Las versiones de un diseño son una publicación: salen juntas, a la misma hora.
+        PostResponse hecho = null;
+        for (Post p : grupo) {
+            PostResponse r = postService.programarPropuesta(p.getId(), cuando, workspaceId);
+            if (p.getId().equals(postId)) {
+                hecho = r;
+            }
+        }
         etapaDeSusFotos(post, EtapaAgente.APROBADA, null);
         if (DecisorDelAgente.Tratamiento.DISENO.name().equals(post.getAgenteTratamiento())) {
             aprender(workspaceId, -1);
         }
         return hecho;
+    }
+
+    /** Una propuesta del agente que sigue esperando aprobación, o un error que lo dice. */
+    private Post propuestaPendiente(UUID postId) {
+        Post post = posts.findByIdAndDeletedAtIsNull(postId)
+                .orElseThrow(() -> new ResourceNotFoundException("Propuesta no encontrada."));
+        if (!post.delAgente() || post.getStatus() != com.metricol.api.enums.PostStatus.DRAFT) {
+            throw new IllegalStateException("Esta publicación ya no está esperando aprobación.");
+        }
+        return post;
+    }
+
+    /**
+     * Las propuestas que son la misma publicación: las versiones de un diseño
+     * (una por proporción) y nada más. Una foto tal cual es un grupo de uno.
+     */
+    private List<Post> grupoDe(Post post) {
+        if (post.getAgenteDisenoId() == null) {
+            return List.of(post);
+        }
+        List<Post> grupo = posts.propuestasDelAgente().stream()
+                .filter(p -> post.getAgenteDisenoId().equals(p.getAgenteDisenoId()))
+                .toList();
+        return grupo.isEmpty() ? List.of(post) : grupo;
     }
 
     /** Aprobar todas: las que no se pueden (sin cupo, sin página) se quedan y se dice cuántas. */
@@ -843,6 +916,12 @@ public class AgenteService {
         int no = 0;
         String motivo = null;
         for (Post p : posts.propuestasDelAgente()) {
+            // Una versión ya salió junto con su diseño hermano en una vuelta anterior.
+            boolean sigue = posts.findByIdAndDeletedAtIsNull(p.getId())
+                    .map(x -> x.getStatus() == com.metricol.api.enums.PostStatus.DRAFT).orElse(false);
+            if (!sigue) {
+                continue;
+            }
             try {
                 aprobar(p.getId(), workspaceId);
                 ok++;
@@ -856,11 +935,16 @@ public class AgenteService {
         return new Lote(ok, no, motivo);
     }
 
-    /** Descartar una propuesta: se elimina y su foto pasa a Descartadas, rescatable. */
+    /**
+     * Descartar una propuesta: se elimina —con sus otras versiones, si es un
+     * diseño— y su foto pasa a Descartadas, rescatable. Solo propuestas del
+     * agente que siguen esperando: por aquí no se elimina otra publicación.
+     */
     public void descartar(UUID postId) {
-        Post post = posts.findByIdAndDeletedAtIsNull(postId)
-                .orElseThrow(() -> new ResourceNotFoundException("Propuesta no encontrada."));
-        postService.delete(postId);
+        Post post = propuestaPendiente(postId);
+        for (Post p : grupoDe(post)) {
+            postService.delete(p.getId());
+        }
         etapaDeSusFotos(post, EtapaAgente.DESCARTADA, "La descartaste tú.");
         UUID workspaceId = post.getTenantId() == null ? null : UUID.fromString(post.getTenantId());
         if (DecisorDelAgente.Tratamiento.DISENO.name().equals(post.getAgenteTratamiento())) {
@@ -897,16 +981,64 @@ public class AgenteService {
         MediaAsset asset = assets.findById(assetId)
                 .orElseThrow(() -> new ResourceNotFoundException("Archivo no encontrado."));
         if (!va) {
+            if (asset.getAgenteEtapa() == EtapaAgente.PROPUESTA || asset.getAgenteEtapa() == EtapaAgente.APROBADA) {
+                throw new IllegalStateException("Ya está en Por aprobar o aprobada: descártala desde ahí.");
+            }
             marcar(asset, EtapaAgente.DESCARTADA, "Dijiste que no va.");
             return;
         }
-        List<SocialAccount> destino = cuentasParaFotos();
-        if (destino.isEmpty() && asset.getType() != com.metricol.api.enums.MediaType.VIDEO) {
-            throw new IllegalStateException("Conecta al menos una red para que pueda proponer esta foto.");
+        List<SocialAccount> destino = validarRevisable(asset);
+        // Las mismas reglas que cualquier revisión: el tope de IA del día y el candado.
+        cupoIa.exigirCupo();
+        if (!tomar(asset)) {
+            throw new IllegalStateException("Ya la estoy revisando; en un momento la ves.");
         }
         if (!procesar(asset, workspace(workspaceId), destino, true)) {
             throw new IllegalStateException("No pude prepararla ahora; lo intento de nuevo en un rato.");
         }
+    }
+
+    /**
+     * Lo que tiene que cumplir un archivo para que se le pida al agente que lo
+     * revise a mano (un botón): ni propuesto ya, ni en una publicación, ni de la
+     * IA, y con redes a dónde ir.
+     *
+     * @return las cuentas para fotos (vacía para un video: él busca las suyas)
+     */
+    private List<SocialAccount> validarRevisable(MediaAsset asset) {
+        boolean esVideo = asset.getType() == com.metricol.api.enums.MediaType.VIDEO;
+        if (esVideo && (asset.getThumbnailUrl() == null || asset.getThumbnailUrl().isBlank())) {
+            throw new IllegalStateException("Este video todavía no tiene portada; en unos segundos ya se puede revisar.");
+        }
+        if (asset.deLaIa()) {
+            throw new IllegalArgumentException("Esta imagen la hizo la IA: el agente solo revisa lo que subes tú.");
+        }
+        if (asset.getAgenteEtapa() == EtapaAgente.PROPUESTA || asset.getAgenteEtapa() == EtapaAgente.APROBADA) {
+            throw new IllegalStateException("Ya la revisé: está en Por aprobar o ya la aprobaste.");
+        }
+        if (posts.existsEnUso(asset.getUrl())) {
+            throw new IllegalStateException("Ya está en una publicación: no la vuelvo a proponer.");
+        }
+        List<SocialAccount> destino = cuentasParaFotos();
+        if (!esVideo && destino.isEmpty()) {
+            throw new IllegalStateException("Conecta al menos una red que acepte fotos para que pueda proponerla.");
+        }
+        return destino;
+    }
+
+    /**
+     * Toma el archivo para revisarlo, o {@code false} si otro ya lo tiene. Es
+     * atómico en la base: el proceso de fondo y un botón nunca lo revisan los
+     * dos a la vez, que es como salían dos propuestas (y dos créditos) por foto.
+     */
+    private boolean tomar(MediaAsset asset) {
+        LocalDateTime ahora = LocalDateTime.now();
+        if (assets.tomar(asset.getId(), ahora, ahora.minusMinutes(CANDADO_MINUTOS)) != 1) {
+            return false;
+        }
+        asset.setAgenteEtapa(EtapaAgente.REVISANDO);
+        asset.setAgenteTomadoEn(ahora);
+        return true;
     }
 
     // ------------------------------------------------------------ ¿le cambiamos algo?
@@ -924,31 +1056,38 @@ public class AgenteService {
         if (cambio.vacio()) {
             throw new IllegalArgumentException("Escribe qué le cambiamos.");
         }
-        Post post = posts.findByIdAndDeletedAtIsNull(postId)
-                .orElseThrow(() -> new ResourceNotFoundException("Propuesta no encontrada."));
-        if (!post.delAgente() || post.getStatus() != com.metricol.api.enums.PostStatus.DRAFT) {
-            throw new IllegalStateException("Esta publicación ya no está esperando aprobación.");
-        }
+        Post post = propuestaPendiente(postId);
         String original = post.getAgenteFotoUrl() != null ? post.getAgenteFotoUrl() : post.getMediaUrls().get(0);
         MediaAsset asset = assets.findByUrlIn(List.of(original)).stream().findFirst()
                 .orElseThrow(() -> new IllegalStateException("Ya no encuentro la foto original de esta propuesta."));
 
-        // Las versiones de un mismo diseño salen de la misma foto: se rehacen juntas.
-        for (Post hermana : posts.propuestasDelAgente()) {
-            if (original.equals(hermana.getAgenteFotoUrl())) {
-                postService.delete(hermana.getId());
-            }
+        // Si otra versión de la misma foto ya se aprobó, rehacerla duplicaría la
+        // publicación (y gastaría otro crédito): primero hay que cancelar esa.
+        boolean otraAprobada = posts.findByAgenteFotoUrlAndDeletedAtIsNull(original).stream()
+                .anyMatch(p -> p.getStatus() != com.metricol.api.enums.PostStatus.DRAFT);
+        if (otraAprobada) {
+            throw new IllegalStateException("Una versión de esta foto ya está aprobada. Cancélala primero para rehacerla.");
         }
-        // Las de antes de existir agenteFotoUrl no salen en el recorrido de arriba.
-        if (posts.findByIdAndDeletedAtIsNull(postId).isPresent()) {
-            postService.delete(postId);
+        // Antes de quitar nada: si hoy ya no hay IA, la propuesta se queda como estaba.
+        cupoIa.exigirCupo();
+
+        // Las versiones de un mismo diseño salen de la misma foto: se rehacen juntas.
+        for (Post hermana : grupoDe(post)) {
+            postService.delete(hermana.getId());
+        }
+        for (Post resto : posts.findByAgenteFotoUrlAndDeletedAtIsNull(original)) {
+            postService.delete(resto.getId());
         }
 
-        cupoIa.exigirCupo();
-        asset.setAgenteEtapa(null);
+        // Pendiente y no a medias: si algo falla de aquí en adelante, la vuelta la retoma.
+        asset.setAgenteEtapa(EtapaAgente.PENDIENTE);
+        assets.save(asset);
+        if (!tomar(asset)) {
+            throw new IllegalStateException("Ya la estoy revisando; en un momento la ves.");
+        }
         Workspace w = workspace(workspaceId);
         if (!procesar(asset, w, cuentasParaFotos(), true, cambio)) {
-            throw new IllegalStateException("No pude rehacerla ahora; lo intento de nuevo en un rato.");
+            throw new IllegalStateException("No pude rehacerla ahora; la vuelvo a preparar en un rato.");
         }
         replanear(w);
         return propuestasDe(original);
@@ -1011,26 +1150,13 @@ public class AgenteService {
     public Resultado revisarAhora(UUID assetId, UUID workspaceId) {
         MediaAsset asset = assets.findById(assetId)
                 .orElseThrow(() -> new ResourceNotFoundException("Archivo no encontrado."));
-        boolean esVideo = asset.getType() == com.metricol.api.enums.MediaType.VIDEO;
-        if (esVideo && (asset.getThumbnailUrl() == null || asset.getThumbnailUrl().isBlank())) {
-            throw new IllegalStateException("Este video todavía no tiene portada; en unos segundos ya se puede revisar.");
-        }
-        if (asset.deLaIa()) {
-            throw new IllegalArgumentException("Esta imagen la hizo la IA: el agente solo revisa lo que subes tú.");
-        }
-        if (asset.getAgenteEtapa() == EtapaAgente.PROPUESTA || asset.getAgenteEtapa() == EtapaAgente.APROBADA) {
-            throw new IllegalStateException("Ya la revisé: está en Por aprobar o ya la aprobaste.");
-        }
-        if (posts.existsEnUso(asset.getUrl())) {
-            throw new IllegalStateException("Ya está en una publicación: no la vuelvo a proponer.");
-        }
-        List<SocialAccount> destino = cuentasParaFotos();
-        if (!esVideo && destino.isEmpty()) {
-            throw new IllegalStateException("Conecta al menos una red que acepte fotos para que pueda proponerla.");
-        }
+        List<SocialAccount> destino = validarRevisable(asset);
         cupoIa.exigirCupo();
-        // Una que descartó por repetida se vuelve a mirar: quien la pide a mano quiere verla revisada.
-        asset.setAgenteEtapa(null);
+        // El candado: si el proceso de fondo ya la está revisando, no se revisa dos veces.
+        // Una que estaba en observación o descartada (por repetida) se vuelve a mirar.
+        if (!tomar(asset)) {
+            throw new IllegalStateException("Ya la estoy revisando; en un momento la ves.");
+        }
         procesar(asset, workspace(workspaceId), destino, false);
         MediaAsset hecho = assets.findById(assetId).orElse(asset);
         return new Resultado(hecho.getAgenteEtapa() == null ? null : hecho.getAgenteEtapa().name(),
@@ -1131,6 +1257,18 @@ public class AgenteService {
     }
 
     private void marcar(MediaAsset asset, EtapaAgente etapa, String motivo) {
+        if (etapa == EtapaAgente.PENDIENTE) {
+            // Algo falló. Se reintenta, pero no para siempre: una que nunca sale
+            // gastaría IA en cada vuelta y taparía a las que se suben después.
+            int intentos = (asset.getAgenteIntentos() == null ? 0 : asset.getAgenteIntentos()) + 1;
+            asset.setAgenteIntentos(intentos);
+            if (intentos >= MAX_INTENTOS) {
+                etapa = EtapaAgente.OBSERVACION;
+                motivo = "No pude revisarla tras " + intentos + " intentos. Si va, dime y la preparo.";
+            }
+        } else if (etapa != EtapaAgente.REVISANDO) {
+            asset.setAgenteIntentos(null);
+        }
         asset.setAgenteEtapa(etapa);
         asset.setAgenteMotivo(motivo == null || motivo.length() <= 500 ? motivo : motivo.substring(0, 500));
         assets.save(asset);

@@ -113,6 +113,13 @@ public interface MediaAssetRepository extends JpaRepository<MediaAsset, UUID> {
             nativeQuery = true)
     void quitarCheckDeEstado();
 
+    /** Lo mismo que {@link #quitarCheckDeEstado()}, para la etapa del agente ({@code EtapaAgente}). */
+    @Modifying
+    @Transactional
+    @Query(value = "alter table media_assets drop constraint if exists media_assets_agente_etapa_check",
+            nativeQuery = true)
+    void quitarCheckDeEtapaDelAgente();
+
     /**
      * Videos ya confirmados a los que todavía les falta la miniatura.
      *
@@ -236,14 +243,40 @@ public interface MediaAssetRepository extends JpaRepository<MediaAsset, UUID> {
               and (m.type = com.metricol.api.enums.MediaType.IMAGE
                    or (m.type = com.metricol.api.enums.MediaType.VIDEO and m.thumbnailUrl is not null))
               and (m.generadaPorIa is null or m.generadaPorIa = false)
-              and (m.agenteEtapa is null or m.agenteEtapa = com.metricol.api.enums.EtapaAgente.PENDIENTE)
+              and (m.agenteEtapa is null or m.agenteEtapa = com.metricol.api.enums.EtapaAgente.PENDIENTE
+                   or (m.agenteEtapa = com.metricol.api.enums.EtapaAgente.REVISANDO and m.agenteTomadoEn < :vencido))
               and m.createdAt >= :desde
               and (m.storageKey is null or m.storageKey not like 'logos/%')
               and not exists (select 1 from Workspace w where w.logoUrl = m.url)
               and not exists (select 1 from Post p join p.mediaUrls u where u = m.url and p.deletedAt is null)
-            order by m.createdAt asc
+            order by coalesce(m.agenteIntentos, 0) asc, m.createdAt asc
             """)
-    List<MediaAsset> paraElAgente(LocalDateTime desde, org.springframework.data.domain.Pageable pagina);
+    // Las que ya fallaron van al final: si no, cuatro que fallan siempre taparían todo lo nuevo.
+    List<MediaAsset> paraElAgente(LocalDateTime desde, LocalDateTime vencido,
+            org.springframework.data.domain.Pageable pagina);
+
+    /**
+     * Toma un archivo para revisarlo: el candado contra dos revisiones a la vez
+     * (el proceso de fondo y un botón, o dos botones). Atómico en la base: de
+     * dos que lo pidan juntos, solo a uno le devuelve 1.
+     *
+     * <p>Se puede tomar si nadie lo tiene, si quedó pendiente, si está en
+     * observación o descartada (la persona pide revisarla otra vez), o si quien
+     * lo tomó lleva más de {@code vencido} sin soltarlo: se cayó a la mitad.
+     */
+    @Modifying
+    @Transactional
+    @Query("""
+            update MediaAsset m
+            set m.agenteEtapa = com.metricol.api.enums.EtapaAgente.REVISANDO, m.agenteTomadoEn = :ahora
+            where m.id = :id
+              and (m.agenteEtapa is null
+                   or m.agenteEtapa in (com.metricol.api.enums.EtapaAgente.PENDIENTE,
+                                        com.metricol.api.enums.EtapaAgente.OBSERVACION,
+                                        com.metricol.api.enums.EtapaAgente.DESCARTADA)
+                   or (m.agenteEtapa = com.metricol.api.enums.EtapaAgente.REVISANDO and m.agenteTomadoEn < :vencido))
+            """)
+    int tomar(UUID id, LocalDateTime ahora, LocalDateTime vencido);
 
     /** Cuántas le faltan por revisar, con las mismas condiciones que {@link #paraElAgente}. */
     @Query("""
@@ -253,7 +286,8 @@ public interface MediaAssetRepository extends JpaRepository<MediaAsset, UUID> {
               and (m.type = com.metricol.api.enums.MediaType.IMAGE
                    or (m.type = com.metricol.api.enums.MediaType.VIDEO and m.thumbnailUrl is not null))
               and (m.generadaPorIa is null or m.generadaPorIa = false)
-              and (m.agenteEtapa is null or m.agenteEtapa = com.metricol.api.enums.EtapaAgente.PENDIENTE)
+              and (m.agenteEtapa is null or m.agenteEtapa in (com.metricol.api.enums.EtapaAgente.PENDIENTE,
+                                                             com.metricol.api.enums.EtapaAgente.REVISANDO))
               and m.createdAt >= :desde
               and (m.storageKey is null or m.storageKey not like 'logos/%')
               and not exists (select 1 from Workspace w where w.logoUrl = m.url)
