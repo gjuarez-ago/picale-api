@@ -84,7 +84,7 @@ public class BrandService {
     // ------------------------------------------------------------------ cuentas
 
     /** Qué tan completa está la marca: cada parte pesa lo mismo. */
-    static Completitud completitud(Workspace w) {
+    public static Completitud completitud(Workspace w) {
         BrandProfile p = w.getBrandProfile() == null ? BrandProfile.VACIO : w.getBrandProfile();
         List<String> faltan = new ArrayList<>();
         if (vacio(w.getGiro())) faltan.add("giro");

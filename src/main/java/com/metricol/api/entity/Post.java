@@ -264,6 +264,24 @@ public class Post {
         return deletedAt != null;
     }
 
+    /**
+     * La preparó el agente y espera aprobación. Es un borrador con fecha
+     * propuesta: aprobarla la programa en {@link #fechaPropuesta}. Nunca sale
+     * sin que alguien la apruebe.
+     */
+    private Boolean propuestaAgente;
+
+    /** Cuándo propone el agente que salga. Solo en sus propuestas. */
+    private LocalDateTime fechaPropuesta;
+
+    /** Qué hizo el agente y por qué, para enseñarlo en la propuesta. */
+    @Column(length = 1000)
+    private String agenteMotivo;
+
+    public boolean delAgente() {
+        return Boolean.TRUE.equals(propuestaAgente);
+    }
+
     @Builder.Default
     @OneToMany(mappedBy = "post", cascade = CascadeType.ALL, orphanRemoval = true)
     private List<PostTarget> targets = new ArrayList<>();

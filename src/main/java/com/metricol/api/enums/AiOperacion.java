@@ -34,5 +34,8 @@ public enum AiOperacion {
     TEXTO_CAMPANA,
 
     /** El director de arte: mira las fotos y arma el plan de la imagen de campaña. */
-    DIRECTOR_ARTE
+    DIRECTOR_ARTE,
+
+    /** El agente revisa una foto contra la marca: si va, por qué, y qué comunicar. */
+    AGENTE_REVISAR
 }

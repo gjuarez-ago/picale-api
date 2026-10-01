@@ -162,6 +162,22 @@ public class Workspace {
         return s != null && !s.isBlank();
     }
 
+    /**
+     * El agente: la IA que revisa lo que se sube, lo prepara y lo deja en
+     * "Por aprobar". Nulo = apagado, que es lo que era todo antes.
+     */
+    private Boolean agenteActivo;
+
+    /**
+     * Desde cuándo está encendido. Solo cuenta lo que se suba a partir de aquí:
+     * encenderlo no debe gastarse de golpe el historial de la cuenta.
+     */
+    private LocalDateTime agenteDesde;
+
+    public boolean conAgente() {
+        return Boolean.TRUE.equals(agenteActivo);
+    }
+
     @CreationTimestamp
     private LocalDateTime createdAt;
 }

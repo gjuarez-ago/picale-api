@@ -6,6 +6,7 @@ import java.util.UUID;
 import org.hibernate.annotations.CreationTimestamp;
 import org.hibernate.annotations.TenantId;
 
+import com.metricol.api.enums.EtapaAgente;
 import com.metricol.api.enums.MediaAssetStatus;
 import com.metricol.api.enums.MediaType;
 
@@ -123,4 +124,24 @@ public class MediaAsset {
      * {@code MediaService.archive}.
      */
     private LocalDateTime archivedAt;
+
+    /**
+     * Si lo creó la IA (una imagen de Crear contenido con IA) y no la persona.
+     *
+     * <p>El agente solo trabaja lo que sube la gente: sin esto haría campañas
+     * de sus propias campañas. Nulo = subido, que es lo que era todo antes.
+     */
+    private Boolean generadaPorIa;
+
+    /** En qué va con el agente. Nulo = no lo ha tocado. Ver {@link EtapaAgente}. */
+    @Enumerated(EnumType.STRING)
+    private EtapaAgente agenteEtapa;
+
+    /** Por qué el agente lo dejó donde lo dejó, para enseñarlo tal cual. */
+    @Column(length = 500)
+    private String agenteMotivo;
+
+    public boolean deLaIa() {
+        return Boolean.TRUE.equals(generadaPorIa);
+    }
 }

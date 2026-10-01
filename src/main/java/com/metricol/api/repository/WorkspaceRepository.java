@@ -26,6 +26,10 @@ public interface WorkspaceRepository extends JpaRepository<Workspace, UUID> {
     /** Cuántos espacios activos tiene. Es lo que se compara con su tope. */
     long countByOrganizationIdAndArchivedAtIsNull(UUID organizationId);
 
+    /** Los espacios con el agente encendido, para que su proceso de fondo los recorra. */
+    @Query("select w from Workspace w where w.agenteActivo = true and w.archivedAt is null")
+    List<Workspace> conAgenteEncendido();
+
     /** Lo creado antes de que existieran las organizaciones. Ver OrganizationService. */
     @Query("select w from Workspace w where w.organization is null")
     List<Workspace> findSinOrganizacion();

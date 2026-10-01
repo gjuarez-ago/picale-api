@@ -205,6 +205,7 @@ public interface MediaAssetRepository extends JpaRepository<MediaAsset, UUID> {
             where m.status = 'READY'
               and m.archived_at is null
               and m.created_at < :limite
+              and m.agente_etapa is null
               and not exists (
                     select 1 from post_media pm
                     join posts p on p.id = pm.post_id
@@ -216,7 +217,51 @@ public interface MediaAssetRepository extends JpaRepository<MediaAsset, UUID> {
             order by m.created_at asc
             limit :tope
             """, nativeQuery = true)
+    // agente_etapa: lo que el agente dejó en observación, descartado o en
+    // espera no está en ninguna publicación, y sin esta condición se borraba
+    // a los tres días. "Nada se borra" es una de sus reglas.
     List<Object[]> findListosSinUsar(LocalDateTime limite, int tope);
+
+    /**
+     * Lo que le toca revisar al agente en el workspace actual: fotos subidas
+     * por la persona desde que se encendió, que nadie ha usado ni él ha visto.
+     *
+     * <p>Solo fotos por ahora: un video necesita su duración para saber a qué
+     * formato va, y eso llega en la siguiente vuelta del agente.
+     */
+    @Query("""
+            select m from MediaAsset m
+            where m.status = com.metricol.api.enums.MediaAssetStatus.READY
+              and m.archivedAt is null
+              and m.type = com.metricol.api.enums.MediaType.IMAGE
+              and (m.generadaPorIa is null or m.generadaPorIa = false)
+              and (m.agenteEtapa is null or m.agenteEtapa = com.metricol.api.enums.EtapaAgente.PENDIENTE)
+              and m.createdAt >= :desde
+              and (m.storageKey is null or m.storageKey not like 'logos/%')
+              and not exists (select 1 from Workspace w where w.logoUrl = m.url)
+              and not exists (select 1 from Post p join p.mediaUrls u where u = m.url and p.deletedAt is null)
+            order by m.createdAt asc
+            """)
+    List<MediaAsset> paraElAgente(LocalDateTime desde, org.springframework.data.domain.Pageable pagina);
+
+    /** Cuántas le faltan por revisar, con las mismas condiciones que {@link #paraElAgente}. */
+    @Query("""
+            select count(m) from MediaAsset m
+            where m.status = com.metricol.api.enums.MediaAssetStatus.READY
+              and m.archivedAt is null
+              and m.type = com.metricol.api.enums.MediaType.IMAGE
+              and (m.generadaPorIa is null or m.generadaPorIa = false)
+              and (m.agenteEtapa is null or m.agenteEtapa = com.metricol.api.enums.EtapaAgente.PENDIENTE)
+              and m.createdAt >= :desde
+              and (m.storageKey is null or m.storageKey not like 'logos/%')
+              and not exists (select 1 from Workspace w where w.logoUrl = m.url)
+              and not exists (select 1 from Post p join p.mediaUrls u where u = m.url and p.deletedAt is null)
+            """)
+    long porRevisarDelAgente(LocalDateTime desde);
+
+    List<MediaAsset> findByAgenteEtapaOrderByCreatedAtDesc(com.metricol.api.enums.EtapaAgente etapa);
+
+    long countByAgenteEtapa(com.metricol.api.enums.EtapaAgente etapa);
 
     /**
      * La clave en R2 de cada archivo que sigue vivo, con su workspace.

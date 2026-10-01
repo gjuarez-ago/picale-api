@@ -28,6 +28,30 @@ public interface PostRepository extends JpaRepository<Post, UUID> {
      */
     List<Post> findByDeletedAtIsNullOrderByScheduledAtAscCreatedAtDesc();
 
+    /** Las propuestas del agente que esperan aprobación, en el orden en que saldrían. */
+    @Query("""
+            select p from Post p
+            where p.deletedAt is null and p.propuestaAgente = true
+              and p.status = com.metricol.api.enums.PostStatus.DRAFT
+            order by p.fechaPropuesta asc
+            """)
+    List<Post> propuestasDelAgente();
+
+    /**
+     * Los huecos ya tomados desde {@code desde}: lo programado o en cola, y lo
+     * que el agente ya propuso. Con esto el agente no apila dos en la misma
+     * hora ni pasa del tope del día.
+     */
+    @Query("""
+            select coalesce(p.scheduledAt, p.fechaPropuesta) from Post p
+            where p.deletedAt is null
+              and ((p.status in (com.metricol.api.enums.PostStatus.SCHEDULED, com.metricol.api.enums.PostStatus.QUEUED)
+                    and p.scheduledAt >= :desde)
+                or (p.status = com.metricol.api.enums.PostStatus.DRAFT and p.propuestaAgente = true
+                    and p.fechaPropuesta >= :desde))
+            """)
+    List<LocalDateTime> huecosTomados(LocalDateTime desde);
+
     /** Una publicación por su id, si la persona todavía la tiene. */
     java.util.Optional<Post> findByIdAndDeletedAtIsNull(UUID id);
 

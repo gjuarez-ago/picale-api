@@ -69,5 +69,14 @@ public class PostResponse {
 
     /** Cuando se archivo, o null si no lo esta. */
     private LocalDateTime archivedAt;
+
+    /** La preparó el agente. Ver {@code Post.propuestaAgente}. */
+    private boolean propuestaAgente;
+
+    /** Cuándo propone el agente que salga; nulo si no es suya. */
+    private LocalDateTime fechaPropuesta;
+
+    /** Qué hizo el agente y por qué. */
+    private String agenteMotivo;
     private List<PostTargetResponse> targets;
 }

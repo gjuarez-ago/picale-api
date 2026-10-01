@@ -37,6 +37,12 @@ public class MediaAssetResponse {
     /** Cuándo se archivó, o nulo si sigue a la vista en Contenido. */
     private LocalDateTime archivedAt;
 
+    /** En qué va con el agente (PROPUESTA, OBSERVACION, DESCARTADA…), o nulo. */
+    private String agenteEtapa;
+
+    /** Por qué el agente lo dejó ahí. */
+    private String agenteMotivo;
+
     /**
      * Cuántas publicaciones (de las que la persona todavía tiene) usan este
      * archivo, y cuántas de esas no han salido aún.

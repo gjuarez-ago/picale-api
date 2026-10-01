@@ -539,6 +539,7 @@ public class CampaignImageService {
                         .sizeBytes((long) jpeg.length)
                         .contentType("image/jpeg")
                         .status(MediaAssetStatus.READY)
+                        .generadaPorIa(true)
                         .build());
             }
             nuevos = assets.saveAll(nuevos);

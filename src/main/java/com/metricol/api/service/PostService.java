@@ -252,6 +252,51 @@ public class PostService {
         return toResponse(postRepository.saveAndFlush(post));
     }
 
+    /**
+     * Una propuesta del agente: un borrador con fecha propuesta y su motivo.
+     *
+     * <p>Pasa por las mismas validaciones que una publicación de la persona
+     * (formato, redes, archivos), así que lo que el agente propone se puede
+     * aprobar sin sorpresas. Como borrador no ocupa cupo ni entra a la cola.
+     */
+    @Transactional
+    public Post crearPropuesta(PostSaveRequest request, LocalDateTime fecha, String motivo) {
+        Post post = Post.builder().build();
+        applyRequest(post, request);
+        post.setStatus(PostStatus.DRAFT);
+        post.setPropuestaAgente(true);
+        post.setFechaPropuesta(fecha);
+        post.setAgenteMotivo(motivo == null || motivo.length() <= 1000 ? motivo : motivo.substring(0, 1000));
+        return postRepository.saveAndFlush(post);
+    }
+
+    /**
+     * Aprobar una propuesta: queda programada en {@code cuando} y entra a la
+     * cola. Es la única puerta de lo que hace el agente a las redes.
+     */
+    @Transactional
+    public PostResponse programarPropuesta(UUID id, LocalDateTime cuando, UUID workspaceId) {
+        Post post = findOrThrow(id);
+        if (!post.delAgente() || post.getStatus() != PostStatus.DRAFT) {
+            throw new IllegalStateException("Esta publicación ya no está esperando aprobación.");
+        }
+        List<SocialAccount> cuentas = post.getTargets().stream().map(PostTarget::getSocialAccount).toList();
+        exigirPaginas(cuentas);
+
+        post.setScheduledAt(cuando);
+        post.setFechaPropuesta(cuando);
+        post.setStatus(PostStatus.SCHEDULED);
+        post.getTargets().forEach(target -> {
+            if (target.getStatus() != PostTargetStatus.PUBLISHED) {
+                target.setStatus(PostTargetStatus.QUEUED);
+            }
+        });
+        cupo.exigirCupo(post, workspaceId, post.getId());
+        Post guardado = postRepository.saveAndFlush(post);
+        cola.encolarPara(guardado.getId(), workspaceId, cuando);
+        return toResponse(guardado);
+    }
+
     private static boolean algunaSalio(Post post) {
         return post.getTargets().stream()
                 .anyMatch(target -> target.getStatus() == PostTargetStatus.PUBLISHED);
@@ -772,7 +817,15 @@ public class PostService {
                 .publishedAt(post.getPublishedAt())
                 .createdAt(post.getCreatedAt())
                 .archivedAt(post.getArchivedAt())
+                .propuestaAgente(post.delAgente())
+                .fechaPropuesta(post.getFechaPropuesta())
+                .agenteMotivo(post.getAgenteMotivo())
                 .targets(targets)
                 .build();
+    }
+
+    /** Para el agente: la misma respuesta que ve la persona. */
+    public PostResponse respuesta(Post post) {
+        return toResponse(post);
     }
 }

@@ -668,6 +668,11 @@ public class MediaService {
         return fileName == null || fileName.isBlank() ? key : fileName;
     }
 
+    /** Para el agente: el archivo tal como lo ve la galería, sin contar usos. */
+    public MediaAssetResponse respuesta(MediaAsset asset) {
+        return toResponse(asset, Uso.NINGUNO);
+    }
+
     /** Un archivo recién subido o confirmado: todavía no lo usa nadie. */
     private MediaAssetResponse toResponse(MediaAsset asset) {
         return toResponse(asset, Uso.NINGUNO);
@@ -687,6 +692,8 @@ public class MediaService {
                         : MediaLimitsProperties.legible(asset.getSizeBytes()))
                 .createdAt(asset.getCreatedAt())
                 .archivedAt(asset.getArchivedAt())
+                .agenteEtapa(asset.getAgenteEtapa() == null ? null : asset.getAgenteEtapa().name())
+                .agenteMotivo(asset.getAgenteMotivo())
                 .usos(uso.total())
                 .usosSinSalir(uso.sinSalir())
                 .enUso(uso.total() > 0)
