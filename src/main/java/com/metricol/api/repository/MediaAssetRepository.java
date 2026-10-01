@@ -371,6 +371,7 @@ public interface MediaAssetRepository extends JpaRepository<MediaAsset, UUID> {
      * persona, no las copias de la IA. Hibernate filtra por tenant. Para el
      * tope diario de subidas ({@code app.media.max-subidas-por-dia}).
      */
-    @Query("select count(a) from MediaAsset a where a.createdAt >= :desde and (a.generadaPorIa is null or a.generadaPorIa = false)")
+    @Query("select count(a) from MediaAsset a where a.createdAt >= :desde and (a.generadaPorIa is null or a.generadaPorIa = false)"
+            + " and (a.storageKey is null or a.storageKey not like 'logos/%')")
     long subidasDesde(@org.springframework.data.repository.query.Param("desde") java.time.LocalDateTime desde);
 }

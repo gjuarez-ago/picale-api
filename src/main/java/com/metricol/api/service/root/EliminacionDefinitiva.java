@@ -372,8 +372,8 @@ public class EliminacionDefinitiva {
             String perfil = e.getUploadPostProfile() == null || e.getUploadPostProfile().isBlank()
                     ? id.toString() : e.getUploadPostProfile();
             // Un perfil que comparte con un espacio que se queda no se borra.
-            List<UUID> loUsan = sql.queryForList("select id from workspaces where upload_post_profile = :p "
-                    + "or cast(id as varchar) = :p", Map.of("p", perfil), UUID.class);
+            List<UUID> loUsan = sql.queryForList("select id from workspaces where lower(trim(upload_post_profile)) = "
+                    + "lower(trim(:p)) or cast(id as varchar) = lower(trim(:p))", Map.of("p", perfil), UUID.class);
             if (seVan.containsAll(loUsan)) {
                 perfiles.add(perfil);
             }

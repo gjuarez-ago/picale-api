@@ -84,6 +84,7 @@ public interface PostTargetRepository extends JpaRepository<PostTarget, UUID> {
             join social_accounts sa on sa.id = pt.social_account_id
             left join workspaces w on cast(w.id as varchar) = p.tenant_id
             where pt.status = 'PUBLISHED'
+              and p.deleted_at is null
               and pt.external_post_id is not null and pt.external_post_id <> ''
               and pt.published_at between :desde and :hasta
               and (pt.metricas_en is null
@@ -109,9 +110,34 @@ public interface PostTargetRepository extends JpaRepository<PostTarget, UUID> {
             join posts p on p.id = pt.post_id
             join social_accounts sa on sa.id = pt.social_account_id
             where p.tenant_id = :tenant
+              and p.deleted_at is null
               and pt.metricas_en is not null
               and coalesce(pt.vistas, pt.alcance, pt.me_gusta, pt.comentarios, pt.compartidos, pt.guardados) is not null
               and pt.published_at >= :desde
             """, nativeQuery = true)
     List<Object[]> medidasDe(@Param("tenant") String tenant, @Param("desde") LocalDateTime desde);
+
+    /**
+     * Guarda lo medido tocando SOLO esas columnas. Con un {@code save} de la
+     * entidad se reescribía la fila entera, y si en ese momento la publicación
+     * confirmaba su estado o su enlace, se pisaba con lo viejo.
+     */
+    @org.springframework.data.jpa.repository.Modifying
+    @org.springframework.transaction.annotation.Transactional
+    @Query(value = """
+            update post_targets set vistas = :vistas, alcance = :alcance, me_gusta = :meGusta,
+                   comentarios = :comentarios, compartidos = :compartidos, guardados = :guardados,
+                   metricas_en = :en
+            where id = :id
+            """, nativeQuery = true)
+    int guardarMetricas(@Param("id") UUID id, @Param("vistas") Long vistas, @Param("alcance") Long alcance,
+            @Param("meGusta") Long meGusta, @Param("comentarios") Long comentarios,
+            @Param("compartidos") Long compartidos, @Param("guardados") Long guardados,
+            @Param("en") LocalDateTime en);
+
+    /** Apunta el intento sin números: la red no dio nada esta vez. */
+    @org.springframework.data.jpa.repository.Modifying
+    @org.springframework.transaction.annotation.Transactional
+    @Query(value = "update post_targets set metricas_en = :en where id = :id", nativeQuery = true)
+    int marcarMedido(@Param("id") UUID id, @Param("en") LocalDateTime en);
 }

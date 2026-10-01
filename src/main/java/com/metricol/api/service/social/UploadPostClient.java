@@ -60,7 +60,22 @@ public class UploadPostClient {
                 .baseUrl(props.getBaseUrl())
                 .defaultHeader("Authorization", "Apikey " + props.getApiKey())
                 .build();
+        // Las consultas (métricas, lugares) con tiempo límite: una que se cuelga
+        // no puede dejar atorado al worker de métricas ni a una petición web.
+        // Las subidas no: un video tarda lo que tarde.
+        org.springframework.http.client.JdkClientHttpRequestFactory conLimite =
+                new org.springframework.http.client.JdkClientHttpRequestFactory(java.net.http.HttpClient.newBuilder()
+                        .connectTimeout(Duration.ofSeconds(10)).build());
+        conLimite.setReadTimeout(Duration.ofSeconds(30));
+        this.consultas = RestClient.builder()
+                .baseUrl(props.getBaseUrl())
+                .defaultHeader("Authorization", "Apikey " + props.getApiKey())
+                .requestFactory(conLimite)
+                .build();
     }
+
+    /** Para leer (métricas, lugares de TikTok): con tiempo límite. */
+    private final RestClient consultas;
 
     public Map<String, Object> publishText(String user, List<String> platforms, String title) {
         return publishText(user, platforms, title, Ubicacion.NINGUNA);
@@ -187,7 +202,7 @@ public class UploadPostClient {
      */
     @SuppressWarnings("unchecked")
     public Map<String, Object> metricasDePublicacion(String user, String platform, String platformPostId) {
-        return restClient.get()
+        return consultas.get()
                 .uri(uriBuilder -> uriBuilder.path("/uploadposts/post-analytics")
                         .queryParam("platform_post_id", platformPostId)
                         .queryParam("platform", platform)
@@ -209,7 +224,7 @@ public class UploadPostClient {
      */
     @SuppressWarnings("unchecked")
     public List<LugarTiktok> buscarLugaresTiktok(String user, String texto) {
-        Map<String, Object> cuerpo = restClient.get()
+        Map<String, Object> cuerpo = consultas.get()
                 .uri(uriBuilder -> uriBuilder.path("/uploadposts/tiktok/locations")
                         .queryParam("q", texto)
                         .queryParam("user", user)

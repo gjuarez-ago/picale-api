@@ -13,7 +13,6 @@ import org.springframework.stereotype.Component;
 import org.springframework.web.client.HttpClientErrorException;
 
 import com.metricol.api.config.UploadPostProperties;
-import com.metricol.api.entity.PostTarget;
 import com.metricol.api.repository.PostTargetRepository;
 import com.metricol.api.service.social.UploadPostClient;
 
@@ -122,23 +121,24 @@ public class MetricasWorker {
         return leidas;
     }
 
+    /**
+     * Solo las columnas de métricas, con un UPDATE: no pisa el estado ni el
+     * enlace que la publicación pudiera estar confirmando a la vez. Si la fila
+     * ya no existe (se eliminó en medio) no pasa nada y sigue con la próxima.
+     */
     private boolean guardar(UUID id, LecturaDeMetricas.Metricas m) {
-        PostTarget t = destinos.findById(id).orElse(null);
-        if (t == null) {
+        try {
+            LocalDateTime ahora = LocalDateTime.now();
+            if (m != null && !m.vacias()) {
+                return destinos.guardarMetricas(id, m.vistas(), m.alcance(), m.meGusta(), m.comentarios(),
+                        m.compartidos(), m.guardados(), ahora) == 1;
+            }
+            destinos.marcarMedido(id, ahora);
+            return false;
+        } catch (RuntimeException ex) {
+            log.warn("No se pudieron guardar las métricas de {}: {}", id, ex.toString());
             return false;
         }
-        boolean hay = m != null && !m.vacias();
-        if (hay) {
-            t.setVistas(m.vistas());
-            t.setAlcance(m.alcance());
-            t.setMeGusta(m.meGusta());
-            t.setComentarios(m.comentarios());
-            t.setCompartidos(m.compartidos());
-            t.setGuardados(m.guardados());
-        }
-        t.setMetricasEn(LocalDateTime.now());
-        destinos.save(t);
-        return hay;
     }
 
     private void dormir() {
