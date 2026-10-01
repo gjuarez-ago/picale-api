@@ -403,7 +403,7 @@ public class AgenteService {
 
             if (decision.tratamiento() == DecisorDelAgente.Tratamiento.DISENO) {
                 if (proponerDiseno(asset, w, destino, redes, encargo, decision, porQue,
-                        categoria(revision.diagnostico()))) {
+                        categoria(revision.diagnostico()), ubicacionPara(w, redes, revision.tipo()))) {
                     marcar(asset, EtapaAgente.PROPUESTA, "Le hice diseño con IA.");
                     return true;
                 }
@@ -451,8 +451,10 @@ public class AgenteService {
             Map<String, String> porRed = new LinkedHashMap<>();
             borrador.textos().forEach((red, t) -> porRed.put(red.name(), t));
             pedido.setCaptionsPorRed(porRed);
+            ConUbicacion lugar = ubicacionPara(w, redes, revision.tipo());
+            pedido.setConUbicacion(lugar.va());
 
-            String motivo = porQue + " " + String.join(" ", pasos) + " " + cuandoYDonde(redes, hueco);
+            String motivo = porQue + " " + String.join(" ", pasos) + lugar.frase() + " " + cuandoYDonde(redes, hueco);
             postService.crearPropuesta(pedido, fecha, motivo, asset.getUrl(), decision.tratamiento().name(),
                     categoria(revision.diagnostico()).name());
 
@@ -587,13 +589,15 @@ public class AgenteService {
             Map<String, String> porRed = new LinkedHashMap<>();
             borrador.textos().forEach((red, t) -> porRed.put(red.name(), t));
             pedido.setCaptionsPorRed(porRed);
+            ConUbicacion lugar = ubicacionPara(w, redes, analisis.tipo());
+            pedido.setConUbicacion(lugar.va());
 
             String porQue = forzar ? "Me dijiste que va." : "Va con tu marca: " + sinPunto(analisis.motivo()) + ".";
             String fuera = todas.size() > destino.size()
                     ? " " + todas.stream().filter(c -> !destino.contains(c)).map(c -> c.getPlatform().getLabel())
                             .distinct().collect(Collectors.joining(" y ")) + " no: dura más de lo que acepta."
                     : "";
-            String motivo = porQue + " " + decision.explicacion() + fuera + " " + cuandoYDonde(redes, hueco);
+            String motivo = porQue + " " + decision.explicacion() + fuera + lugar.frase() + " " + cuandoYDonde(redes, hueco);
             Post propuesta = postService.crearPropuesta(pedido, hueco.cuando(), motivo, video.getUrl(),
                     decision.tratamiento() == DecisorDeVideo.Tratamiento.RECORTAR ? "RECORTE"
                             : DecisorDelAgente.Tratamiento.TAL_CUAL.name(),
@@ -619,7 +623,8 @@ public class AgenteService {
      * @return si salió; {@code false} = va tal cual, sin gastar
      */
     private boolean proponerDiseno(MediaAsset asset, Workspace w, List<SocialAccount> destino, Set<Platform> redes,
-            String encargo, DecisorDelAgente.Decision decision, String porQue, CalendarioDelAgente.Categoria categoria) {
+            String encargo, DecisorDelAgente.Decision decision, String porQue, CalendarioDelAgente.Categoria categoria,
+            ConUbicacion lugar) {
         CampaignImageService.Diseno diseno;
         try {
             diseno = generador.disenarParaElAgente(w, new CampaignImageRequest(1,
@@ -645,7 +650,7 @@ public class AgenteService {
         List<Post> creadas = new ArrayList<>();
         try {
             crearVersiones(diseno, destino, redes, encargo, decision, porQue, categoria, hueco, fecha, asset,
-                    disenoId, creadas);
+                    disenoId, creadas, lugar);
         } catch (RuntimeException ex) {
             // A medias no se queda: si una versión no se pudo guardar, se quitan
             // las que sí, y la foto sigue tal cual (el diseño ya se pagó, eso no
@@ -659,7 +664,8 @@ public class AgenteService {
 
     private void crearVersiones(CampaignImageService.Diseno diseno, List<SocialAccount> destino, Set<Platform> redes,
             String encargo, DecisorDelAgente.Decision decision, String porQue, CalendarioDelAgente.Categoria categoria,
-            CalendarioDelAgente.Hueco hueco, LocalDateTime fecha, MediaAsset asset, String disenoId, List<Post> creadas) {
+            CalendarioDelAgente.Hueco hueco, LocalDateTime fecha, MediaAsset asset, String disenoId, List<Post> creadas,
+            ConUbicacion lugar) {
         for (CampaignImageService.Diseno.Version v : diseno.versiones()) {
             List<SocialAccount> suyas = destino.stream().filter(c -> v.redes().contains(c.getPlatform())).toList();
             if (suyas.isEmpty()) {
@@ -683,15 +689,37 @@ public class AgenteService {
             pedido.setFormat(PostFormat.PHOTO.name());
             pedido.setSocialAccountIds(suyas.stream().map(SocialAccount::getId).toList());
             pedido.setCaptionsPorRed(porRed);
+            pedido.setConUbicacion(lugar.va());
 
             Set<Platform> deEsta = new LinkedHashSet<>(v.redes());
             deEsta.retainAll(redes);
-            String motivo = porQue + " " + decision.explicacion() + " (" + creditos.porGeneracion() + " créditos) " + cuandoYDonde(deEsta, hueco);
+            String motivo = porQue + " " + decision.explicacion() + " (" + creditos.porGeneracion() + " créditos)"
+                    + lugar.frase() + " " + cuandoYDonde(deEsta, hueco);
             Post creada = postService.crearPropuesta(pedido, fecha, motivo, asset.getUrl(),
                     DecisorDelAgente.Tratamiento.DISENO.name(), categoria == null ? null : categoria.name());
             creada.setAgenteDisenoId(disenoId);
             creadas.add(posts.save(creada));
         }
+    }
+
+    /** Si la publicación sale con la ubicación del negocio, y cómo se dice en el porqué («» si no aplica). */
+    record ConUbicacion(boolean va, String frase) {
+    }
+
+    /**
+     * La ubicación va solo si el negocio tiene local (y la puso), alguna red del
+     * envío la admite, y lo que se ve es del negocio ({@link UbicacionEnLaPublicacion}).
+     */
+    static ConUbicacion ubicacionPara(Workspace w, Set<Platform> redes, String tipo) {
+        boolean puesta = com.metricol.api.service.social.Ubicacion.de(w).alguna();
+        boolean redQueLaAdmite = redes.contains(Platform.INSTAGRAM) || redes.contains(Platform.TIKTOK);
+        if (!puesta || !redQueLaAdmite) {
+            return new ConUbicacion(false, "");
+        }
+        if (UbicacionEnLaPublicacion.va(tipo)) {
+            return new ConUbicacion(true, " Le puse tu ubicación: es de tu negocio.");
+        }
+        return new ConUbicacion(false, " Sin ubicación: lo que se ve no es de tu local.");
     }
 
     /** «Para Instagram y Facebook, el jue 2 oct, 11:00: el primer hueco libre.» O por qué se movió. */

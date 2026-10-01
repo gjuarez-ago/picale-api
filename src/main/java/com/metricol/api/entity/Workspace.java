@@ -202,6 +202,13 @@ public class Workspace {
     // Dónde está el negocio, para etiquetar sus publicaciones. Cada red la pide
     // a su manera (Facebook por API no la admite): se guarda lo de cada una.
 
+    /**
+     * Si sus clientes van a un local: solo entonces se usa la ubicación. Una
+     * tienda en línea o un servicio a domicilio no tiene un lugar que etiquetar.
+     * Nulo = no.
+     */
+    private Boolean ubicacionActiva;
+
     /** Cómo se llama el lugar, para enseñarlo. Nulo = sin ubicación. */
     @Column(length = 200)
     private String ubicacionNombre;

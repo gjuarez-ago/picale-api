@@ -26,6 +26,8 @@ public class PostResponse {
 
     /** Si TikTok le pone música al carrusel; ver {@code Post.musicaAutomatica}. Nulo = apagado. */
     private Boolean musicaAutomatica;
+    /** Si sale con la ubicación del negocio; nulo = sí. */
+    private Boolean conUbicacion;
 
     /** Todas las fotos, en orden. El video, cuando lo es, va solo aquí. */
     private List<String> mediaUrls;

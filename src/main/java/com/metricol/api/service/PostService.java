@@ -409,6 +409,9 @@ public class PostService {
         if (request.getMusicaAutomatica() != null) {
             post.setMusicaAutomatica(request.getMusicaAutomatica());
         }
+        if (request.getConUbicacion() != null) {
+            post.setConUbicacion(request.getConUbicacion());
+        }
         // La idea dictada, aparte del texto que sale. Puede venir vacia desde
         // clientes que aun no la mandan; ahi se conserva la que hubiera.
         if (request.getBrief() != null && !request.getBrief().isBlank()) {
@@ -821,6 +824,7 @@ public class PostService {
                 .brief(post.getBrief())
                 .titulo(post.getTitulo())
                 .musicaAutomatica(post.getMusicaAutomatica())
+                .conUbicacion(post.getConUbicacion())
                 // Se manda la lista Y el primero como mediaUrl: una app que
                 // solo conoce el campo viejo sigue enseñando su miniatura.
                 .mediaUrls(List.copyOf(post.getMediaUrls()))

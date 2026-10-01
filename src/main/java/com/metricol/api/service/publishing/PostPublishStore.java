@@ -234,7 +234,8 @@ public class PostPublishStore {
                 post.formatoEfectivo(),
                 Boolean.TRUE.equals(post.getMusicaAutomatica()),
                 post.getPortadaMs(),
-                ubicacionDe(workspaceId),
+                Boolean.FALSE.equals(post.getConUbicacion())
+                        ? com.metricol.api.service.social.Ubicacion.NINGUNA : ubicacionDe(workspaceId),
                 destinos,
                 null);
     }

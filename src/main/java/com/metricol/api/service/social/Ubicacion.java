@@ -23,11 +23,16 @@ public record Ubicacion(String instagramId, String tiktokId, String tiktokNombre
     private static final Pattern ENLACE_INSTAGRAM = Pattern.compile("locations/(\\d{3,})");
     private static final Pattern SOLO_NUMERO = Pattern.compile("^\\d{3,}$");
 
+    /** La del negocio, o ninguna si no tiene local (ver {@code Workspace.ubicacionActiva}). */
     public static Ubicacion de(Workspace w) {
-        if (w == null) {
+        if (w == null || !Boolean.TRUE.equals(w.getUbicacionActiva())) {
             return NINGUNA;
         }
         return new Ubicacion(w.getUbicacionInstagramId(), w.getUbicacionTiktokId(), w.getUbicacionTiktokNombre());
+    }
+
+    public boolean alguna() {
+        return enInstagram() || enTiktok();
     }
 
     public boolean enInstagram() {

@@ -365,8 +365,14 @@ Reglas de gasto:
   separadas 3 h (si solo cabe una, la acompaña una de las de siempre), y la propuesta lo dice. Quien
   escribe recibe "hashtags que le han funcionado / evítalos" en el contexto del negocio (agente y
   "crear con IA").
-- **Ubicación.** Se configura una vez en la pantalla del agente:
+- **Ubicación.** No aplica a todos los giros, así que va en Marca, apagada, con la pregunta
+  "¿tus clientes van a un local?" (`Workspace.ubicacionActiva`):
   - Instagram: `location_id`, sacado del enlace de la ubicación que se pega desde la app.
   - TikTok: `tiktok_location_id` + `tiktok_location_name`, elegido con `GET /uploadposts/tiktok/locations?q=`.
   - Facebook no tiene campo.
-  Se manda sola en cada envío (`UploadPostClient.ubicacion`).
+  - Cada publicación decide (`Post.conUbicacion`, nulo = sí). El agente la pone solo cuando lo que
+    se ve es del negocio (`UbicacionEnLaPublicacion`: lugar, producto, equipo, evento, promoción,
+    demostración, detrás de cámaras). No la pone en recorridos (en una inmobiliaria son la
+    propiedad), testimonios ni en lo que no reconoce, y lo dice en el porqué.
+  - En Crear publicación hay un interruptor para quitarla o ponerla.
+  - Pendiente: la ubicación propia de cada publicación (la casa que se vende, el lugar del evento).

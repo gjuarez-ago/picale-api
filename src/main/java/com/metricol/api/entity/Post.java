@@ -97,6 +97,13 @@ public class Post {
     private Boolean musicaAutomatica;
 
     /**
+     * Si sale con la ubicación del negocio (si el negocio la tiene puesta).
+     * {@code false} = esta no, aunque la tenga. Nulo = sí: lo de antes y lo que
+     * no lo dice sale con ella. El agente lo decide por lo que se ve en la foto.
+     */
+    private Boolean conUbicacion;
+
+    /**
      * Las fotos —o el video— de la publicación, en el orden en que se verán.
      *
      * <p>Una lista y no un solo campo porque un carrusel es UNA publicación

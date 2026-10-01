@@ -24,13 +24,14 @@ public class UbicacionDelNegocio {
     private static final Logger log = LoggerFactory.getLogger(UbicacionDelNegocio.class);
 
     /** Lo que se ve y se edita en la pantalla. */
-    public record Vista(String nombre, String instagramId, String tiktokId, String tiktokNombre) {
+    /** @param activa si sus clientes van a un local: sin eso no se usa */
+    public record Vista(boolean activa, String nombre, String instagramId, String tiktokId, String tiktokNombre) {
     }
 
     /**
      * @param instagram el enlace de la ubicación en Instagram o su número; vacío = quitarla
      */
-    public record Pedido(String nombre, String instagram, String tiktokId, String tiktokNombre) {
+    public record Pedido(Boolean activa, String nombre, String instagram, String tiktokId, String tiktokNombre) {
     }
 
     private final WorkspaceRepository workspaces;
@@ -45,13 +46,19 @@ public class UbicacionDelNegocio {
 
     public Vista ver(UUID workspaceId) {
         Workspace w = workspace(workspaceId);
-        return new Vista(w.getUbicacionNombre(), w.getUbicacionInstagramId(), w.getUbicacionTiktokId(),
-                w.getUbicacionTiktokNombre());
+        return new Vista(Boolean.TRUE.equals(w.getUbicacionActiva()), w.getUbicacionNombre(),
+                w.getUbicacionInstagramId(), w.getUbicacionTiktokId(), w.getUbicacionTiktokNombre());
     }
 
     @Transactional
     public Vista guardar(UUID workspaceId, Pedido pedido) {
         Workspace w = workspace(workspaceId);
+        // Apagarla no borra los lugares: si vuelve a tener local, ahí siguen.
+        if (Boolean.FALSE.equals(pedido.activa())) {
+            w.setUbicacionActiva(false);
+            workspaces.save(w);
+            return ver(workspaceId);
+        }
         String instagram = limpio(pedido.instagram());
         String idInstagram = instagram == null ? null : Ubicacion.idDeInstagram(instagram);
         if (instagram != null && idInstagram == null) {
@@ -71,6 +78,7 @@ public class UbicacionDelNegocio {
         w.setUbicacionInstagramId(idInstagram);
         w.setUbicacionTiktokId(recortar(tiktokId, 80));
         w.setUbicacionTiktokNombre(recortar(tiktokNombre, 200));
+        w.setUbicacionActiva(idInstagram != null || tiktokId != null);
         workspaces.save(w);
         return ver(workspaceId);
     }

@@ -36,6 +36,9 @@ public class PostSaveRequest {
      */
     private Boolean musicaAutomatica;
 
+    /** Que salga con la ubicación del negocio. Nulo = se conserva lo que hubiera (o sí, si es nueva). */
+    private Boolean conUbicacion;
+
     /**
      * Las fotos de la publicación, en el orden en que se verán, o un solo
      * video. El tope de fotos lo pone {@code app.media.max-images-per-post} y
