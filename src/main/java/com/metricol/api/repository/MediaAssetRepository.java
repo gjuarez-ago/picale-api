@@ -365,4 +365,12 @@ public interface MediaAssetRepository extends JpaRepository<MediaAsset, UUID> {
             limit :tope
             """, nativeQuery = true)
     List<Object[]> findVideosLiberables(LocalDateTime limite, int tope);
+
+    /**
+     * Cuántos archivos subió el workspace desde {@code desde}: los de la
+     * persona, no las copias de la IA. Hibernate filtra por tenant. Para el
+     * tope diario de subidas ({@code app.media.max-subidas-por-dia}).
+     */
+    @Query("select count(a) from MediaAsset a where a.createdAt >= :desde and (a.generadaPorIa is null or a.generadaPorIa = false)")
+    long subidasDesde(@org.springframework.data.repository.query.Param("desde") java.time.LocalDateTime desde);
 }

@@ -37,6 +37,20 @@ public class MediaLimitsProperties {
      */
     private long maxBytesPerWorkspace = 1024L * 1024 * 1024;
 
+    /**
+     * Archivos que puede subir un workspace en un día (desde las 0:00). Es el
+     * freno de una carga masiva: sin él, pegar o arrastrar cientos de fotos
+     * llena el espacio y la cola del agente de golpe. 0 = sin tope. No cuentan
+     * las copias que hace la IA (retoques, logo, diseños).
+     */
+    private int maxSubidasPorDia = 100;
+
+    /** Cuántos archivos acepta la web en una sola tanda (pegar, arrastrar o elegir). */
+    private int maxPorTanda = 20;
+
+    /** De esos, cuántos pueden ser video: pesan cien veces más que una foto. */
+    private int maxVideosPorTanda = 5;
+
     public boolean cuotaActiva() {
         return maxBytesPerWorkspace > 0;
     }

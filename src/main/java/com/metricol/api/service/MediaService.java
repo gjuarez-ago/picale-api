@@ -293,6 +293,7 @@ public class MediaService {
 
         String contentType = normalizar(request.getContentType());
         exigirTipoDeMedio(contentType);
+        exigirTopeDiario();
         cuota.verificar(request.getSizeBytes(), request.getFileName());
 
         String key = storage.claveNueva(workspaceId, request.getFileName(), contentType);
@@ -474,7 +475,26 @@ public class MediaService {
      */
     @Transactional
     public MediaAssetResponse upload(MultipartFile file, UUID workspaceId) {
+        exigirTopeDiario();
         return upload(file, workspaceId, R2StorageService.CARPETA_MEDIA);
+    }
+
+    /** Lo que lleva subido hoy el workspace (desde las 0:00). */
+    private long subidasHoy() {
+        return repository.subidasDesde(java.time.LocalDate.now().atStartOfDay());
+    }
+
+    /**
+     * El freno de la carga masiva: pasado el tope del día no se aparta más
+     * espacio. Va antes que la cuota: es la respuesta más clara cuando alguien
+     * pega cientos de fotos.
+     */
+    private void exigirTopeDiario() {
+        int tope = limites.getMaxSubidasPorDia();
+        if (tope > 0 && subidasHoy() >= tope) {
+            throw new QuotaExceededException("DAILY_UPLOADS_EXCEEDED",
+                    "Ya subiste " + tope + " archivos hoy en este espacio. Mañana puedes seguir.");
+        }
     }
 
     /**
@@ -523,6 +543,10 @@ public class MediaService {
                 .limitLabel(uso.limite() == null ? null : MediaLimitsProperties.legible(uso.limite()))
                 .maxFileBytes(limites.getMaxFileBytes())
                 .maxImagesPerPost(limites.getMaxImagesPerPost())
+                .maxPorTanda(limites.getMaxPorTanda())
+                .maxVideosPorTanda(limites.getMaxVideosPorTanda())
+                .maxSubidasPorDia(limites.getMaxSubidasPorDia())
+                .subidasHoy(subidasHoy())
                 .build();
     }
 

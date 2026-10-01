@@ -31,4 +31,10 @@ public class StorageUsageResponse {
     /** Topes que la app necesita conocer antes de dejar elegir archivos. */
     private long maxFileBytes;
     private int maxImagesPerPost;
+
+    /** Carga masiva: por tanda, videos por tanda, y lo que lleva y le queda hoy (0 = sin tope). */
+    private int maxPorTanda;
+    private int maxVideosPorTanda;
+    private int maxSubidasPorDia;
+    private long subidasHoy;
 }
