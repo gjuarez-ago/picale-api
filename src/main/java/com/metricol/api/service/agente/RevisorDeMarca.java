@@ -135,7 +135,8 @@ public class RevisorDeMarca {
         }
     }
 
-    static String contexto(Redactor.Negocio n, boolean marcaCompleta) {
+    /** Lo que se le cuenta de la marca a la IA. Público: el Analista de video lo usa igual. */
+    public static String contexto(Redactor.Negocio n, boolean marcaCompleta) {
         MarcaDelNegocio m = n.marca() == null ? MarcaDelNegocio.VACIA : n.marca();
         StringBuilder t = new StringBuilder("El negocio:\n");
         linea(t, "Nombre", n.nombre());

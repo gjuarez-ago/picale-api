@@ -104,6 +104,9 @@ class AgenteServiceTest {
     @MockitoBean
     private com.metricol.api.service.media.MedidorDeVideo medidor;
 
+    @MockitoBean
+    private com.metricol.api.service.agente.video.AnalistaDeVideo analista;
+
     private MediaAsset video(String nombre) {
         MediaAsset a = assets.save(MediaAsset.builder()
                 .fileName(nombre)
@@ -124,7 +127,11 @@ class AgenteServiceTest {
             agente.encender(ws.getId(), true);
             MediaAsset v = video("recorrido.mp4");
             when(medidor.medir(any())).thenReturn(new com.metricol.api.service.media.FfmpegImagen.MedidasVideo(1080, 1920, 20.4));
-            revisaComo(RevisorDeMarca.Veredicto.VA, "es un recorrido del depa");
+            when(analista.analizar(any(), org.mockito.ArgumentMatchers.anyDouble(), any(), anyBoolean()))
+                    .thenReturn(new com.metricol.api.service.agente.video.AnalisisDeVideo(RevisorDeMarca.Veredicto.VA,
+                            "es un recorrido del depa", "Recorren el depa hasta la terraza", "Presumir la vista",
+                            "RECORRIDO", 4, "", true, false, false, DecisorDelAgente.Intencion.VENDER, 9.8,
+                            List.of(), 0, 20.4, "Bienvenidos, este depa tiene vista al mar"));
 
             agente.vuelta(ws.getId());
 
@@ -132,8 +139,53 @@ class AgenteServiceTest {
             assertThat(p.getFormat()).isEqualTo(com.metricol.api.enums.PostFormat.REEL);
             assertThat(p.getVideoDurationSeconds()).isEqualTo(20);
             assertThat(p.getMediaUrls()).containsExactly(v.getUrl());
-            assertThat(p.getAgenteMotivo()).contains("Es un video vertical de 20 s: lo propongo como Reel");
-            org.mockito.Mockito.verify(revisor).revisar(org.mockito.ArgumentMatchers.eq(v.getThumbnailUrl()), any(), anyBoolean());
+            assertThat(p.getPortadaMs()).isEqualTo(9800);
+            assertThat(p.getAgenteMotivo()).contains("Lo vi completo y escuché lo que se dice: es un recorrido")
+                    .contains("De portada, el segundo 10");
+            // Lo que se dice llega a quien escribe el texto.
+            org.mockito.Mockito.verify(redactor).redactar(anyString(),
+                    org.mockito.ArgumentMatchers.argThat(l -> l.stream().anyMatch(s -> s.contains("vista al mar"))),
+                    any(), any());
+        });
+    }
+
+    @Test
+    @DisplayName("un video de más de 90 s, sin editor, va a Observación con el mejor tramo para recortarlo")
+    void videoLargo() {
+        enElWorkspace(() -> {
+            conInstagram();
+            agente.encender(ws.getId(), true);
+            MediaAsset v = video("largo.mp4");
+            when(medidor.medir(any())).thenReturn(new com.metricol.api.service.media.FfmpegImagen.MedidasVideo(1080, 1920, 300));
+            when(analista.analizar(any(), org.mockito.ArgumentMatchers.anyDouble(), any(), anyBoolean()))
+                    .thenReturn(new com.metricol.api.service.agente.video.AnalisisDeVideo(RevisorDeMarca.Veredicto.VA,
+                            "va", "Un recorrido largo", "Presumir", "RECORRIDO", 4, "", true, false, false,
+                            DecisorDelAgente.Intencion.VENDER, 70, List.of(), 42, 125, ""));
+
+            agente.vuelta(ws.getId());
+
+            assertThat(posts.propuestasDelAgente()).isEmpty();
+            assertThat(assets.findById(v.getId())).get().satisfies(a -> {
+                assertThat(a.getAgenteEtapa()).isEqualTo(EtapaAgente.OBSERVACION);
+                assertThat(a.getAgenteMotivo()).contains("del 0:42 al 2:05");
+            });
+        });
+    }
+
+    @Test
+    @DisplayName("un video de más de 10 minutos no se analiza: a Observación por el tope de Pícale")
+    void videoDeMasDeDiezMinutos() {
+        enElWorkspace(() -> {
+            conInstagram();
+            agente.encender(ws.getId(), true);
+            MediaAsset v = video("eterno.mp4");
+            when(medidor.medir(any())).thenReturn(new com.metricol.api.service.media.FfmpegImagen.MedidasVideo(1080, 1920, 700));
+
+            agente.vuelta(ws.getId());
+
+            assertThat(assets.findById(v.getId())).get().extracting(MediaAsset::getAgenteMotivo).asString()
+                    .contains("hasta 10 minutos");
+            org.mockito.Mockito.verifyNoInteractions(analista);
         });
     }
 

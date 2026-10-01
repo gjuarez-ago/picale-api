@@ -295,7 +295,7 @@ public class UploadPostPublisher {
         }
         if (plan.video()) {
             return client.publishVideo(plan.profile(), platforms, titulo, porRed,
-                    medios.get(0), plan.formato());
+                    medios.get(0), plan.formato(), plan.portadaMs());
         }
 
         // Aqui, y no antes, es donde las fotos se ajustan a lo que aceptan las

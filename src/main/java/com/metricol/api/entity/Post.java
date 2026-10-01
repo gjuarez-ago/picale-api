@@ -301,6 +301,13 @@ public class Post {
     @Column(length = 20)
     private String agenteCategoria;
 
+    /**
+     * De qué milisegundo del video sale la portada en TikTok e Instagram. Nulo
+     * = el segundo uno, que es lo de siempre. Lo elige el agente: el cuadro más
+     * claro y representativo de los que analizó.
+     */
+    private Integer portadaMs;
+
     public boolean delAgente() {
         return Boolean.TRUE.equals(propuestaAgente);
     }

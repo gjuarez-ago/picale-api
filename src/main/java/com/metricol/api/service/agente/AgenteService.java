@@ -45,6 +45,10 @@ import com.metricol.api.service.billing.CreditService;
 import com.metricol.api.service.campaign.CampaignImageService;
 import com.metricol.api.service.campaign.LogoSobreFoto;
 import com.metricol.api.service.media.HuellaDeImagen;
+import com.metricol.api.service.agente.video.AnalisisDeVideo;
+import com.metricol.api.service.agente.video.AnalistaDeVideo;
+import com.metricol.api.service.agente.video.DecisorDeVideo;
+import com.metricol.api.service.agente.video.EditorDeVideo;
 import com.metricol.api.service.media.FfmpegImagen;
 import com.metricol.api.service.media.MedidorDeVideo;
 import com.metricol.api.service.media.RetoqueDeFoto;
@@ -103,6 +107,10 @@ public class AgenteService {
     private final CreditService creditos;
     private final RetoqueDeFoto retoque;
     private final MedidorDeVideo medidor;
+    /** Quien mira y escucha los videos. Ver {@code agente/video/}. */
+    private final AnalistaDeVideo analista;
+    /** Quien los edita (hoy nadie: {@code SinEditor}). */
+    private final EditorDeVideo editor;
     private final com.metricol.api.config.VideoLimitsProperties videoLimites;
 
     public AgenteService(WorkspaceRepository workspaces, MediaAssetRepository assets, PostRepository posts,
@@ -110,7 +118,10 @@ public class AgenteService {
             MediaService mediaService, FormatRulesService formatos, LimitesConfigurables limites,
             AiQuotaGuard cupoIa, LogoSobreFoto logo, HuellaDeImagen huellas, CampaignImageService generador,
             CreditService creditos, RetoqueDeFoto retoque, MedidorDeVideo medidor,
-            com.metricol.api.config.VideoLimitsProperties videoLimites) {
+            com.metricol.api.config.VideoLimitsProperties videoLimites, AnalistaDeVideo analista,
+            EditorDeVideo editor) {
+        this.analista = analista;
+        this.editor = editor;
         this.retoque = retoque;
         this.medidor = medidor;
         this.videoLimites = videoLimites;
@@ -404,13 +415,16 @@ public class AgenteService {
     }
 
     /**
-     * Un video: se mide (orientación y duración), la IA lo mira por su portada
-     * contra la marca, y se propone como Reel en las redes que aceptan su
-     * duración. Por ahora tal cual: sin recorte, sin marca de agua.
-     *
-     * <p>Lo que no puede salir como Reel no se fuerza: un video horizontal o
-     * demasiado corto va a Observación con el porqué, para que la persona lo
-     * vuelva a grabar o lo publique a mano.
+     * Un video, con los tres roles separados:
+     * <ol>
+     * <li>Lo barato primero, sin IA: medirlo (orientación y duración). Lo que
+     * no puede salir nunca —ilegible, de más de diez minutos, horizontal, de
+     * menos de 3 s— va a Observación sin gastar nada.</li>
+     * <li>El {@link AnalistaDeVideo} lo mira entero y lo escucha.</li>
+     * <li>El {@link DecisorDeVideo} decide formato, recorte y portada.</li>
+     * <li>Si hay que recortar, el {@link EditorDeVideo}; hoy no hay, y el
+     * decisor deja el tramo exacto en Observación.</li>
+     * </ol>
      */
     boolean procesarVideo(MediaAsset video, Workspace w, boolean forzar) {
         FfmpegImagen.MedidasVideo m = medidor.medir(video);
@@ -418,75 +432,118 @@ public class AgenteService {
             marcar(video, EtapaAgente.OBSERVACION, "No pude leer este video (formato o archivo dañado). Prueba subirlo otra vez.");
             return true;
         }
-        int segundos = (int) Math.round(m.segundos());
-        FormatRulesService.Regla reel = formatos.de(PostFormat.REEL);
+        double duracion = m.segundos();
+        if (duracion > AnalistaDeVideo.MAX_SEGUNDOS) {
+            marcar(video, EtapaAgente.OBSERVACION, "Dura " + DecisorDeVideo.duracion(duracion)
+                    + " y en Pícale los videos son de hasta 10 minutos. Súbelo más corto.");
+            return true;
+        }
         if (!m.vertical()) {
-            marcar(video, EtapaAgente.OBSERVACION, "Es un video horizontal: Reels y TikTok piden vertical. "
+            marcar(video, EtapaAgente.OBSERVACION, "Es un video horizontal: Reels, TikTok e historias piden vertical. "
                     + "Grábalo en vertical o publícalo a mano.");
             return true;
         }
-        if (reel.minSegundos() != null && segundos < reel.minSegundos()) {
-            marcar(video, EtapaAgente.OBSERVACION, "Dura " + segundos + " s y un Reel necesita al menos "
+        FormatRulesService.Regla reel = formatos.de(PostFormat.REEL);
+        if (reel.minSegundos() != null && duracion < reel.minSegundos()) {
+            marcar(video, EtapaAgente.OBSERVACION, "Dura " + Math.round(duracion) + " s y un Reel necesita al menos "
                     + reel.minSegundos() + " s.");
             return true;
         }
-
-        // Solo las redes que aceptan esa duración: un video de 3 minutos no
-        // tumba la propuesta, sale en las que sí lo admiten.
-        List<SocialAccount> todas = cuentasPara(PostFormat.REEL);
-        List<SocialAccount> destino = todas.stream().filter(c -> !videoLimites.excede(c.getPlatform(), segundos))
-                .toList();
-        if (destino.isEmpty()) {
-            marcar(video, EtapaAgente.OBSERVACION, todas.isEmpty()
-                    ? "No tienes redes conectadas que publiquen video."
-                    : "Dura " + segundos + " s: es más largo de lo que aceptan tus redes. Recórtalo y vuelve a subirlo.");
+        if (cuentasPara(PostFormat.REEL).isEmpty()) {
+            marcar(video, EtapaAgente.OBSERVACION, "No tienes redes conectadas que publiquen video.");
             return true;
         }
 
+        // El Analista: lo mira entero y lo escucha.
         Redactor.Negocio negocio = negocio(w);
         boolean marcaCompleta = BrandService.completitud(w).percent() >= MARCA_SUFICIENTE;
-        RevisorDeMarca.Revision revision = revisor.revisar(video.getThumbnailUrl(), negocio, marcaCompleta);
-        if (revision == null) {
-            marcar(video, EtapaAgente.PENDIENTE, "No pude revisarlo todavía; lo vuelvo a intentar en un rato.");
+        AnalisisDeVideo analisis = analista.analizar(video, duracion, negocio, marcaCompleta);
+        if (analisis == null) {
+            marcar(video, EtapaAgente.PENDIENTE, "No pude analizarlo todavía; lo vuelvo a intentar en un rato.");
             return false;
         }
-        if (!forzar && revision.veredicto() != RevisorDeMarca.Veredicto.VA) {
-            marcar(video, revision.veredicto() == RevisorDeMarca.Veredicto.OBSERVACION
+        if (!forzar && analisis.veredicto() != RevisorDeMarca.Veredicto.VA) {
+            marcar(video, analisis.veredicto() == RevisorDeMarca.Veredicto.OBSERVACION
                     ? EtapaAgente.OBSERVACION
-                    : EtapaAgente.DESCARTADA, revision.motivo());
+                    : EtapaAgente.DESCARTADA, analisis.motivo());
+            return true;
+        }
+
+        // El Decisor: formato, recorte y portada.
+        DecisorDeVideo.Decision decision = DecisorDeVideo.decidir(analisis, duracion,
+                !cuentasPara(PostFormat.STORY).isEmpty(), editor.puedeRecortar());
+        if (decision.tratamiento() == DecisorDeVideo.Tratamiento.OBSERVACION) {
+            marcar(video, EtapaAgente.OBSERVACION, decision.explicacion());
             return true;
         }
 
         try {
+            // El Editor, si hay que recortar. Hoy no hay (SinEditor), así que
+            // el decisor nunca pide RECORTAR; el camino queda listo para él.
+            MediaAsset publicar = video;
+            if (decision.tratamiento() == DecisorDeVideo.Tratamiento.RECORTAR) {
+                MediaAsset recortado = editor.recortar(video, analisis, decision.inicio(), decision.fin());
+                if (recortado == null) {
+                    marcar(video, EtapaAgente.PENDIENTE, "No pude recortarlo; lo vuelvo a intentar en un rato.");
+                    return false;
+                }
+                publicar = recortado;
+            }
+            int segundos = (int) Math.round(decision.fin() - decision.inicio());
+
+            // Solo las redes que publican ese formato y aceptan esa duración.
+            List<SocialAccount> todas = cuentasPara(decision.formato());
+            List<SocialAccount> destino = todas.stream()
+                    .filter(c -> !videoLimites.excede(c.getPlatform(), segundos)).toList();
+            if (destino.isEmpty()) {
+                marcar(video, EtapaAgente.OBSERVACION, decision.explicacion()
+                        + " Pero ninguna de tus redes acepta un video de " + segundos + " s.");
+                return true;
+            }
             Set<Platform> redes = destino.stream().map(SocialAccount::getPlatform)
                     .collect(Collectors.toCollection(LinkedHashSet::new));
-            String encargo = encargo(revision) + " (es un video vertical de " + segundos + " segundos)";
-            Redactor.Borrador borrador = redactor.redactar(encargo,
-                    revision.descripcion().isBlank() ? List.of() : List.of(revision.descripcion()), redes, negocio);
-            CalendarioDelAgente.Hueco hueco = hueco(w, categoria(revision.diagnostico()));
-            LocalDateTime fecha = hueco.cuando();
+
+            // El texto, con lo que se ve Y lo que se dice: así un precio o una
+            // promoción que se menciona en voz alta llega al caption.
+            String encargo = "Haz una publicacion para las redes del negocio con este video: "
+                    + (analisis.idea().isBlank() ? "una publicacion con este video" : analisis.idea());
+            List<String> queSeVe = new ArrayList<>();
+            if (!analisis.descripcion().isBlank()) {
+                queSeVe.add(analisis.descripcion());
+            }
+            if (analisis.hayVoz()) {
+                queSeVe.add("En el video se dice: " + analisis.transcripcion());
+            }
+            Redactor.Borrador borrador = redactor.redactar(encargo, queSeVe, redes, negocio);
+            CalendarioDelAgente.Categoria categoria = categoria(analisis.comoDiagnostico());
+            CalendarioDelAgente.Hueco hueco = hueco(w, categoria);
 
             PostSaveRequest pedido = new PostSaveRequest();
             pedido.setCaption(texto(borrador));
             pedido.setTitulo(borrador.titulo());
             pedido.setBrief(encargo);
-            pedido.setMediaUrls(List.of(video.getUrl()));
-            pedido.setFormat(PostFormat.REEL.name());
+            pedido.setMediaUrls(List.of(publicar.getUrl()));
+            pedido.setFormat(decision.formato().name());
             pedido.setVideoDurationSeconds(segundos);
             pedido.setSocialAccountIds(destino.stream().map(SocialAccount::getId).toList());
             Map<String, String> porRed = new LinkedHashMap<>();
             borrador.textos().forEach((red, t) -> porRed.put(red.name(), t));
             pedido.setCaptionsPorRed(porRed);
 
-            String porQue = forzar ? "Me dijiste que va." : "Va con tu marca: " + sinPunto(revision.motivo()) + ".";
+            String porQue = forzar ? "Me dijiste que va." : "Va con tu marca: " + sinPunto(analisis.motivo()) + ".";
             String fuera = todas.size() > destino.size()
                     ? " " + todas.stream().filter(c -> !destino.contains(c)).map(c -> c.getPlatform().getLabel())
                             .distinct().collect(Collectors.joining(" y ")) + " no: dura más de lo que acepta."
                     : "";
-            String motivo = porQue + " Es un video vertical de " + segundos + " s: lo propongo como Reel, tal cual"
-                    + " (los videos todavía no llevan logo ni recorte)." + fuera + " " + cuandoYDonde(redes, hueco);
-            postService.crearPropuesta(pedido, fecha, motivo, video.getUrl(),
-                    DecisorDelAgente.Tratamiento.TAL_CUAL.name(), categoria(revision.diagnostico()).name());
+            String motivo = porQue + " " + decision.explicacion() + fuera + " " + cuandoYDonde(redes, hueco);
+            Post propuesta = postService.crearPropuesta(pedido, hueco.cuando(), motivo, video.getUrl(),
+                    decision.tratamiento() == DecisorDeVideo.Tratamiento.RECORTAR ? "RECORTE"
+                            : DecisorDelAgente.Tratamiento.TAL_CUAL.name(),
+                    categoria.name());
+            if (decision.formato() == PostFormat.REEL) {
+                propuesta.setPortadaMs(decision.portadaMs());
+                posts.save(propuesta);
+            }
             marcar(video, EtapaAgente.PROPUESTA, motivo);
             return true;
         } catch (RuntimeException ex) {

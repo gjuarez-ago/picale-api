@@ -37,5 +37,11 @@ public enum AiOperacion {
     DIRECTOR_ARTE,
 
     /** El agente revisa una foto contra la marca: si va, por qué, y qué comunicar. */
-    AGENTE_REVISAR
+    AGENTE_REVISAR,
+
+    /** El agente pasa a texto lo que se dice en un video. */
+    AGENTE_TRANSCRIBIR,
+
+    /** El agente mira un video completo (varios cuadros y lo que se dice). */
+    AGENTE_VIDEO
 }

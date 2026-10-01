@@ -234,6 +234,80 @@ public class FfmpegImagen {
     }
 
     /**
+     * Un cuadro de un video, leído de un archivo o de su URL pública: con el
+     * {@code -ss} antes del {@code -i}, ffmpeg salta a ese punto pidiendo solo
+     * ese tramo, sin bajar el video entero.
+     *
+     * @return el JPEG, o {@code null} si no se pudo
+     */
+    public byte[] cuadro(String fuente, double segundo, int ancho, int calidad) {
+        Path destino = null;
+        try {
+            destino = Files.createTempFile("picale-cuadro-", ".jpg");
+            List<String> comando = List.of(
+                    props.getFfmpeg(),
+                    "-hide_banner",
+                    "-loglevel", "error",
+                    "-y",
+                    "-ss", String.format(Locale.US, "%.3f", Math.max(0, segundo)),
+                    "-i", fuente,
+                    "-frames:v", "1",
+                    "-vf", "scale=" + ancho + ":-2",
+                    "-q:v", String.valueOf(calidad),
+                    "-map_metadata", "-1",
+                    destino.toString());
+            if (ejecutar(comando, "ffmpeg") == null) {
+                return null;
+            }
+            byte[] bytes = Files.readAllBytes(destino);
+            return bytes.length == 0 ? null : bytes;
+        } catch (IOException ex) {
+            log.warn("No se pudo escribir el temporal del cuadro: {}", ex.getMessage());
+            return null;
+        } finally {
+            borrar(destino);
+        }
+    }
+
+    /**
+     * El audio de un video, listo para transcribir: mono, 16 kHz y 32 kb/s en
+     * MP3. Así diez minutos pesan unos 2.4 MB, lejos del tope de 25 MB de la
+     * transcripción, y la voz se entiende igual.
+     *
+     * @param maxSegundos lo más que se toma; más allá no se transcribe
+     * @return los bytes, o {@code null} si el video no tiene audio o no se pudo
+     */
+    public byte[] audio(String fuente, int maxSegundos) {
+        Path destino = null;
+        try {
+            destino = Files.createTempFile("picale-audio-", ".mp3");
+            List<String> comando = List.of(
+                    props.getFfmpeg(),
+                    "-hide_banner",
+                    "-loglevel", "error",
+                    "-y",
+                    "-i", fuente,
+                    "-t", String.valueOf(maxSegundos),
+                    "-vn",
+                    "-ac", "1",
+                    "-ar", "16000",
+                    "-b:a", "32k",
+                    destino.toString());
+            if (ejecutar(comando, "ffmpeg") == null) {
+                return null;
+            }
+            byte[] bytes = Files.readAllBytes(destino);
+            // Un video sin pista de audio deja un archivo vacío o casi.
+            return bytes.length < 1024 ? null : bytes;
+        } catch (IOException ex) {
+            log.warn("No se pudo escribir el temporal del audio: {}", ex.getMessage());
+            return null;
+        } finally {
+            borrar(destino);
+        }
+    }
+
+    /**
      * Cómo es un video: tamaño tal como se ve (con la rotación del teléfono ya
      * aplicada) y duración.
      */

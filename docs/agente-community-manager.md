@@ -30,6 +30,13 @@ Estado: **fase 1 construida en la rama `agente`, sin desplegar.** Ya funciona:
   de menos de 3 s, ilegible o más largo que todas tus redes: a Observación con el porqué. Por
   ahora tal cual: sin marca de agua ni recorte. (`MedidorDeVideo`, `AgenteService.procesarVideo`)
 
+- **Análisis completo del video:** seis cuadros de principio a fin y la transcripción de lo que
+  se dice (hasta 10 minutos, el tope de subida). La IA dice qué es (recorrido, demostración,
+  testimonio, detrás de cámaras…), su calidad, sus tomas, la mejor portada y el mejor tramo de
+  hasta 90 s. El decisor elige Reel o historia (lo del momento y corto va de historia), la
+  portada por publicación (`Post.portadaMs`, que llega a TikTok como `cover_timestamp` y a
+  Instagram como imagen) y, si dura más de 90 s, deja en Observación el tramo exacto a recortar
+  hasta que exista el editor. El texto de cada red usa lo que se ve y lo que se dice.
 - **Mezcla de contenido:** cada propuesta lleva su categoría (promoción, venta, comunidad, día a
   día) y el calendario nunca pone tres de venta seguidas ni dos promociones seguidas ("seguidas"
   = a menos de 3 días, sin otra en medio). Si el primer hueco rompe la mezcla toma el siguiente
@@ -53,6 +60,25 @@ redes y fecha ya decididos. El community manager, que lleva muchas cuentas, solo
 El flujo tiene que ser **lo más autónomo posible**: nadie debería tener que tocar un botón para
 que el agente empiece, siga o se recupere de algo. Lo único que se le pide a la persona es la
 aprobación.
+
+## Arquitectura: los agentes
+
+El agente no es una sola pieza: son roles separados, para que cada uno se pueda cambiar o
+crecer sin tocar los demás (por ejemplo, el editor de video que saque las mejores tomas y
+agregue audio).
+
+| Rol | Qué hace | Código |
+|---|---|---|
+| **Coordinador** (el community manager) | Toma lo nuevo, llama a los demás en orden, arma la propuesta, maneja la bandeja | `agente/AgenteService`, `AgenteWorker` |
+| **Analista** | Mira y escucha. Solo observa | Fotos: `agente/RevisorDeMarca`. Video: `agente/video/AnalistaDeVideo` (6 cuadros + transcripción) |
+| **Decisor** | Reglas fijas que vuelven el análisis una decisión explicable | Fotos: `agente/DecisorDelAgente`. Video: `agente/video/DecisorDeVideo` |
+| **Productores** | Hacen el trabajo, siempre sobre una copia | Fotos: `media/RetoqueDeFoto`, `campaign/LogoSobreFoto`, diseño con IA. Video: `agente/video/EditorDeVideo` (interfaz; hoy `SinEditor`) |
+| **Calendario** | Cuándo sale: horario, topes, ritmo de créditos, mezcla | `agente/CalendarioDelAgente`, `agente/RitmoDeCreditos` |
+
+El análisis de cada video se guarda en el archivo (`MediaAsset.agenteAnalisis`): sus tomas con
+segundo y nota, el mejor tramo y la mejor portada. El editor que venga lo reutiliza sin volver
+a pagar por mirarlo y escucharlo. Para conectarlo: implementar `EditorDeVideo` (y marcarlo
+`@Primary` o quitar `SinEditor`); el decisor ya pide `RECORTAR` cuando hay quien recorte.
 
 ## Principios
 

@@ -61,7 +61,18 @@ public class OpenAiClient {
                 .baseUrl("https://api.openai.com/v1")
                 .requestFactory(fabrica)
                 .build();
+
+        SimpleClientHttpRequestFactory lenta = new SimpleClientHttpRequestFactory();
+        lenta.setConnectTimeout(Duration.ofSeconds(10));
+        lenta.setReadTimeout(Duration.ofSeconds(180));
+        this.transcripciones = RestClient.builder()
+                .baseUrl("https://api.openai.com/v1")
+                .requestFactory(lenta)
+                .build();
     }
+
+    /** Para transcribir audio: lo mismo, con más paciencia. */
+    private final RestClient transcripciones;
 
     public String complete(AiOperacion operacion, String systemPrompt, String userPrompt) {
         return pedir(operacion, systemPrompt, contenidoDeTexto(userPrompt), false, 0.8);
@@ -96,6 +107,44 @@ public class OpenAiClient {
                     "image_url", Map.of("url", url, "detail", "low")));
         }
         return pedir(operacion, systemPrompt, partes, false, 0.3);
+    }
+
+    /**
+     * Pasa a texto el audio de un video. En español, porque es lo que hablan
+     * los negocios que usan Pícale y así el modelo no duda entre idiomas.
+     *
+     * <p>Con su propio tiempo de espera, más largo: diez minutos de audio
+     * tardan más que una respuesta de texto, y nadie está mirando la pantalla
+     * (lo pide el agente en segundo plano).
+     *
+     * @return lo que se dice, o cadena vacía si no se dice nada
+     */
+    @SuppressWarnings("unchecked")
+    public String transcribir(AiOperacion operacion, byte[] audio, String nombre) {
+        if (!props.isConfigured()) {
+            throw new IllegalStateException("Falta configurar OPENAI_API_KEY.");
+        }
+        org.springframework.util.LinkedMultiValueMap<String, Object> partes = new org.springframework.util.LinkedMultiValueMap<>();
+        partes.add("file", new org.springframework.core.io.ByteArrayResource(audio) {
+            @Override
+            public String getFilename() {
+                return nombre;
+            }
+        });
+        partes.add("model", props.getTranscriptionModel());
+        partes.add("language", "es");
+        partes.add("response_format", "json");
+
+        Map<String, Object> respuesta = transcripciones.post()
+                .uri("/audio/transcriptions")
+                .header("Authorization", "Bearer " + props.getApiKey())
+                .contentType(MediaType.MULTIPART_FORM_DATA)
+                .body(partes)
+                .retrieve()
+                .body(Map.class);
+        anotar(operacion, respuesta);
+        Object texto = respuesta == null ? null : respuesta.get("text");
+        return texto == null ? "" : String.valueOf(texto).strip();
     }
 
     private static List<Map<String, Object>> contenidoDeTexto(String texto) {
@@ -176,7 +225,12 @@ public class OpenAiClient {
             if (!(crudo instanceof Map<?, ?> usage)) {
                 return new Uso(0, 0);
             }
-            return new Uso(entero(usage.get("prompt_tokens")), entero(usage.get("completion_tokens")));
+            // La transcripción los llama input/output; el chat, prompt/completion.
+            int entrada = usage.containsKey("prompt_tokens") ? entero(usage.get("prompt_tokens"))
+                    : entero(usage.get("input_tokens"));
+            int salida = usage.containsKey("completion_tokens") ? entero(usage.get("completion_tokens"))
+                    : entero(usage.get("output_tokens"));
+            return new Uso(entrada, salida);
         }
 
         private static int entero(Object valor) {

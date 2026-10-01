@@ -233,6 +233,7 @@ public class PostPublishStore {
                 post.esVideo(),
                 post.formatoEfectivo(),
                 Boolean.TRUE.equals(post.getMusicaAutomatica()),
+                post.getPortadaMs(),
                 destinos,
                 null);
     }
@@ -612,7 +613,7 @@ public class PostPublishStore {
      */
     private PublishPlan vacio(UUID postId, UUID workspaceId, PublishOutcome atajo) {
         return new PublishPlan(postId, workspaceId, null, null, null, List.of(), false,
-                PostFormat.PHOTO, false, List.of(), atajo);
+                PostFormat.PHOTO, false, null, List.of(), atajo);
     }
 
     /**

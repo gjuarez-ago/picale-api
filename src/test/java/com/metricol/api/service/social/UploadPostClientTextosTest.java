@@ -184,5 +184,9 @@ class UploadPostClientTextosTest {
         // En fotos no aplica: el carrusel no tiene un instante del que sacarla.
         MultiValueMap<String, Object> fotos = cliente().cuerpoFotos("perfil", REDES, TITULO, TODOS, null, false);
         assertThat(fotos.get("cover_timestamp")).isNull();
+
+        // La que eligió el agente al analizar el video manda sobre el segundo uno.
+        MultiValueMap<String, Object> elegida = cliente().cuerpoVideo("perfil", REDES, TITULO, TODOS, PostFormat.REEL, 12400);
+        assertThat(elegida.getFirst("cover_timestamp")).isEqualTo("12400");
     }
 }

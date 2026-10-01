@@ -49,6 +49,12 @@ public class OpenAiProperties {
      */
     private String directorReasoningEffort = "low";
 
+    /**
+     * El modelo que pasa a texto lo que se dice en un video, para que el
+     * agente sepa de qué habla (un precio, una promoción, un testimonio).
+     */
+    private String transcriptionModel = "gpt-4o-mini-transcribe";
+
     /** Segundos que se le espera al director antes de seguir sin él. */
     private int directorTimeoutSeconds = 25;
 

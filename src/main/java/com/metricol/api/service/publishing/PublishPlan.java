@@ -50,6 +50,12 @@ public record PublishPlan(
          */
         boolean musicaAutomatica,
 
+        /**
+         * De qué milisegundo del video sale la portada, o {@code null} para el
+         * de siempre (el segundo uno). Lo elige el agente al analizar el video.
+         */
+        Integer portadaMs,
+
         List<Destino> destinos,
 
         /**

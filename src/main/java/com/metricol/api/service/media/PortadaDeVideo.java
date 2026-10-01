@@ -48,6 +48,14 @@ public class PortadaDeVideo {
      * Instagram: es lo que pasaba hasta ahora, y no puede costar la publicación.
      */
     public byte[] sacar(byte[] video) {
+        return sacar(video, Double.parseDouble(SEGUNDO));
+    }
+
+    /**
+     * La portada de un segundo concreto: el que eligió el agente. Si ese
+     * segundo no existe, {@link FfmpegImagen#fotograma} cae al principio.
+     */
+    public byte[] sacar(byte[] video, double segundo) {
         if (!props.isEnabled() || video == null || video.length == 0) {
             return null;
         }
@@ -55,7 +63,8 @@ public class PortadaDeVideo {
         try {
             archivo = Files.createTempFile("picale-portada-", ".mp4");
             Files.write(archivo, video);
-            byte[] imagen = ffmpeg.fotograma(archivo, SEGUNDO, ANCHO, props.getCalidad());
+            String cuando = String.format(java.util.Locale.US, "%.3f", Math.max(0, segundo));
+            byte[] imagen = ffmpeg.fotograma(archivo, cuando, ANCHO, props.getCalidad());
             if (imagen == null) {
                 log.warn("ffmpeg no devolvió portada para el video; Instagram elegirá la suya.");
             }

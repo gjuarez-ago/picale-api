@@ -110,10 +110,17 @@ public class UploadPostClient {
     @SuppressWarnings("unchecked")
     public Map<String, Object> publishVideo(String user, List<String> platforms, String titulo,
             Map<String, String> captionsPorRed, String videoUrl, PostFormat formato) {
-        MultiValueMap<String, Object> body = cuerpoVideo(user, platforms, titulo, captionsPorRed, formato);
+        return publishVideo(user, platforms, titulo, captionsPorRed, videoUrl, formato, null);
+    }
+
+    /** @param portadaMs de qué milisegundo sale la portada; nulo = el segundo uno */
+    @SuppressWarnings("unchecked")
+    public Map<String, Object> publishVideo(String user, List<String> platforms, String titulo,
+            Map<String, String> captionsPorRed, String videoUrl, PostFormat formato, Integer portadaMs) {
+        MultiValueMap<String, Object> body = cuerpoVideo(user, platforms, titulo, captionsPorRed, formato, portadaMs);
         ByteArrayResource video = download(videoUrl);
         body.add("video", video);
-        portadaDeInstagram(body, platforms, formato, video);
+        portadaDeInstagram(body, platforms, formato, video, portadaMs);
 
         return restClient.post()
                 .uri("/upload")
@@ -182,10 +189,15 @@ public class UploadPostClient {
     /** Los campos de texto de un video, sin el archivo. Separado para poderlo probar sin red. */
     MultiValueMap<String, Object> cuerpoVideo(String user, List<String> platforms, String titulo,
             Map<String, String> captionsPorRed, PostFormat formato) {
+        return cuerpoVideo(user, platforms, titulo, captionsPorRed, formato, null);
+    }
+
+    MultiValueMap<String, Object> cuerpoVideo(String user, List<String> platforms, String titulo,
+            Map<String, String> captionsPorRed, PostFormat formato, Integer portadaMs) {
         MultiValueMap<String, Object> body = baseFields(user, platforms);
         textosPorRed(body, platforms, titulo, captionsPorRed, true);
         formatoPorRed(body, platforms, formato);
-        portadaDeTikTok(body, platforms);
+        portadaDeTikTok(body, platforms, portadaMs);
         return body;
     }
 
@@ -202,9 +214,10 @@ public class UploadPostClient {
      * cuenta, y TikTok no deja publicar videos de menos de tres segundos, así
      * que el segundo uno siempre existe.
      */
-    private void portadaDeTikTok(MultiValueMap<String, Object> body, List<String> platforms) {
+    private void portadaDeTikTok(MultiValueMap<String, Object> body, List<String> platforms, Integer portadaMs) {
         if (platforms.contains("tiktok")) {
-            body.add("cover_timestamp", "1000");
+            // La que eligió el agente al analizar el video, si eligió; si no, el segundo uno.
+            body.add("cover_timestamp", String.valueOf(portadaMs != null && portadaMs >= 0 ? portadaMs : 1000));
         }
     }
 
@@ -219,11 +232,11 @@ public class UploadPostClient {
      * que elija Instagram, como hasta ahora.
      */
     private void portadaDeInstagram(MultiValueMap<String, Object> body, List<String> platforms,
-            PostFormat formato, ByteArrayResource video) {
+            PostFormat formato, ByteArrayResource video, Integer portadaMs) {
         if (portada == null || formato == PostFormat.STORY || !platforms.contains("instagram")) {
             return;
         }
-        byte[] imagen = portada.sacar(video.getByteArray());
+        byte[] imagen = portada.sacar(video.getByteArray(), portadaMs == null ? 1.0 : portadaMs / 1000.0);
         if (imagen != null) {
             body.add("cover_image", new ByteArrayResource(imagen) {
                 @Override

@@ -144,6 +144,15 @@ public class MediaAsset {
     /** Cómo se ve, en 64 bits, para encontrar repetidas. Ver {@code HuellaDeImagen}. Nulo = sin calcular. */
     private Long huella;
 
+    /**
+     * Lo que el Analista entendió de un video (JSON de {@code AnalisisDeVideo}):
+     * qué pasa, qué se dice, sus tomas y su mejor tramo. Se guarda para que los
+     * agentes que vengan después —el editor de tomas, el de audio— no vuelvan
+     * a pagar por mirarlo y escucharlo.
+     */
+    @Column(length = 8000)
+    private String agenteAnalisis;
+
     public boolean deLaIa() {
         return Boolean.TRUE.equals(generadaPorIa);
     }
