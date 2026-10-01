@@ -40,6 +40,9 @@ import com.metricol.api.service.PostService;
 import com.metricol.api.service.ai.AiQuotaGuard;
 import com.metricol.api.service.ai.MarcaDelNegocio;
 import com.metricol.api.service.ai.Redactor;
+import com.metricol.api.models.request.CampaignImageRequest;
+import com.metricol.api.service.billing.CreditService;
+import com.metricol.api.service.campaign.CampaignImageService;
 import com.metricol.api.service.campaign.LogoSobreFoto;
 import com.metricol.api.service.media.HuellaDeImagen;
 import com.metricol.api.service.limits.LimitesConfigurables;
@@ -73,6 +76,9 @@ public class AgenteService {
     /** Con menos de esto la marca dice muy poco para descartar con criterio. */
     static final int MARCA_SUFICIENTE = 60;
 
+    /** Créditos que el agente nunca toca: quedan para lo que la persona cree a mano. */
+    static final int RESERVA_DE_CREDITOS = 1;
+
     private static final DateTimeFormatter FECHA =
             DateTimeFormatter.ofPattern("EEE d MMM, HH:mm", Locale.forLanguageTag("es-MX"));
 
@@ -89,13 +95,18 @@ public class AgenteService {
     private final AiQuotaGuard cupoIa;
     private final LogoSobreFoto logo;
     private final HuellaDeImagen huellas;
+    private final CampaignImageService generador;
+    private final CreditService creditos;
 
     public AgenteService(WorkspaceRepository workspaces, MediaAssetRepository assets, PostRepository posts,
             SocialAccountRepository cuentas, RevisorDeMarca revisor, Redactor redactor, PostService postService,
             MediaService mediaService, FormatRulesService formatos, LimitesConfigurables limites,
-            AiQuotaGuard cupoIa, LogoSobreFoto logo, HuellaDeImagen huellas) {
+            AiQuotaGuard cupoIa, LogoSobreFoto logo, HuellaDeImagen huellas, CampaignImageService generador,
+            CreditService creditos) {
         this.logo = logo;
         this.huellas = huellas;
+        this.generador = generador;
+        this.creditos = creditos;
         this.workspaces = workspaces;
         this.assets = assets;
         this.posts = posts;
@@ -297,6 +308,16 @@ public class AgenteService {
             Set<Platform> redes = destino.stream().map(SocialAccount::getPlatform)
                     .collect(Collectors.toCollection(LinkedHashSet::new));
             String encargo = encargo(revision);
+
+            // Diseño con IA solo para promociones y con créditos de sobra: con
+            // cinco al mes, gastarlos en una foto que ya funciona tal cual es
+            // tirarlos. Uno se queda siempre de reserva para la persona.
+            boolean quiereDiseno = "PROMOCION".equals(revision.tipo())
+                    && creditos.disponibles(w.getId()) > RESERVA_DE_CREDITOS;
+            if (quiereDiseno && proponerDiseno(asset, w, destino, redes, encargo, revision, forzar)) {
+                marcar(asset, EtapaAgente.PROPUESTA, "Le hice diseño: es una promoción.");
+                return true;
+            }
             Redactor.Borrador borrador = redactor.redactar(encargo,
                     revision.descripcion().isBlank() ? List.of() : List.of(revision.descripcion()),
                     redes, negocio);
@@ -332,6 +353,74 @@ public class AgenteService {
             marcar(asset, EtapaAgente.PENDIENTE, "No pude preparar la publicación; lo vuelvo a intentar en un rato.");
             return false;
         }
+    }
+
+    /**
+     * Una promoción diseñada por la IA: una propuesta por cada versión (una por
+     * proporción, cada una con sus redes), todas en la misma fecha porque son
+     * la misma publicación. Cuesta 1 crédito.
+     *
+     * @return si salió; {@code false} = va tal cual, sin gastar
+     */
+    private boolean proponerDiseno(MediaAsset asset, Workspace w, List<SocialAccount> destino, Set<Platform> redes,
+            String encargo, RevisorDeMarca.Revision revision, boolean forzar) {
+        CampaignImageService.Diseno diseno;
+        try {
+            diseno = generador.disenarParaElAgente(w, new CampaignImageRequest(1,
+                    new CampaignImageRequest.Format("post", null, null),
+                    List.of(asset.getUrl()),
+                    // El logo también lo decide la IA: sin él, se pide que no lo ponga.
+                    new CampaignImageRequest.Brand(w.getLogoUrl(), revision.logo() ? null : "NONE"),
+                    encargo, null, List.of(), null, "", false,
+                    redes.stream().map(Platform::name).toList()));
+        } catch (RuntimeException ex) {
+            log.info("El agente no pudo diseñar {}; va tal cual: {}", asset.getId(), ex.getMessage());
+            return false;
+        }
+        if (diseno == null) {
+            return false;
+        }
+
+        LocalDateTime fecha = CalendarioDelAgente.siguienteHueco(LocalDateTime.now(),
+                posts.huecosTomados(LocalDateTime.now()), limites.maxPorDia(), horario(w));
+        int hechas = 0;
+        for (CampaignImageService.Diseno.Version v : diseno.versiones()) {
+            List<SocialAccount> suyas = destino.stream().filter(c -> v.redes().contains(c.getPlatform())).toList();
+            if (suyas.isEmpty()) {
+                continue;
+            }
+            Map<String, String> porRed = new LinkedHashMap<>();
+            for (Platform red : v.redes()) {
+                String t = diseno.captionsPorRed().get(red);
+                if (t != null && !t.isBlank()) {
+                    porRed.put(red.name(), t);
+                }
+            }
+            String caption = porRed.values().stream().findFirst()
+                    .orElse(diseno.titular() == null || diseno.titular().isBlank() ? "Publicacion" : diseno.titular());
+
+            PostSaveRequest pedido = new PostSaveRequest();
+            pedido.setCaption(caption);
+            pedido.setTitulo(diseno.titular());
+            pedido.setBrief(encargo);
+            pedido.setMediaUrls(List.of(v.url()));
+            pedido.setFormat(PostFormat.PHOTO.name());
+            pedido.setSocialAccountIds(suyas.stream().map(SocialAccount::getId).toList());
+            pedido.setCaptionsPorRed(porRed);
+
+            Set<Platform> deEsta = new LinkedHashSet<>(v.redes());
+            deEsta.retainAll(redes);
+            postService.crearPropuesta(pedido, fecha, motivoDiseno(forzar, revision, deEsta, fecha), asset.getUrl());
+            hechas++;
+        }
+        return hechas > 0;
+    }
+
+    static String motivoDiseno(boolean forzar, RevisorDeMarca.Revision r, Set<Platform> redes, LocalDateTime fecha) {
+        String porQue = forzar ? "Me dijiste que va." : "Va con tu marca: " + sinPunto(r.motivo()) + ".";
+        String nombres = redes.stream().map(Platform::getLabel).collect(Collectors.joining(" y "));
+        return porQue + " Le hice diseño con IA porque es una promoción (1 crédito)"
+                + (r.logo() ? ", con tu logo" : "") + ". Para " + nombres + ", el " + FECHA.format(fecha) + ".";
     }
 
     /**

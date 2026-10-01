@@ -58,6 +58,18 @@ public class CreditService {
     }
 
     /**
+     * Cuántas generaciones puede pagar el workspace ahora, o
+     * {@code Integer.MAX_VALUE} si los cobros están apagados o no tiene
+     * límites. Es lo que mira el agente antes de decidir diseñar.
+     */
+    public int disponibles(UUID workspaceId) {
+        if (!config.habilitado() || sinLimites.deWorkspace(workspaceId)) {
+            return Integer.MAX_VALUE;
+        }
+        return saldo(workspaceId).total();
+    }
+
+    /**
      * Gasta el crédito de una generación. Devuelve cuántos quedan, o
      * {@code Integer.MAX_VALUE} si los cobros están apagados.
      *

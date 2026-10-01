@@ -1,10 +1,20 @@
 # Agente: la IA como community manager
 
-Estado: **primera parte construida, sin desplegar.** Ya funciona: el switch por cuenta, el filtro
-de marca (va, observación, descartada), el texto de cada red, todas las redes conectadas que
-acepten fotos, la fecha propuesta, y la pantalla **Agente** de la web con aprobar, aprobar todas,
-cambiar, descartar, sí va / no va y rescatar. Solo fotos, tal cual: sin diseño con IA, sin logo y
-sin videos todavía. El código está en `service/agente/` y `AgenteController`; en la web,
+Estado: **fase 1 construida en la rama `agente`, sin desplegar.** Ya funciona:
+
+- El switch por cuenta, y solo cuenta lo que se sube después de encenderlo.
+- Filtro de marca (va, observación, descartada) con las reglas de cuidado y las promociones
+  vencidas, y fotos repetidas fuera antes de gastar en la IA (huella de imagen).
+- La IA decide el logo (se pega el real sobre una copia) y, en promociones con créditos, hace
+  diseño con IA (1 crédito, uno siempre de reserva). Si el diseño falla, va tal cual.
+- El texto de cada red, todas las redes conectadas que acepten fotos, y la fecha dentro del
+  horario del negocio (2 al día como mucho, a las 11 y a las 18 si caben).
+- Propuestas que vencen sin aprobar se mueven solas al siguiente hueco.
+- Pausa de emergencia, el resumen de todas las cuentas y la pantalla **Agente** de la web.
+
+Todavía no: videos, carruseles, la mezcla de contenido (70 / 20 / 10), lo que aprende de la marca
+y la aprobación automática por confianza. El código está en `service/agente/`, `AgenteController`,
+`service/campaign/LogoSobreFoto` y `service/media/HuellaDeImagen`; en la web,
 `pages/panel/pages/agente/`. El resto de este documento sigue siendo el plan.
 
 ## El objetivo

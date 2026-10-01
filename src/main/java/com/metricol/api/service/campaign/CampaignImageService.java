@@ -296,6 +296,50 @@ public class CampaignImageService {
      * trabajo.
      */
     Preparado preparar(User usuario, CampaignImageRequest peticion) {
+        return preparar(usuario == null ? null : usuario.getWorkspace(), peticion);
+    }
+
+    /**
+     * Un diseño pedido por el agente: cada versión con sus redes y su imagen.
+     * Público y sin los tipos internos para que el agente no dependa de cómo
+     * se genera por dentro.
+     */
+    public record Diseno(List<Version> versiones, String titular, Map<Platform, String> captionsPorRed) {
+        public record Version(List<Platform> redes, String url) {
+        }
+    }
+
+    /**
+     * Diseña de una vez, en el hilo de quien llama, para el agente: no hay
+     * persona mirando una barra de progreso, así que no hace falta el trabajo
+     * en segundo plano de {@code ContenidoJobs}. Cobra 1 crédito y lo devuelve
+     * si no sale ninguna versión, igual que desde la app.
+     *
+     * @return el diseño, o {@code null} si no salió ninguna versión
+     */
+    public Diseno disenarParaElAgente(Workspace workspace, CampaignImageRequest peticion) {
+        Preparado p = preparar(workspace, peticion);
+        Generado g;
+        try {
+            g = ejecutar(p, Progreso.NINGUNO);
+        } catch (RuntimeException ex) {
+            devolverCredito(p);
+            throw ex;
+        }
+        List<Diseno.Version> versiones = new ArrayList<>();
+        for (VarianteGenerada v : g.variantes()) {
+            if (v.causa() == null && !v.urls().isEmpty()) {
+                versiones.add(new Diseno.Version(List.copyOf(v.redes()), v.urls().get(0)));
+            }
+        }
+        if (versiones.isEmpty()) {
+            devolverCredito(p);
+            return null;
+        }
+        return new Diseno(versiones, g.titular(), g.captionsPorRed());
+    }
+
+    private Preparado preparar(Workspace workspace, CampaignImageRequest peticion) {
         Formato formato = Formato.de(peticion.format() == null ? null : peticion.format().code());
         String logoUrl = peticion.brand() == null || peticion.brand().logoUrl() == null
                 || peticion.brand().logoUrl().isBlank() ? null : peticion.brand().logoUrl().trim();
@@ -310,7 +354,6 @@ public class CampaignImageService {
             piezas = recursos.size();
         }
 
-        Workspace workspace = usuario.getWorkspace();
         if (workspace == null) {
             throw new IllegalStateException("Elige un espacio de trabajo para crear el contenido.");
         }

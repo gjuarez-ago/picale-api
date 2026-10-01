@@ -95,6 +95,9 @@ class AgenteServiceTest {
     @MockitoBean
     private com.metricol.api.service.media.HuellaDeImagen huellas;
 
+    @MockitoBean
+    private com.metricol.api.service.campaign.CampaignImageService generador;
+
     private Workspace ws;
     private final List<UUID> assetsCreados = new ArrayList<>();
     private final List<UUID> cuentasCreadas = new ArrayList<>();
@@ -350,6 +353,50 @@ class AgenteServiceTest {
                 assertThat(a.getAgenteMotivo()).contains("Casi igual a «toma-1.jpg»");
             });
             org.mockito.Mockito.verify(revisor, org.mockito.Mockito.times(1)).revisar(anyString(), any(), anyBoolean());
+        });
+    }
+
+    @Test
+    @DisplayName("una promoción con créditos se diseña con IA: la propuesta lleva el diseño y lo dice")
+    void promocionConDiseno() {
+        enElWorkspace(() -> {
+            conInstagram();
+            agente.encender(ws.getId(), true);
+            foto("2x1.jpg");
+            String disenada = "https://cdn.test/media/" + ws.getId() + "/contenido-v1-a-1.jpg";
+            when(generador.disenarParaElAgente(any(), any())).thenReturn(new com.metricol.api.service.campaign
+                    .CampaignImageService.Diseno(List.of(new com.metricol.api.service.campaign.CampaignImageService
+                            .Diseno.Version(List.of(Platform.INSTAGRAM), disenada)),
+                            "2x1 en tacos", Map.of(Platform.INSTAGRAM, "Hoy 2x1 en tacos al pastor 🌮")));
+            when(revisor.revisar(anyString(), any(), anyBoolean())).thenReturn(new RevisorDeMarca.Revision(
+                    RevisorDeMarca.Veredicto.VA, "es tu promoción", "Tacos", "Anunciar el 2x1", "PROMOCION",
+                    true, "es promoción"));
+
+            agente.vuelta(ws.getId());
+
+            List<PostResponse> propuestas = agente.propuestas();
+            assertThat(propuestas).hasSize(1);
+            assertThat(propuestas.get(0).getMediaUrls()).containsExactly(disenada);
+            assertThat(propuestas.get(0).getTitulo()).isEqualTo("2x1 en tacos");
+            assertThat(propuestas.get(0).getAgenteMotivo()).contains("Le hice diseño con IA");
+        });
+    }
+
+    @Test
+    @DisplayName("si el diseño no sale, la promoción va tal cual: nunca se queda sin propuesta")
+    void disenoQueFalla() {
+        enElWorkspace(() -> {
+            conInstagram();
+            agente.encender(ws.getId(), true);
+            MediaAsset promo = foto("promo.jpg");
+            when(generador.disenarParaElAgente(any(), any())).thenThrow(new IllegalStateException("sin imágenes"));
+            when(revisor.revisar(anyString(), any(), anyBoolean())).thenReturn(new RevisorDeMarca.Revision(
+                    RevisorDeMarca.Veredicto.VA, "es tu promoción", "Tacos", "Anunciar", "PROMOCION"));
+
+            agente.vuelta(ws.getId());
+
+            assertThat(posts.propuestasDelAgente()).hasSize(1);
+            assertThat(posts.propuestasDelAgente().get(0).getMediaUrls()).containsExactly(promo.getUrl());
         });
     }
 
