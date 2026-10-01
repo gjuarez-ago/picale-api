@@ -41,6 +41,7 @@ import com.metricol.api.service.ai.AiQuotaGuard;
 import com.metricol.api.service.ai.MarcaDelNegocio;
 import com.metricol.api.service.ai.Redactor;
 import com.metricol.api.service.campaign.LogoSobreFoto;
+import com.metricol.api.service.media.HuellaDeImagen;
 import com.metricol.api.service.limits.LimitesConfigurables;
 import com.metricol.api.service.publishing.FormatRulesService;
 
@@ -87,12 +88,14 @@ public class AgenteService {
     private final LimitesConfigurables limites;
     private final AiQuotaGuard cupoIa;
     private final LogoSobreFoto logo;
+    private final HuellaDeImagen huellas;
 
     public AgenteService(WorkspaceRepository workspaces, MediaAssetRepository assets, PostRepository posts,
             SocialAccountRepository cuentas, RevisorDeMarca revisor, Redactor redactor, PostService postService,
             MediaService mediaService, FormatRulesService formatos, LimitesConfigurables limites,
-            AiQuotaGuard cupoIa, LogoSobreFoto logo) {
+            AiQuotaGuard cupoIa, LogoSobreFoto logo, HuellaDeImagen huellas) {
         this.logo = logo;
+        this.huellas = huellas;
         this.workspaces = workspaces;
         this.assets = assets;
         this.posts = posts;
@@ -263,6 +266,18 @@ public class AgenteService {
      * @return si quedó en algún sitio; {@code false} = sigue pendiente
      */
     boolean procesar(MediaAsset asset, Workspace w, List<SocialAccount> destino, boolean forzar) {
+        // Repetidas, antes de gastar en la IA: la misma toma subida dos veces no
+        // son dos publicaciones. Se queda la que llegó primero. Si la persona
+        // la rescata (forzar), va aunque se parezca.
+        if (!forzar) {
+            MediaAsset igual = repetidaDe(asset);
+            if (igual != null) {
+                marcar(asset, EtapaAgente.DESCARTADA, "Casi igual a «" + igual.getFileName()
+                        + "», que ya trabajé: me quedé con esa.");
+                return true;
+            }
+        }
+
         Redactor.Negocio negocio = negocio(w);
         boolean marcaCompleta = BrandService.completitud(w).percent() >= MARCA_SUFICIENTE;
 
@@ -420,6 +435,28 @@ public class AgenteService {
     }
 
     // ------------------------------------------------------------ piezas
+
+    /**
+     * Otra foto ya trabajada que es esta misma, o {@code null}. Calcula y
+     * guarda la huella de esta de paso, para que la siguiente se compare
+     * contra ella. Sin huella (formato que Java no lee) no hay comparación.
+     */
+    private MediaAsset repetidaDe(MediaAsset asset) {
+        Long h = asset.getHuella() != null ? asset.getHuella() : huellas.de(asset);
+        if (h == null) {
+            return null;
+        }
+        if (asset.getHuella() == null) {
+            asset.setHuella(h);
+            assets.save(asset);
+        }
+        for (MediaAsset otra : assets.yaTrabajadasConHuella()) {
+            if (!otra.getId().equals(asset.getId()) && HuellaDeImagen.parecidas(h, otra.getHuella())) {
+                return otra;
+            }
+        }
+        return null;
+    }
 
     /** Las cuentas a las que puede ir una foto: conectadas, encendidas, con página y que acepten fotos. */
     private List<SocialAccount> cuentasParaFotos() {

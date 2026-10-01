@@ -92,6 +92,9 @@ class AgenteServiceTest {
     @MockitoBean
     private com.metricol.api.service.campaign.LogoSobreFoto logo;
 
+    @MockitoBean
+    private com.metricol.api.service.media.HuellaDeImagen huellas;
+
     private Workspace ws;
     private final List<UUID> assetsCreados = new ArrayList<>();
     private final List<UUID> cuentasCreadas = new ArrayList<>();
@@ -101,6 +104,8 @@ class AgenteServiceTest {
         ws = workspaces.save(Workspace.builder().name("Vivento prueba").giro("Inmobiliaria").build());
         // R2 va doblado: las fotos de prueba son "nuestras" como las de verdad.
         when(storage.esNuestra(anyString())).thenReturn(true);
+        // Mockito devuelve 0 y no null para un Long: sin esto todas serían "la misma foto".
+        when(huellas.de(any(MediaAsset.class))).thenReturn(null);
         when(redactor.redactar(anyString(), any(), any(), any())).thenReturn(new Redactor.Borrador(
                 "Depa con vista al mar", "Vive frente al mar en Cancún.",
                 Map.of(Platform.INSTAGRAM, "Vive frente al mar en Cancún. ✨")));
@@ -324,6 +329,28 @@ class AgenteServiceTest {
         assertThat(cuentas.get(0).propuestas()).isEqualTo(2);
         assertThat(cuentas.get(0).agenteActivo()).isTrue();
         assertThat(cuentas.get(0).actual()).isTrue();
+    }
+
+    @Test
+    @DisplayName("la misma foto subida dos veces es una propuesta, no dos: la segunda va a Descartadas sin gastar en la IA")
+    void repetidas() {
+        enElWorkspace(() -> {
+            conInstagram();
+            agente.encender(ws.getId(), true);
+            foto("toma-1.jpg");
+            MediaAsset segunda = foto("toma-2.jpg");
+            when(huellas.de(any(MediaAsset.class))).thenReturn(0x0F0F0F0F0F0F0F0FL);
+            revisaComo(RevisorDeMarca.Veredicto.VA, "va");
+
+            agente.vuelta(ws.getId());
+
+            assertThat(posts.propuestasDelAgente()).hasSize(1);
+            assertThat(assets.findById(segunda.getId())).get().satisfies(a -> {
+                assertThat(a.getAgenteEtapa()).isEqualTo(EtapaAgente.DESCARTADA);
+                assertThat(a.getAgenteMotivo()).contains("Casi igual a «toma-1.jpg»");
+            });
+            org.mockito.Mockito.verify(revisor, org.mockito.Mockito.times(1)).revisar(anyString(), any(), anyBoolean());
+        });
     }
 
     @Test

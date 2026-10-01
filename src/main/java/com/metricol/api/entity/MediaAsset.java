@@ -141,6 +141,9 @@ public class MediaAsset {
     @Column(length = 500)
     private String agenteMotivo;
 
+    /** Cómo se ve, en 64 bits, para encontrar repetidas. Ver {@code HuellaDeImagen}. Nulo = sin calcular. */
+    private Long huella;
+
     public boolean deLaIa() {
         return Boolean.TRUE.equals(generadaPorIa);
     }

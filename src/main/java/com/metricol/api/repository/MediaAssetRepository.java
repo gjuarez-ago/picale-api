@@ -261,6 +261,16 @@ public interface MediaAssetRepository extends JpaRepository<MediaAsset, UUID> {
 
     List<MediaAsset> findByAgenteEtapaOrderByCreatedAtDesc(com.metricol.api.enums.EtapaAgente etapa);
 
+    /** Las fotos que el agente ya trabajó y tienen huella: contra ellas se buscan repetidas. */
+    @Query("""
+            select m from MediaAsset m
+            where m.huella is not null
+              and m.agenteEtapa in (com.metricol.api.enums.EtapaAgente.PROPUESTA,
+                                    com.metricol.api.enums.EtapaAgente.APROBADA,
+                                    com.metricol.api.enums.EtapaAgente.OBSERVACION)
+            """)
+    List<MediaAsset> yaTrabajadasConHuella();
+
     long countByAgenteEtapa(com.metricol.api.enums.EtapaAgente etapa);
 
     /**
