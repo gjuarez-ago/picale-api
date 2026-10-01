@@ -111,10 +111,22 @@ public class StripeClient {
     public void asegurarProducto(String id, String nombre, String descripcion) {
         exigirDisponible();
         try {
-            rest.get().uri("/products/" + id)
+            JsonNode actual = leer(rest.get().uri("/products/" + id)
                     .header("Authorization", "Bearer " + props.getSecretKey().strip())
-                    .retrieve().body(String.class);
-            return; // ya existe
+                    .retrieve().body(String.class));
+            // Ya existe. Si lo que dice quedó viejo (un paquete que pasó de 10 a 39
+            // créditos), se pone al día: es lo que la persona lee al pagar.
+            String texto = descripcion == null ? "" : descripcion;
+            if (!nombre.equals(actual.path("name").asText("")) || !texto.equals(actual.path("description").asText(""))) {
+                Map<String, String> cambios = new LinkedHashMap<>();
+                cambios.put("name", nombre);
+                if (!texto.isBlank()) {
+                    cambios.put("description", texto);
+                }
+                post("/products/" + id, cambios, null);
+                log.info("Producto {} puesto al día en Stripe", id);
+            }
+            return;
         } catch (RestClientResponseException ex) {
             if (ex.getStatusCode().value() != 404) {
                 throw fallo("/products/" + id, ex);

@@ -202,14 +202,47 @@ class StripeClientTest {
     }
 
     @Test
-    @DisplayName("un producto que ya existe no se vuelve a crear")
+    @DisplayName("un producto que ya existe, y dice lo mismo, no se vuelve a crear ni a tocar")
     void productoQueYaExiste() {
         servidor.expect(requestTo(BASE + "/products/picale_licencia"))
                 .andExpect(method(HttpMethod.GET))
-                .andRespond(withSuccess("{\"id\":\"picale_licencia\"}", MediaType.APPLICATION_JSON));
+                .andRespond(withSuccess("{\"id\":\"picale_licencia\",\"name\":\"Pícale · Licencia\","
+                        + "\"description\":\"Todo incluido\"}", MediaType.APPLICATION_JSON));
 
         cliente.asegurarProducto("picale_licencia", "Pícale · Licencia", "Todo incluido");
         servidor.verify(); // y ningún POST: no se esperaba
+    }
+
+    @Test
+    @DisplayName("un producto con la descripción vieja (10 créditos) se pone al día: es lo que se lee al pagar")
+    void productoConDescripcionVieja() {
+        servidor.expect(requestTo(BASE + "/products/picale_paquete_pack_10"))
+                .andExpect(method(HttpMethod.GET))
+                .andRespond(withSuccess("{\"id\":\"picale_paquete_pack_10\",\"name\":\"Pícale · Paquete Arranque\","
+                        + "\"description\":\"10 créditos de imagen con IA. No vencen.\"}", MediaType.APPLICATION_JSON));
+        servidor.expect(requestTo(BASE + "/products/picale_paquete_pack_10"))
+                .andExpect(method(HttpMethod.POST))
+                .andExpect(content().string(containsString("39")))
+                .andRespond(withSuccess("{\"id\":\"picale_paquete_pack_10\"}", MediaType.APPLICATION_JSON));
+
+        cliente.asegurarProducto("picale_paquete_pack_10", "Pícale · Paquete Arranque",
+                "39 créditos para el agente y la IA. No vencen.");
+        servidor.verify();
+    }
+
+    @Test
+    @DisplayName("cancelar ya: borra la suscripción viva y no toca una que ya estaba cancelada")
+    void cancelarYa() {
+        servidor.expect(requestTo(BASE + "/subscriptions/sub_1")).andExpect(method(HttpMethod.GET))
+                .andRespond(withSuccess("{\"id\":\"sub_1\",\"status\":\"active\"}", MediaType.APPLICATION_JSON));
+        servidor.expect(requestTo(BASE + "/subscriptions/sub_1")).andExpect(method(HttpMethod.DELETE))
+                .andRespond(withSuccess("{\"id\":\"sub_1\",\"status\":\"canceled\"}", MediaType.APPLICATION_JSON));
+        servidor.expect(requestTo(BASE + "/subscriptions/sub_2")).andExpect(method(HttpMethod.GET))
+                .andRespond(withSuccess("{\"id\":\"sub_2\",\"status\":\"canceled\"}", MediaType.APPLICATION_JSON));
+
+        cliente.cancelarYa("sub_1");
+        cliente.cancelarYa("sub_2");
+        servidor.verify(); // sub_2 sin DELETE
     }
 
     @Test
