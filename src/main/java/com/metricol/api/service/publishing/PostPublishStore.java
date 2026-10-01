@@ -124,6 +124,12 @@ public class PostPublishStore {
             return vacio(postId, workspaceId,
                     PublishOutcome.permanent("Ya estaba publicada."));
         }
+        // Cancelarla la devuelve a borrador y cancela sus trabajos; uno que ya
+        // estuviera tomado llega hasta aquí y no debe publicar un borrador.
+        if (post.getStatus() == PostStatus.DRAFT) {
+            return vacio(postId, workspaceId,
+                    PublishOutcome.permanent("Se canceló antes de salir."));
+        }
 
         Workspace workspace = workspaceRepository.findById(workspaceId).orElse(null);
         String profile = workspace == null ? null : workspace.getUploadPostProfile();

@@ -200,7 +200,61 @@ public class PostService {
      */
     @Transactional
     public void delete(UUID id) {
-        eliminar(findOrThrow(id));
+        Post post = findOrThrow(id);
+        if (post.getStatus() == PostStatus.PUBLISHING) {
+            throw new IllegalStateException(
+                    "Está saliendo en este momento; espera a que termine.");
+        }
+        if (algunaSalio(post)) {
+            // Eliminarla aquí la quitaría del historial y la dejaría puesta en
+            // las redes: parecería borrada sin estarlo. Archivar dice la verdad.
+            throw new IllegalStateException(
+                    "Ya salió en al menos una red y eso no se quita desde aquí. Archívala para ocultarla.");
+        }
+        eliminar(post);
+    }
+
+    /**
+     * Desprograma una publicación que no ha salido: vuelve a borrador, sin
+     * fecha y fuera de la cola. No se pierde nada; se vuelve a programar
+     * editándola.
+     *
+     * <p>Es lo que la gente buscaba en "Archivar", que no cancela a propósito
+     * (ver {@link #archive}): una programada archivada salía igual en su día.
+     *
+     * <p>Solo antes de que un worker la tome. Con ella ya en PUBLISHING la
+     * subida puede ir a medias, y "cancelada" sería mentira: quedaría puesta en
+     * alguna red sin que la persona lo supiera.
+     */
+    @Transactional
+    public PostResponse cancel(UUID id) {
+        Post post = findOrThrow(id);
+        if (post.getStatus() == PostStatus.PUBLISHING) {
+            throw new IllegalStateException(
+                    "Está saliendo en este momento y ya no se puede cancelar.");
+        }
+        if (post.getStatus() != PostStatus.SCHEDULED && post.getStatus() != PostStatus.QUEUED) {
+            throw new IllegalStateException("Solo se cancela lo que está programado o en cola.");
+        }
+        if (algunaSalio(post)) {
+            throw new IllegalStateException(
+                    "Ya salió en al menos una red; eso no se deshace cancelando.");
+        }
+
+        // La cola primero: un trabajo vivo publicaría el borrador en su hora.
+        cola.cancelarDePost(post.getId());
+        post.setStatus(PostStatus.DRAFT);
+        post.setScheduledAt(null);
+        post.getTargets().forEach(target -> {
+            target.setStatus(PostTargetStatus.PENDING);
+            target.setErrorMessage(null);
+        });
+        return toResponse(postRepository.saveAndFlush(post));
+    }
+
+    private static boolean algunaSalio(Post post) {
+        return post.getTargets().stream()
+                .anyMatch(target -> target.getStatus() == PostTargetStatus.PUBLISHED);
     }
 
     /**

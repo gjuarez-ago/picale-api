@@ -149,6 +149,35 @@ public class PostController {
     }
 
     /**
+     * Cancelar una programada o en cola: vuelve a borrador, sin fecha.
+     *
+     * <p>Pide lo mismo que guardarla como borrador, que es en lo que termina:
+     * quien puede editar ya podía conseguirlo reescribiéndola sin fecha.
+     */
+    @PostMapping("/{id}/cancel")
+    public ResponseEntity<ApiResponse<PostResponse>> cancel(
+            @AuthenticationPrincipal User currentUser, @PathVariable UUID id) {
+        permisos.exigir(currentUser, Permission.POST_CREATE);
+        return ResponseEntity.ok(ApiResponse.success(service.cancel(id)));
+    }
+
+    /**
+     * Eliminar de verdad (para la persona): sale de todas las listas y, si no
+     * había salido, ya no sale. Solo lo que no llegó a ninguna red.
+     *
+     * <p>Es un POST aparte y no el {@code DELETE /{id}} de abajo porque esa
+     * ruta archiva desde hace tiempo, y una app vieja que la sigue llamando
+     * para archivar no puede empezar a eliminar sin que nadie se lo pida.
+     */
+    @PostMapping("/{id}/delete")
+    public ResponseEntity<ApiResponse<Void>> eliminar(
+            @AuthenticationPrincipal User currentUser, @PathVariable UUID id) {
+        permisos.exigir(currentUser, Permission.POST_DELETE);
+        service.delete(id);
+        return ResponseEntity.ok(ApiResponse.success(null));
+    }
+
+    /**
      * Ya no borra: archiva.
      *
      * <p>En Pícale nada se elimina físicamente, todo es lógico. La ruta se deja
