@@ -24,6 +24,23 @@ class RevisorDeMarcaTest {
     }
 
     @Test
+    @DisplayName("lee el diagnóstico completo, y lo que falta se toma como una foto correcta")
+    void diagnostico() throws Exception {
+        var completo = revisor.interpretar("{\"veredicto\":\"VA\",\"tipo\":\"PROMOCION\",\"calidad\":2,"
+                + "\"queFalla\":\"oscura\",\"arreglable\":true,\"fuerza\":3,\"esArte\":false,"
+                + "\"necesitaTexto\":true,\"intencion\":\"vender\"}", true).diagnostico();
+        assertThat(completo.calidad()).isEqualTo(2);
+        assertThat(completo.queFalla()).isEqualTo("oscura");
+        assertThat(completo.necesitaTexto()).isTrue();
+        assertThat(completo.intencion()).isEqualTo(DecisorDelAgente.Intencion.VENDER);
+
+        var minimo = revisor.interpretar("{\"veredicto\":\"VA\"}", true).diagnostico();
+        assertThat(minimo.calidad()).isEqualTo(3);
+        assertThat(minimo.fuerza()).isEqualTo(3);
+        assertThat(minimo.esArte()).isFalse();
+    }
+
+    @Test
     @DisplayName("con la marca incompleta no descarta: lo manda a observación")
     void sinMarcaNoDescarta() throws Exception {
         var r = revisor.interpretar("{\"veredicto\":\"DESCARTADA\",\"motivo\":\"Otro giro\"}", false);

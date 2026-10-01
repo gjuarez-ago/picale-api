@@ -5,8 +5,18 @@ Estado: **fase 1 construida en la rama `agente`, sin desplegar.** Ya funciona:
 - El switch por cuenta, y solo cuenta lo que se sube después de encenderlo.
 - Filtro de marca (va, observación, descartada) con las reglas de cuidado y las promociones
   vencidas, y fotos repetidas fuera antes de gastar en la IA (huella de imagen).
-- La IA decide el logo (se pega el real sobre una copia) y, en promociones con créditos, hace
-  diseño con IA (1 crédito, uno siempre de reserva). Si el diseño falla, va tal cual.
+- **Flujo de decisión** (`DecisorDelAgente`): la IA de visión califica cada foto (calidad, si
+  se arregla, fuerza visual, si ya es un arte, si el mensaje necesita leerse en la imagen,
+  intención) y un decisor con reglas fijas resuelve tal cual, retoque, diseño u observación, y
+  si lleva logo. Cada propuesta explica el camino paso a paso. El retoque es ffmpeg (0
+  créditos); el diseño, 1 crédito.
+- **Ritmo de créditos** (`RitmoDeCreditos`): lo que queda del mes repartido entre las semanas
+  que faltan, uno siempre de reserva. Las candidatas a diseño de prioridad media o baja dejan
+  un crédito libre para una urgente.
+- **Aprende por cuenta:** cada diseño descartado sube el umbral para diseñar en esa cuenta y
+  cada diseño aprobado lo baja (`Workspace.agenteAjusteDiseno`, de -1 a 2).
+- Si el diseño falla, va tal cual (y no se cobra); si el retoque o el logo fallan, va sin
+  ellos. Lo dice en la propuesta.
 - El texto de cada red, todas las redes conectadas que acepten fotos, y la fecha dentro del
   horario del negocio (2 al día como mucho, a las 11 y a las 18 si caben).
 - Propuestas que vencen sin aprobar se mueven solas al siguiente hueco.
@@ -14,7 +24,8 @@ Estado: **fase 1 construida en la rama `agente`, sin desplegar.** Ya funciona:
 
 Todavía no: videos, carruseles, la mezcla de contenido (70 / 20 / 10), lo que aprende de la marca
 y la aprobación automática por confianza. El código está en `service/agente/`, `AgenteController`,
-`service/campaign/LogoSobreFoto` y `service/media/HuellaDeImagen`; en la web,
+`service/campaign/LogoSobreFoto`, `service/media/HuellaDeImagen` y `service/media/RetoqueDeFoto`;
+en la web,
 `pages/panel/pages/agente/`. El resto de este documento sigue siendo el plan.
 
 ## El objetivo

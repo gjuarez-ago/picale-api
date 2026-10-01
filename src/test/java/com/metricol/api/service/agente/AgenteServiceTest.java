@@ -98,6 +98,9 @@ class AgenteServiceTest {
     @MockitoBean
     private com.metricol.api.service.campaign.CampaignImageService generador;
 
+    @MockitoBean
+    private com.metricol.api.service.media.RetoqueDeFoto retoque;
+
     private Workspace ws;
     private final List<UUID> assetsCreados = new ArrayList<>();
     private final List<UUID> cuentasCreadas = new ArrayList<>();
@@ -261,14 +264,14 @@ class AgenteServiceTest {
             String sellada = "https://cdn.test/media/" + ws.getId() + "/con-logo-depa-logo.jpg";
             when(logo.sellar(any(), any(), any())).thenReturn(sellada);
             when(revisor.revisar(anyString(), any(), anyBoolean())).thenReturn(new RevisorDeMarca.Revision(
-                    RevisorDeMarca.Veredicto.VA, "es tu producto", "Un depa", "Presumir el depa", "PRODUCTO",
-                    true, "es foto de producto"));
+                    RevisorDeMarca.Veredicto.VA, "es tu producto", "Un depa", "Presumir el depa", "PRODUCTO"));
 
             agente.vuelta(ws.getId());
 
             Post p = posts.propuestasDelAgente().get(0);
             assertThat(p.getMediaUrls()).containsExactly(sellada);
-            assertThat(p.getAgenteMotivo()).contains("Le puse tu logo: es foto de producto");
+            assertThat(p.getAgenteMotivo()).contains("Lleva tu logo: es producto");
+            assertThat(p.getAgenteTratamiento()).isEqualTo("TAL_CUAL");
 
             agente.descartar(p.getId());
             assertThat(assets.findById(depa.getId())).get()
@@ -368,9 +371,7 @@ class AgenteServiceTest {
                     .CampaignImageService.Diseno(List.of(new com.metricol.api.service.campaign.CampaignImageService
                             .Diseno.Version(List.of(Platform.INSTAGRAM), disenada)),
                             "2x1 en tacos", Map.of(Platform.INSTAGRAM, "Hoy 2x1 en tacos al pastor 🌮")));
-            when(revisor.revisar(anyString(), any(), anyBoolean())).thenReturn(new RevisorDeMarca.Revision(
-                    RevisorDeMarca.Veredicto.VA, "es tu promoción", "Tacos", "Anunciar el 2x1", "PROMOCION",
-                    true, "es promoción"));
+            when(revisor.revisar(anyString(), any(), anyBoolean())).thenReturn(promoConPrecio());
 
             agente.vuelta(ws.getId());
 
@@ -378,7 +379,44 @@ class AgenteServiceTest {
             assertThat(propuestas).hasSize(1);
             assertThat(propuestas.get(0).getMediaUrls()).containsExactly(disenada);
             assertThat(propuestas.get(0).getTitulo()).isEqualTo("2x1 en tacos");
-            assertThat(propuestas.get(0).getAgenteMotivo()).contains("Le hice diseño con IA");
+            assertThat(propuestas.get(0).getAgenteMotivo())
+                    .contains("El mensaje tiene que leerse en la imagen")
+                    .contains("la diseño con IA");
+
+            // Descartar el diseño le enseña a la cuenta a diseñar menos.
+            agente.descartar(propuestas.get(0).getId());
+            assertThat(workspaces.findById(ws.getId()).orElseThrow().getAgenteAjusteDiseno()).isEqualTo(1);
+        });
+    }
+
+    /** Una promoción con precio en una buena foto: el decisor la manda a diseño. */
+    private static RevisorDeMarca.Revision promoConPrecio() {
+        return new RevisorDeMarca.Revision(RevisorDeMarca.Veredicto.VA, "es tu promoción", "Tacos", "Anunciar el 2x1",
+                new DecisorDelAgente.Diagnostico(4, "", true, 4, false, true, DecisorDelAgente.Intencion.VENDER,
+                        "PROMOCION"));
+    }
+
+    @Test
+    @DisplayName("una foto oscura que se corrige se publica retocada, y la original sigue siendo la que cuenta")
+    void retoque() {
+        enElWorkspace(() -> {
+            conInstagram();
+            agente.encender(ws.getId(), true);
+            MediaAsset oscura = foto("oscura.jpg");
+            MediaAsset retocada = foto("retocada-oscura.jpg");
+            when(retoque.retocar(any(), any())).thenReturn(retocada);
+            when(revisor.revisar(anyString(), any(), anyBoolean())).thenReturn(new RevisorDeMarca.Revision(
+                    RevisorDeMarca.Veredicto.VA, "es tu local", "El local de noche", "Invitar a venir",
+                    new DecisorDelAgente.Diagnostico(2, "oscura", true, 4, false, false,
+                            DecisorDelAgente.Intencion.INFORMAR, "LUGAR")));
+
+            agente.vuelta(ws.getId());
+
+            Post p = posts.propuestasDelAgente().stream()
+                    .filter(x -> oscura.getUrl().equals(x.getAgenteFotoUrl())).findFirst().orElseThrow();
+            assertThat(p.getMediaUrls()).containsExactly(retocada.getUrl());
+            assertThat(p.getAgenteTratamiento()).isEqualTo("RETOQUE");
+            assertThat(p.getAgenteMotivo()).contains("está oscura, pero se corrige").contains("Sin logo");
         });
     }
 
@@ -390,13 +428,14 @@ class AgenteServiceTest {
             agente.encender(ws.getId(), true);
             MediaAsset promo = foto("promo.jpg");
             when(generador.disenarParaElAgente(any(), any())).thenThrow(new IllegalStateException("sin imágenes"));
-            when(revisor.revisar(anyString(), any(), anyBoolean())).thenReturn(new RevisorDeMarca.Revision(
-                    RevisorDeMarca.Veredicto.VA, "es tu promoción", "Tacos", "Anunciar", "PROMOCION"));
+            when(revisor.revisar(anyString(), any(), anyBoolean())).thenReturn(promoConPrecio());
 
             agente.vuelta(ws.getId());
 
             assertThat(posts.propuestasDelAgente()).hasSize(1);
-            assertThat(posts.propuestasDelAgente().get(0).getMediaUrls()).containsExactly(promo.getUrl());
+            Post p = posts.propuestasDelAgente().get(0);
+            assertThat(p.getMediaUrls()).containsExactly(promo.getUrl());
+            assertThat(p.getAgenteMotivo()).contains("El diseño no salió; va tal cual.");
         });
     }
 

@@ -286,6 +286,14 @@ public class Post {
     @Column(length = 1000)
     private String agenteFotoUrl;
 
+    /**
+     * Qué le hizo el agente: TAL_CUAL, RETOQUE o DISENO. Con esto se cuentan
+     * los diseños de la semana (el ritmo de créditos) y se aprende de lo que
+     * la persona aprueba y descarta.
+     */
+    @Column(length = 20)
+    private String agenteTratamiento;
+
     public boolean delAgente() {
         return Boolean.TRUE.equals(propuestaAgente);
     }

@@ -194,6 +194,45 @@ public class FfmpegImagen {
         }
     }
 
+    /**
+     * Un retoque prudente: un poco más de luz, contraste y color, y algo de
+     * nitidez. Para fotos de teléfono que salieron apagadas.
+     *
+     * <p>Prudente a propósito: no "mejora" la foto, la saca de lo apagado. Un
+     * retoque fuerte cambia el color del producto, y eso en una foto que se
+     * vende es peor que dejarla oscura. Sin reescalar, sin metadatos.
+     *
+     * @return el JPEG retocado, o {@code null} si ffmpeg no pudo
+     */
+    public byte[] retocar(Path origen, int calidad) {
+        Path destino = null;
+        try {
+            destino = Files.createTempFile("picale-retoque-", ".jpg");
+            List<String> comando = List.of(
+                    props.getFfmpeg(),
+                    "-hide_banner",
+                    "-loglevel", "error",
+                    "-y",
+                    "-i", origen.toString(),
+                    "-frames:v", "1",
+                    "-vf", "eq=brightness=0.05:contrast=1.08:saturation=1.10,unsharp=5:5:0.5",
+                    "-pix_fmt", "yuvj420p",
+                    "-q:v", String.valueOf(calidad),
+                    "-map_metadata", "-1",
+                    destino.toString());
+            if (ejecutar(comando, "ffmpeg") == null) {
+                return null;
+            }
+            byte[] bytes = Files.readAllBytes(destino);
+            return bytes.length == 0 ? null : bytes;
+        } catch (IOException ex) {
+            log.warn("No se pudo escribir el temporal del retoque: {}", ex.getMessage());
+            return null;
+        } finally {
+            borrar(destino);
+        }
+    }
+
     /** ¿Está ffmpeg donde dice la configuración? */
     public boolean disponible() {
         Boolean sabido = hayFfmpeg;

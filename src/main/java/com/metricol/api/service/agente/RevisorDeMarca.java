@@ -38,22 +38,27 @@ public class RevisorDeMarca {
      * @param motivo      por qué, en una frase para la persona
      * @param descripcion qué se ve, para quien escribe el texto
      * @param idea        qué comunicaría un community manager con esta foto
-     * @param tipo        producto, lugar, equipo, evento, promoción, testimonio u otro
-     * @param logo        si conviene ponerle el logo del negocio
-     * @param porQueLogo  por qué sí o por qué no, para la persona
+     * @param diagnostico cómo está la foto; con esto decide {@link DecisorDelAgente}
      */
-    public record Revision(Veredicto veredicto, String motivo, String descripcion, String idea, String tipo,
-            boolean logo, String porQueLogo) {
+    public record Revision(Veredicto veredicto, String motivo, String descripcion, String idea,
+            DecisorDelAgente.Diagnostico diagnostico) {
 
-        /** Sin decisión de logo: las pruebas y lo que no la necesita. */
+        /** Una foto buena del tipo dado: las pruebas y lo que no trae diagnóstico. */
         public Revision(Veredicto veredicto, String motivo, String descripcion, String idea, String tipo) {
-            this(veredicto, motivo, descripcion, idea, tipo, false, "");
+            this(veredicto, motivo, descripcion, idea, new DecisorDelAgente.Diagnostico(4, "", true, 4, false,
+                    false, DecisorDelAgente.Intencion.VENDER, tipo));
+        }
+
+        public String tipo() {
+            return diagnostico.tipo();
         }
     }
 
     private static final String SISTEMA = """
             Eres el community manager de un negocio. Te llega una foto que el
-            negocio subio y decides si se publica en sus redes.
+            negocio subio. Decides si va con la marca y la calificas; lo que se
+            hace con ella (retocarla, disenarla, ponerle logo) lo decide otro
+            paso con tu calificacion, asi que se honesto con los numeros.
 
             Contestas SOLO un JSON:
             {"veredicto": "VA" | "OBSERVACION" | "DESCARTADA",
@@ -61,13 +66,27 @@ public class RevisorDeMarca {
              "descripcion": "que se ve, concreto, una o dos frases",
              "idea": "que comunicarias con esta foto, en una frase, como encargo para quien escribe",
              "tipo": "PRODUCTO" | "LUGAR" | "EQUIPO" | "EVENTO" | "PROMOCION" | "TESTIMONIO" | "OTRO",
-             "logo": true | false,
-             "porQueLogo": "una frase corta: por que si o por que no lleva el logo"}
+             "calidad": 1-5,
+             "queFalla": "si la calidad es baja, que le falta en dos o tres palabras: oscura, borrosa, torcida, mal recortada",
+             "arreglable": true | false,
+             "fuerza": 1-5,
+             "esArte": true | false,
+             "necesitaTexto": true | false,
+             "intencion": "VENDER" | "INFORMAR" | "COMUNIDAD" | "CONFIANZA"}
 
-            LOGO: si en fotos de producto, promociones y piezas que alguien
-            compartiria fuera de la cuenta, donde importa que se sepa de quien
-            es. No en fotos del equipo, del local, de eventos o testimonios, ni
-            en fotos que ya traen un logo o mucho texto encima.
+            Como calificar:
+            - calidad: luz, nitidez, encuadre y resolucion. 5 = foto profesional,
+              3 = buena foto de telefono, 1 = casi inservible.
+            - arreglable: true si lo que falla es luz, color, contraste o recorte
+              (se corrige retocando). false si esta movida, desenfocada o pixelada.
+            - fuerza: si esta foto SOLA detiene el scroll. 5 = el producto se ve
+              clarisimo y antojable, 3 = correcta pero plana, 1 = no dice nada.
+            - esArte: ya es una pieza terminada (flyer, banner, foto con texto o
+              logo encima, captura con diseno).
+            - necesitaTexto: el mensaje tiene que LEERSE en la imagen para
+              funcionar: un precio, una oferta, una fecha, un evento, un
+              lanzamiento. Una foto de producto sin promocion no lo necesita.
+            - intencion: para que serviria publicarla.
 
             VA: encaja con lo que el negocio vende o con su dia a dia (su
             producto, su local, su equipo, sus clientes, sus eventos).
@@ -81,7 +100,6 @@ public class RevisorDeMarca {
               placas de coche, domicilios particulares.
             - Contenido regulado: alcohol, medicamentos, "antes y despues" de
               salud o estetica, promesas de rendimiento o de inversion.
-            - Calidad: muy borrosa, muy oscura, texto ilegible.
             - Una promocion con fecha que ya paso.
 
             DESCARTADA: choca con la marca. Es de otro giro, es contenido de la
@@ -166,13 +184,28 @@ public class RevisorDeMarca {
         if (veredicto == Veredicto.DESCARTADA && !marcaCompleta) {
             veredicto = Veredicto.OBSERVACION;
         }
+        DecisorDelAgente.Intencion intencion;
+        try {
+            intencion = DecisorDelAgente.Intencion.valueOf(
+                    n.path("intencion").asText("VENDER").strip().toUpperCase(Locale.ROOT));
+        } catch (IllegalArgumentException ex) {
+            intencion = DecisorDelAgente.Intencion.VENDER;
+        }
+        // Lo que no venga se asume como una foto correcta (3): ni la castiga ni la premia.
+        DecisorDelAgente.Diagnostico diagnostico = new DecisorDelAgente.Diagnostico(
+                n.path("calidad").asInt(3),
+                recortar(n.path("queFalla").asText(""), 60),
+                n.path("arreglable").asBoolean(true),
+                n.path("fuerza").asInt(3),
+                n.path("esArte").asBoolean(false),
+                n.path("necesitaTexto").asBoolean(false),
+                intencion,
+                n.path("tipo").asText("OTRO").strip().toUpperCase(Locale.ROOT));
         return new Revision(veredicto,
                 recortar(n.path("motivo").asText(""), 400),
                 recortar(n.path("descripcion").asText(""), 900),
                 recortar(n.path("idea").asText(""), 400),
-                n.path("tipo").asText("OTRO").strip().toUpperCase(Locale.ROOT),
-                n.path("logo").asBoolean(false),
-                recortar(n.path("porQueLogo").asText(""), 200));
+                diagnostico);
     }
 
     private static String recortar(String s, int max) {

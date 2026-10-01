@@ -45,6 +45,7 @@ import com.metricol.api.service.billing.CreditService;
 import com.metricol.api.service.campaign.CampaignImageService;
 import com.metricol.api.service.campaign.LogoSobreFoto;
 import com.metricol.api.service.media.HuellaDeImagen;
+import com.metricol.api.service.media.RetoqueDeFoto;
 import com.metricol.api.service.limits.LimitesConfigurables;
 import com.metricol.api.service.publishing.FormatRulesService;
 
@@ -76,8 +77,6 @@ public class AgenteService {
     /** Con menos de esto la marca dice muy poco para descartar con criterio. */
     static final int MARCA_SUFICIENTE = 60;
 
-    /** Créditos que el agente nunca toca: quedan para lo que la persona cree a mano. */
-    static final int RESERVA_DE_CREDITOS = 1;
 
     private static final DateTimeFormatter FECHA =
             DateTimeFormatter.ofPattern("EEE d MMM, HH:mm", Locale.forLanguageTag("es-MX"));
@@ -97,12 +96,14 @@ public class AgenteService {
     private final HuellaDeImagen huellas;
     private final CampaignImageService generador;
     private final CreditService creditos;
+    private final RetoqueDeFoto retoque;
 
     public AgenteService(WorkspaceRepository workspaces, MediaAssetRepository assets, PostRepository posts,
             SocialAccountRepository cuentas, RevisorDeMarca revisor, Redactor redactor, PostService postService,
             MediaService mediaService, FormatRulesService formatos, LimitesConfigurables limites,
             AiQuotaGuard cupoIa, LogoSobreFoto logo, HuellaDeImagen huellas, CampaignImageService generador,
-            CreditService creditos) {
+            CreditService creditos, RetoqueDeFoto retoque) {
+        this.retoque = retoque;
         this.logo = logo;
         this.huellas = huellas;
         this.generador = generador;
@@ -304,20 +305,30 @@ public class AgenteService {
             return true;
         }
 
+        // La IA ya calificó la foto; el decisor resuelve qué necesita.
+        DecisorDelAgente.Decision decision = DecisorDelAgente.decidir(revision.diagnostico(),
+                new DecisorDelAgente.Contexto(disenosDisponibles(w), ajusteDeDiseno(w)));
+        if (decision.tratamiento() == DecisorDelAgente.Tratamiento.OBSERVACION) {
+            marcar(asset, EtapaAgente.OBSERVACION, decision.explicacion());
+            return true;
+        }
+
         try {
             Set<Platform> redes = destino.stream().map(SocialAccount::getPlatform)
                     .collect(Collectors.toCollection(LinkedHashSet::new));
             String encargo = encargo(revision);
+            String porQue = forzar ? "Me dijiste que va." : "Va con tu marca: " + sinPunto(revision.motivo()) + ".";
 
-            // Diseño con IA solo para promociones y con créditos de sobra: con
-            // cinco al mes, gastarlos en una foto que ya funciona tal cual es
-            // tirarlos. Uno se queda siempre de reserva para la persona.
-            boolean quiereDiseno = "PROMOCION".equals(revision.tipo())
-                    && creditos.disponibles(w.getId()) > RESERVA_DE_CREDITOS;
-            if (quiereDiseno && proponerDiseno(asset, w, destino, redes, encargo, revision, forzar)) {
-                marcar(asset, EtapaAgente.PROPUESTA, "Le hice diseño: es una promoción.");
-                return true;
+            if (decision.tratamiento() == DecisorDelAgente.Tratamiento.DISENO) {
+                if (proponerDiseno(asset, w, destino, redes, encargo, decision, porQue)) {
+                    marcar(asset, EtapaAgente.PROPUESTA, "Le hice diseño con IA.");
+                    return true;
+                }
+                // El diseño no salió (y no se cobró): va tal cual, y se dice.
+                decision = new DecisorDelAgente.Decision(DecisorDelAgente.Tratamiento.TAL_CUAL, decision.logo(),
+                        decision.prioridad(), conPaso(decision.pasos(), "El diseño no salió; va tal cual."));
             }
+
             Redactor.Borrador borrador = redactor.redactar(encargo,
                     revision.descripcion().isBlank() ? List.of() : List.of(revision.descripcion()),
                     redes, negocio);
@@ -325,23 +336,41 @@ public class AgenteService {
             LocalDateTime fecha = CalendarioDelAgente.siguienteHueco(LocalDateTime.now(),
                     posts.huecosTomados(LocalDateTime.now()), limites.maxPorDia(), horario(w));
 
-            // El logo lo decide la IA; se pega el archivo real sobre una copia.
-            // Si no se puede (sin logo guardado, logo ilegible), va sin él.
-            String sellada = revision.logo() ? logo.sellar(asset, w.getLogoUrl(), w.getId()) : null;
+            // Retoque y logo sobre copias: la original no se toca. Lo que no se
+            // pueda (ffmpeg, un logo ilegible) se salta sin perder la propuesta.
+            MediaAsset base = asset;
+            List<String> pasos = new ArrayList<>(decision.pasos());
+            if (decision.tratamiento() == DecisorDelAgente.Tratamiento.RETOQUE) {
+                MediaAsset retocada = retoque.retocar(asset, w.getId());
+                if (retocada != null) {
+                    base = retocada;
+                } else {
+                    pasos.add("El retoque no salió; va como vino.");
+                }
+            }
+            String publicar = base.getUrl();
+            if (decision.logo()) {
+                String sellada = logo.sellar(base, w.getLogoUrl(), w.getId());
+                if (sellada != null) {
+                    publicar = sellada;
+                } else {
+                    pasos.add(w.getLogoUrl() == null ? "No hay un logo guardado en tu marca." : "El logo no se pudo pegar.");
+                }
+            }
 
             PostSaveRequest pedido = new PostSaveRequest();
             pedido.setCaption(texto(borrador));
             pedido.setTitulo(borrador.titulo());
             pedido.setBrief(encargo);
-            pedido.setMediaUrls(List.of(sellada != null ? sellada : asset.getUrl()));
+            pedido.setMediaUrls(List.of(publicar));
             pedido.setFormat(PostFormat.PHOTO.name());
             pedido.setSocialAccountIds(destino.stream().map(SocialAccount::getId).toList());
             Map<String, String> porRed = new LinkedHashMap<>();
             borrador.textos().forEach((red, t) -> porRed.put(red.name(), t));
             pedido.setCaptionsPorRed(porRed);
 
-            String motivo = motivo(forzar, revision, redes, fecha, sellada != null);
-            postService.crearPropuesta(pedido, fecha, motivo, asset.getUrl());
+            String motivo = porQue + " " + String.join(" ", pasos) + " " + cuandoYDonde(redes, fecha);
+            postService.crearPropuesta(pedido, fecha, motivo, asset.getUrl(), decision.tratamiento().name());
 
             if (asset.getDescripcionIa() == null || asset.getDescripcionIa().isBlank()) {
                 asset.setDescripcionIa(revision.descripcion().isBlank() ? null : revision.descripcion());
@@ -363,14 +392,14 @@ public class AgenteService {
      * @return si salió; {@code false} = va tal cual, sin gastar
      */
     private boolean proponerDiseno(MediaAsset asset, Workspace w, List<SocialAccount> destino, Set<Platform> redes,
-            String encargo, RevisorDeMarca.Revision revision, boolean forzar) {
+            String encargo, DecisorDelAgente.Decision decision, String porQue) {
         CampaignImageService.Diseno diseno;
         try {
             diseno = generador.disenarParaElAgente(w, new CampaignImageRequest(1,
                     new CampaignImageRequest.Format("post", null, null),
                     List.of(asset.getUrl()),
-                    // El logo también lo decide la IA: sin él, se pide que no lo ponga.
-                    new CampaignImageRequest.Brand(w.getLogoUrl(), revision.logo() ? null : "NONE"),
+                    // El logo también lo decide el decisor: sin él, se pide que no lo ponga.
+                    new CampaignImageRequest.Brand(w.getLogoUrl(), decision.logo() ? null : "NONE"),
                     encargo, null, List.of(), null, "", false,
                     redes.stream().map(Platform::name).toList()));
         } catch (RuntimeException ex) {
@@ -410,17 +439,46 @@ public class AgenteService {
 
             Set<Platform> deEsta = new LinkedHashSet<>(v.redes());
             deEsta.retainAll(redes);
-            postService.crearPropuesta(pedido, fecha, motivoDiseno(forzar, revision, deEsta, fecha), asset.getUrl());
+            String motivo = porQue + " " + decision.explicacion() + " (1 crédito) " + cuandoYDonde(deEsta, fecha);
+            postService.crearPropuesta(pedido, fecha, motivo, asset.getUrl(), DecisorDelAgente.Tratamiento.DISENO.name());
             hechas++;
         }
         return hechas > 0;
     }
 
-    static String motivoDiseno(boolean forzar, RevisorDeMarca.Revision r, Set<Platform> redes, LocalDateTime fecha) {
-        String porQue = forzar ? "Me dijiste que va." : "Va con tu marca: " + sinPunto(r.motivo()) + ".";
-        String nombres = redes.stream().map(Platform::getLabel).collect(Collectors.joining(" y "));
-        return porQue + " Le hice diseño con IA porque es una promoción (1 crédito)"
-                + (r.logo() ? ", con tu logo" : "") + ". Para " + nombres + ", el " + FECHA.format(fecha) + ".";
+    /** «En todas tus redes, el jue 2 oct, 11:00: el primer hueco libre.» */
+    static String cuandoYDonde(Set<Platform> redes, LocalDateTime fecha) {
+        String donde = redes.size() > 1
+                ? "Para " + redes.stream().map(Platform::getLabel).collect(Collectors.joining(", "))
+                : "Para " + redes.iterator().next().getLabel();
+        return donde + ", el " + FECHA.format(fecha) + ": el primer hueco libre.";
+    }
+
+    private static List<String> conPaso(List<String> pasos, String otro) {
+        List<String> todos = new ArrayList<>(pasos);
+        todos.add(otro);
+        return todos;
+    }
+
+    /**
+     * Cuántos diseños caben todavía esta semana: el ritmo de los créditos de la
+     * cuenta menos los que el agente ya hizo desde el lunes.
+     */
+    int disenosDisponibles(Workspace w) {
+        int disponibles = creditos.disponibles(w.getId());
+        java.time.LocalDate hoy = java.time.LocalDate.now();
+        LocalDateTime lunes = hoy.with(java.time.temporal.TemporalAdjusters.previousOrSame(java.time.DayOfWeek.MONDAY))
+                .atStartOfDay();
+        int usados = (int) posts.disenosDelAgenteDesde(lunes);
+        java.time.LocalDate vencen = disponibles == Integer.MAX_VALUE ? null
+                : java.util.Optional.ofNullable(creditos.saldo(w.getId()).vencenLosMensuales())
+                        .map(LocalDateTime::toLocalDate).orElse(null);
+        return RitmoDeCreditos.estaSemana(disponibles, vencen, hoy, usados);
+    }
+
+    /** Cuánto prefiere la cuenta que no se diseñe: sube al descartar diseños, baja al aprobarlos. */
+    static int ajusteDeDiseno(Workspace w) {
+        return w.getAgenteAjusteDiseno() == null ? 0 : w.getAgenteAjusteDiseno();
     }
 
     /**
@@ -470,6 +528,9 @@ public class AgenteService {
         }
         PostResponse hecho = postService.programarPropuesta(postId, cuando, workspaceId);
         etapaDeSusFotos(post, EtapaAgente.APROBADA, null);
+        if (DecisorDelAgente.Tratamiento.DISENO.name().equals(post.getAgenteTratamiento())) {
+            aprender(workspaceId, -1);
+        }
         return hecho;
     }
 
@@ -501,6 +562,26 @@ public class AgenteService {
                 .orElseThrow(() -> new ResourceNotFoundException("Propuesta no encontrada."));
         postService.delete(postId);
         etapaDeSusFotos(post, EtapaAgente.DESCARTADA, "La descartaste tú.");
+        if (DecisorDelAgente.Tratamiento.DISENO.name().equals(post.getAgenteTratamiento())) {
+            aprender(post.getTenantId() == null ? null : UUID.fromString(post.getTenantId()), +1);
+        }
+    }
+
+    /**
+     * Mueve cuánto diseño quiere la cuenta, entre -1 (más) y 2 (casi nada).
+     * Un diseño descartado empuja a diseñar menos; uno aprobado, a diseñar más.
+     */
+    private void aprender(UUID workspaceId, int paso) {
+        if (workspaceId == null) {
+            return;
+        }
+        workspaces.findById(workspaceId).ifPresent(w -> {
+            int nuevo = Math.max(-1, Math.min(2, ajusteDeDiseno(w) + paso));
+            if (nuevo != ajusteDeDiseno(w)) {
+                w.setAgenteAjusteDiseno(nuevo);
+                workspaces.save(w);
+            }
+        });
     }
 
     /**
@@ -578,22 +659,6 @@ public class AgenteService {
         }
         return b.textos().values().stream().filter(t -> t != null && !t.isBlank()).findFirst()
                 .orElse(b.titulo() == null ? "Publicacion" : b.titulo());
-    }
-
-    static String motivo(boolean forzar, RevisorDeMarca.Revision r, Set<Platform> redes, LocalDateTime fecha,
-            boolean conLogo) {
-        String porQue = forzar ? "Me dijiste que va." : "Va con tu marca: " + sinPunto(r.motivo()) + ".";
-        String logo;
-        if (conLogo) {
-            logo = " Le puse tu logo" + (r.porQueLogo().isBlank() ? "" : ": " + sinPunto(r.porQueLogo())) + ".";
-        } else if (r.logo()) {
-            logo = " Iba con tu logo, pero no hay uno guardado en tu marca.";
-        } else {
-            logo = " Sin logo" + (r.porQueLogo().isBlank() ? "" : ": " + sinPunto(r.porQueLogo())) + ".";
-        }
-        String donde = redes.size() > 1 ? "En todas tus redes" : "En " + redes.iterator().next().getLabel();
-        return porQue + logo + " Foto tal cual, sin diseño. " + donde + ", el " + FECHA.format(fecha)
-                + ": el primer hueco libre.";
     }
 
     /** El horario del negocio guardado en la cuenta, o cualquier día de 9 a 21. */

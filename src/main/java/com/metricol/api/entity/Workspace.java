@@ -187,6 +187,13 @@ public class Workspace {
     /** Hasta qué hora publica (1–24). Nulo = 21. */
     private Integer agenteHoraHasta;
 
+    /**
+     * Lo que el agente aprendió de cuánto diseño quiere la cuenta: de -1 a 2.
+     * Sube cuando la persona descarta un diseño (diseñar menos), baja cuando
+     * lo aprueba. Nulo = 0. Ver {@code DecisorDelAgente}.
+     */
+    private Integer agenteAjusteDiseno;
+
     public boolean conAgente() {
         return Boolean.TRUE.equals(agenteActivo);
     }

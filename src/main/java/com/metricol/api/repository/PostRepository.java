@@ -47,6 +47,17 @@ public interface PostRepository extends JpaRepository<Post, UUID> {
     List<Post> programadasDelAgente();
 
     /**
+     * Cuántos diseños hizo el agente desde {@code desde}. Por foto y no por
+     * publicación: un diseño son varias versiones, y es un solo crédito.
+     * Cuentan también los descartados: el crédito ya se gastó.
+     */
+    @Query("""
+            select count(distinct p.agenteFotoUrl) from Post p
+            where p.propuestaAgente = true and p.agenteTratamiento = 'DISENO' and p.createdAt >= :desde
+            """)
+    long disenosDelAgenteDesde(LocalDateTime desde);
+
+    /**
      * Los huecos ya tomados desde {@code desde}: lo programado o en cola, y lo
      * que el agente ya propuso. Con esto el agente no apila dos en la misma
      * hora ni pasa del tope del día.
