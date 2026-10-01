@@ -21,6 +21,7 @@ import com.metricol.api.models.response.ApiResponse;
 import com.metricol.api.models.response.MediaAssetResponse;
 import com.metricol.api.models.response.PostResponse;
 import com.metricol.api.service.PermissionService;
+import com.metricol.api.service.WorkspaceMembershipService;
 import com.metricol.api.service.agente.AgenteService;
 
 /**
@@ -37,10 +38,21 @@ public class AgenteController {
 
     private final AgenteService agente;
     private final PermissionService permisos;
+    private final WorkspaceMembershipService membresias;
 
-    public AgenteController(AgenteService agente, PermissionService permisos) {
+    public AgenteController(AgenteService agente, PermissionService permisos, WorkspaceMembershipService membresias) {
         this.agente = agente;
         this.permisos = permisos;
+        this.membresias = membresias;
+    }
+
+    /**
+     * Todas las cuentas de la persona con lo que espera en cada una: la vista
+     * del community manager. Solo las suyas: sale de sus membresías.
+     */
+    @GetMapping("/cuentas")
+    public ResponseEntity<ApiResponse<List<AgenteService.Cuenta>>> cuentas(@AuthenticationPrincipal User currentUser) {
+        return ResponseEntity.ok(ApiResponse.success(agente.resumen(membresias.misWorkspaces(currentUser))));
     }
 
     public record Switch(boolean activo) {

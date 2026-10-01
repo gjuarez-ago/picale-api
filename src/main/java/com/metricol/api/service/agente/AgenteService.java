@@ -130,6 +130,37 @@ public class AgenteService {
                 posts.programadasDelAgente().size());
     }
 
+    /**
+     * Una cuenta en el resumen del community manager.
+     *
+     * @param actual si es la cuenta en la que está ahora
+     */
+    public record Cuenta(UUID id, String nombre, String logoUrl, String color, boolean actual, boolean agenteActivo,
+            long propuestas, long enObservacion, long porRevisar) {
+    }
+
+    /**
+     * Cuánto espera en cada cuenta de la persona: la vista del community
+     * manager que lleva varias. Cada una se lee con su propio workspace
+     * impuesto, como si se entrara a ella.
+     */
+    public List<Cuenta> resumen(List<com.metricol.api.models.response.MiWorkspaceResponse> mias) {
+        List<Cuenta> cuentas = new ArrayList<>();
+        for (var m : mias) {
+            if (m.archivado()) {
+                continue;
+            }
+            com.metricol.api.config.TenantIdentifierResolver.comoTenant(m.id().toString(), () -> {
+                Estado e = estado(m.id());
+                cuentas.add(new Cuenta(m.id(), m.name(), m.logoUrl(), m.color(), m.activo(), e.activo(),
+                        e.propuestas(), e.enObservacion(), e.porRevisar()));
+            });
+        }
+        // Lo que más espera, primero: es lo que el community manager va a atender.
+        cuentas.sort(java.util.Comparator.comparingLong((Cuenta c) -> -(c.propuestas() + c.enObservacion())));
+        return cuentas;
+    }
+
     /** El horario del negocio: qué días y entre qué horas propone publicar. */
     public Estado guardarHorario(UUID workspaceId, List<Integer> dias, int desde, int hasta) {
         if (dias == null || dias.isEmpty()) {

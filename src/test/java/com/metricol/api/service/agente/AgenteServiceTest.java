@@ -303,6 +303,30 @@ class AgenteServiceTest {
     }
 
     @Test
+    @DisplayName("el resumen de cuentas dice cuánto espera en cada una, y deja fuera las archivadas")
+    void resumenDeCuentas() {
+        enElWorkspace(() -> {
+            conInstagram();
+            agente.encender(ws.getId(), true);
+            foto("r1.jpg");
+            foto("r2.jpg");
+            revisaComo(RevisorDeMarca.Veredicto.VA, "va");
+            agente.vuelta(ws.getId());
+        });
+        var mia = new com.metricol.api.models.response.MiWorkspaceResponse(ws.getId(), "Vivento prueba", null, null,
+                List.of(), null, List.of(), true, false);
+        var archivada = new com.metricol.api.models.response.MiWorkspaceResponse(UUID.randomUUID(), "Vieja", null,
+                null, List.of(), null, List.of(), false, true);
+
+        var cuentas = agente.resumen(List.of(archivada, mia));
+
+        assertThat(cuentas).hasSize(1);
+        assertThat(cuentas.get(0).propuestas()).isEqualTo(2);
+        assertThat(cuentas.get(0).agenteActivo()).isTrue();
+        assertThat(cuentas.get(0).actual()).isTrue();
+    }
+
+    @Test
     @DisplayName("sin redes conectadas no revisa nada: no hay a dónde proponer")
     void sinRedes() {
         enElWorkspace(() -> {
