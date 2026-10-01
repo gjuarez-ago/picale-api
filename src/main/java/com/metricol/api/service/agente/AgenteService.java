@@ -77,6 +77,9 @@ public class AgenteService {
     /** Con menos de esto la marca dice muy poco para descartar con criterio. */
     static final int MARCA_SUFICIENTE = 60;
 
+    /** Diseños por semana de una cuenta normal mientras los cobros estén apagados. Las maestras no tienen tope. */
+    static final int TOPE_SEMANAL_SIN_COBROS = 3;
+
 
     private static final DateTimeFormatter FECHA =
             DateTimeFormatter.ofPattern("EEE d MMM, HH:mm", Locale.forLanguageTag("es-MX"));
@@ -465,11 +468,20 @@ public class AgenteService {
      * cuenta menos los que el agente ya hizo desde el lunes.
      */
     int disenosDisponibles(Workspace w) {
-        int disponibles = creditos.disponibles(w.getId());
+        // Las cuentas maestras (exentas de pago) no tienen límite.
+        if (creditos.esMaestra(w.getId())) {
+            return Integer.MAX_VALUE;
+        }
         java.time.LocalDate hoy = java.time.LocalDate.now();
         LocalDateTime lunes = hoy.with(java.time.temporal.TemporalAdjusters.previousOrSame(java.time.DayOfWeek.MONDAY))
                 .atStartOfDay();
         int usados = (int) posts.disenosDelAgenteDesde(lunes);
+        // Sin cobros no hay saldo que repartir, pero cada diseño sí cuesta: un
+        // tope fijo por semana evita que el agente diseñe todo lo que vea.
+        if (!creditos.cobrosActivos()) {
+            return Math.max(0, TOPE_SEMANAL_SIN_COBROS - usados);
+        }
+        int disponibles = creditos.disponibles(w.getId());
         java.time.LocalDate vencen = disponibles == Integer.MAX_VALUE ? null
                 : java.util.Optional.ofNullable(creditos.saldo(w.getId()).vencenLosMensuales())
                         .map(LocalDateTime::toLocalDate).orElse(null);

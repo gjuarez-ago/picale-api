@@ -57,6 +57,16 @@ public class CreditService {
                 .orElse(new Saldo(0, 0, null));
     }
 
+    /** ¿Se cobra? Con los cobros apagados nadie gasta créditos. */
+    public boolean cobrosActivos() {
+        return config.habilitado();
+    }
+
+    /** Una cuenta maestra: exenta de pago, sin límite de créditos. */
+    public boolean esMaestra(UUID workspaceId) {
+        return sinLimites.deWorkspace(workspaceId);
+    }
+
     /**
      * Cuántas generaciones puede pagar el workspace ahora, o
      * {@code Integer.MAX_VALUE} si los cobros están apagados o no tiene

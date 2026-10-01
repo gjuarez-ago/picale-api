@@ -459,6 +459,24 @@ class AgenteServiceTest {
     }
 
     @Test
+    @DisplayName("sin cobros, una cuenta normal tiene tope de diseños por semana; el diseño de esta semana lo descuenta")
+    void topeSinCobros() {
+        enElWorkspace(() -> {
+            assertThat(agente.disenosDisponibles(ws)).isEqualTo(AgenteService.TOPE_SEMANAL_SIN_COBROS);
+            conInstagram();
+            agente.encender(ws.getId(), true);
+            foto("tope.jpg");
+            when(generador.disenarParaElAgente(any(), any())).thenReturn(new com.metricol.api.service.campaign
+                    .CampaignImageService.Diseno(List.of(new com.metricol.api.service.campaign.CampaignImageService
+                            .Diseno.Version(List.of(Platform.INSTAGRAM),
+                                    "https://cdn.test/media/" + ws.getId() + "/d.jpg")), "x", Map.of()));
+            when(revisor.revisar(anyString(), any(), anyBoolean())).thenReturn(promoConPrecio());
+            agente.vuelta(ws.getId());
+            assertThat(agente.disenosDisponibles(ws)).isEqualTo(AgenteService.TOPE_SEMANAL_SIN_COBROS - 1);
+        });
+    }
+
+    @Test
     @DisplayName("revisar ahora pide el agente encendido")
     void vueltaAhoraApagado() {
         enElWorkspace(() -> org.assertj.core.api.Assertions.assertThatThrownBy(() -> agente.vueltaAhora(ws.getId()))
