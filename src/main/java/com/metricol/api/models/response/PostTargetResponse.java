@@ -57,4 +57,12 @@ public class PostTargetResponse {
     private String caption;
 
     private String errorMessage;
+
+    // Cómo le fue en esta red (nulo = la red no lo da o todavía no se leyó).
+    private Long vistas;
+    private Long meGusta;
+    private Long comentarios;
+    private Long compartidos;
+    private Long guardados;
+    private LocalDateTime metricasEn;
 }

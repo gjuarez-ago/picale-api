@@ -96,4 +96,37 @@ public class PostTarget {
     /** Motivo del fallo para esta red en particular, cuando status = FAILED. */
     @Column(length = 500)
     private String errorMessage;
+
+    // ------------------------------------------------------------ cómo le fue
+    // Lo que la red dice de la publicación, leído de upload-post cada tanto
+    // (ver MetricasWorker). Nulo = la red no lo da o todavía no se leyó.
+
+    private Long vistas;
+    private Long alcance;
+    private Long meGusta;
+    private Long comentarios;
+    private Long compartidos;
+    private Long guardados;
+
+    /** Cuándo se leyeron por última vez. Nulo = nunca. */
+    private LocalDateTime metricasEn;
+
+    /**
+     * Cuánto rindió, en un solo número para comparar publicaciones de la misma
+     * cuenta: lo que cuesta más (comentar, compartir, guardar) pesa más que un
+     * me gusta, y las vistas suman poco. Nulo si no hay nada medido.
+     */
+    public Double puntaje() {
+        if (metricasEn == null || (vistas == null && alcance == null && meGusta == null && comentarios == null
+                && compartidos == null && guardados == null)) {
+            return null;
+        }
+        double p = n(meGusta) + 2.0 * n(comentarios) + 3.0 * n(compartidos) + 3.0 * n(guardados)
+                + n(vistas) / 50.0;
+        return p;
+    }
+
+    private static long n(Long v) {
+        return v == null ? 0 : Math.max(0, v);
+    }
 }

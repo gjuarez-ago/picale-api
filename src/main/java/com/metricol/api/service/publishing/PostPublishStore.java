@@ -234,6 +234,7 @@ public class PostPublishStore {
                 post.formatoEfectivo(),
                 Boolean.TRUE.equals(post.getMusicaAutomatica()),
                 post.getPortadaMs(),
+                ubicacionDe(workspaceId),
                 destinos,
                 null);
     }
@@ -613,7 +614,14 @@ public class PostPublishStore {
      */
     private PublishPlan vacio(UUID postId, UUID workspaceId, PublishOutcome atajo) {
         return new PublishPlan(postId, workspaceId, null, null, null, List.of(), false,
-                PostFormat.PHOTO, false, null, List.of(), atajo);
+                PostFormat.PHOTO, false, null, com.metricol.api.service.social.Ubicacion.NINGUNA, List.of(), atajo);
+    }
+
+    /** La ubicación del negocio, si la configuró; nunca nula. */
+    private com.metricol.api.service.social.Ubicacion ubicacionDe(UUID workspaceId) {
+        return workspaceId == null ? com.metricol.api.service.social.Ubicacion.NINGUNA
+                : workspaceRepository.findById(workspaceId).map(com.metricol.api.service.social.Ubicacion::de)
+                        .orElse(com.metricol.api.service.social.Ubicacion.NINGUNA);
     }
 
     /**

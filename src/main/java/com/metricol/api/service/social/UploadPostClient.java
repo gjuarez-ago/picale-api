@@ -62,10 +62,15 @@ public class UploadPostClient {
                 .build();
     }
 
-    @SuppressWarnings("unchecked")
     public Map<String, Object> publishText(String user, List<String> platforms, String title) {
+        return publishText(user, platforms, title, Ubicacion.NINGUNA);
+    }
+
+    @SuppressWarnings("unchecked")
+    public Map<String, Object> publishText(String user, List<String> platforms, String title, Ubicacion ubicacion) {
         MultiValueMap<String, Object> body = baseFields(user, platforms);
         body.add("title", title);
+        ubicacion(body, platforms, ubicacion);
 
         return restClient.post()
                 .uri("/upload_text")
@@ -88,13 +93,22 @@ public class UploadPostClient {
      * @param musicaAutomatica que TikTok le ponga música de fondo al carrusel;
      *                         se ignora si TikTok no va en el envío
      */
-    @SuppressWarnings("unchecked")
     public Map<String, Object> publishPhotos(
             String user, List<String> platforms, String titulo,
             Map<String, String> captionsPorRed, List<String> photoUrls, PostFormat formato,
             boolean musicaAutomatica) {
+        return publishPhotos(user, platforms, titulo, captionsPorRed, photoUrls, formato, musicaAutomatica,
+                Ubicacion.NINGUNA);
+    }
+
+    @SuppressWarnings("unchecked")
+    public Map<String, Object> publishPhotos(
+            String user, List<String> platforms, String titulo,
+            Map<String, String> captionsPorRed, List<String> photoUrls, PostFormat formato,
+            boolean musicaAutomatica, Ubicacion ubicacion) {
         MultiValueMap<String, Object> body = cuerpoFotos(
                 user, platforms, titulo, captionsPorRed, formato, musicaAutomatica);
+        ubicacion(body, platforms, ubicacion);
         // El orden importa: es el que verá quien deslice el carrusel, y es el
         // que la persona eligió en la pantalla de captura.
         photoUrls.forEach(url -> body.add("photos[]", download(url)));
@@ -114,10 +128,17 @@ public class UploadPostClient {
     }
 
     /** @param portadaMs de qué milisegundo sale la portada; nulo = el segundo uno */
-    @SuppressWarnings("unchecked")
     public Map<String, Object> publishVideo(String user, List<String> platforms, String titulo,
             Map<String, String> captionsPorRed, String videoUrl, PostFormat formato, Integer portadaMs) {
+        return publishVideo(user, platforms, titulo, captionsPorRed, videoUrl, formato, portadaMs, Ubicacion.NINGUNA);
+    }
+
+    @SuppressWarnings("unchecked")
+    public Map<String, Object> publishVideo(String user, List<String> platforms, String titulo,
+            Map<String, String> captionsPorRed, String videoUrl, PostFormat formato, Integer portadaMs,
+            Ubicacion ubicacion) {
         MultiValueMap<String, Object> body = cuerpoVideo(user, platforms, titulo, captionsPorRed, formato, portadaMs);
+        ubicacion(body, platforms, ubicacion);
         ByteArrayResource video = download(videoUrl);
         body.add("video", video);
         portadaDeInstagram(body, platforms, formato, video, portadaMs);
@@ -154,6 +175,104 @@ public class UploadPostClient {
                 .uri("/uploadposts/history")
                 .retrieve()
                 .body(Map.class);
+    }
+
+    /**
+     * Cómo le va a UNA publicación en UNA red, preguntado en vivo a la red.
+     *
+     * <p>{@code GET /uploadposts/post-analytics?platform_post_id=&platform=&user=}.
+     * El proveedor lo limita a 100 consultas cada 5 minutos: quien llama
+     * reparte (ver {@code MetricasWorker}). Devuelve el JSON crudo; lo lee
+     * {@code LecturaDeMetricas}.
+     */
+    @SuppressWarnings("unchecked")
+    public Map<String, Object> metricasDePublicacion(String user, String platform, String platformPostId) {
+        return restClient.get()
+                .uri(uriBuilder -> uriBuilder.path("/uploadposts/post-analytics")
+                        .queryParam("platform_post_id", platformPostId)
+                        .queryParam("platform", platform)
+                        .queryParam("user", user)
+                        .build())
+                .retrieve()
+                .body(Map.class);
+    }
+
+    /** Un lugar de TikTok, para elegir la ubicación del negocio. */
+    public record LugarTiktok(String id, String nombre, String direccion) {
+    }
+
+    /**
+     * Busca lugares en TikTok ({@code GET /uploadposts/tiktok/locations?q=}).
+     * La forma de la respuesta no está documentada del todo: se aceptan las
+     * llaves de siempre ({@code locations}, {@code data}, {@code results}) y en
+     * cada lugar {@code id}/{@code location_id} y {@code name}/{@code title}.
+     */
+    @SuppressWarnings("unchecked")
+    public List<LugarTiktok> buscarLugaresTiktok(String user, String texto) {
+        Map<String, Object> cuerpo = restClient.get()
+                .uri(uriBuilder -> uriBuilder.path("/uploadposts/tiktok/locations")
+                        .queryParam("q", texto)
+                        .queryParam("user", user)
+                        .build())
+                .retrieve()
+                .body(Map.class);
+        List<LugarTiktok> lugares = new java.util.ArrayList<>();
+        if (cuerpo == null) {
+            return lugares;
+        }
+        Object lista = null;
+        for (String llave : List.of("locations", "data", "results", "items")) {
+            Object v = cuerpo.get(llave);
+            if (v instanceof Map<?, ?> m && m.get("locations") instanceof List<?>) {
+                v = m.get("locations");
+            }
+            if (v instanceof List<?>) {
+                lista = v;
+                break;
+            }
+        }
+        if (!(lista instanceof List<?> filas)) {
+            return lugares;
+        }
+        for (Object fila : filas) {
+            if (!(fila instanceof Map<?, ?> f)) {
+                continue;
+            }
+            String id = primero(f, "id", "location_id", "poi_id");
+            String nombre = primero(f, "name", "title", "location_name", "poi_name");
+            if (id != null && nombre != null) {
+                lugares.add(new LugarTiktok(id, nombre, primero(f, "address", "city", "subtitle")));
+            }
+        }
+        return lugares;
+    }
+
+    private static String primero(Map<?, ?> fila, String... llaves) {
+        for (String llave : llaves) {
+            Object v = fila.get(llave);
+            if (v != null && !String.valueOf(v).isBlank()) {
+                return String.valueOf(v);
+            }
+        }
+        return null;
+    }
+
+    /**
+     * La ubicación del negocio, en el campo de cada red que la admite. Solo a
+     * las redes del envío: Instagram {@code location_id}; TikTok
+     * {@code tiktok_location_id} y {@code tiktok_location_name}, juntos.
+     */
+    void ubicacion(MultiValueMap<String, Object> body, List<String> platforms, Ubicacion u) {
+        if (u == null) {
+            return;
+        }
+        if (u.enInstagram() && platforms.contains("instagram")) {
+            body.add("location_id", u.instagramId());
+        }
+        if (u.enTiktok() && platforms.contains("tiktok")) {
+            body.add("tiktok_location_id", u.tiktokId());
+            body.add("tiktok_location_name", u.tiktokNombre());
+        }
     }
 
     /** Los campos de texto de una publicación de fotos, sin las fotos. Separado para poderlo probar sin red. */

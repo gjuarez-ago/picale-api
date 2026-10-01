@@ -159,11 +159,19 @@ public class Redactor {
             String ciudad,
             String descripcion,
             ObjetivoRedes objetivo,
-            MarcaDelNegocio marca) {
+            MarcaDelNegocio marca,
+            /** Lo que sus métricas dicen que le funciona (hashtags), en una línea; nulo si aún no se sabe. */
+            String aprendido) {
 
         /** Sin perfil de marca: lo que se sabía antes de que existiera. */
         public Negocio(String nombre, String giro, String ciudad, String descripcion, ObjetivoRedes objetivo) {
             this(nombre, giro, ciudad, descripcion, objetivo, MarcaDelNegocio.VACIA);
+        }
+
+        /** Sin métricas todavía. */
+        public Negocio(String nombre, String giro, String ciudad, String descripcion, ObjetivoRedes objetivo,
+                MarcaDelNegocio marca) {
+            this(nombre, giro, ciudad, descripcion, objetivo, marca, null);
         }
 
         /** Cuando no se sabe nada del negocio. */
@@ -392,6 +400,8 @@ public class Redactor {
             sb.append("- Como contactarlo (usa SOLO estos datos, y solo si el texto invita a escribir o visitar): ")
                     .append(marca.contactoEs()).append('\n');
         }
+        // Sale de cómo les fue a sus publicaciones, no de una suposición: pesa más que la intuición.
+        agregar(sb, "Lo que le ha funcionado en sus redes", negocio.aprendido());
         return sb.toString();
     }
 

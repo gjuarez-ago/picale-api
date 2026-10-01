@@ -56,6 +56,12 @@ public record PublishPlan(
          */
         Integer portadaMs,
 
+        /**
+         * Dónde está el negocio, para las redes que la admiten (Instagram y
+         * TikTok). Nunca nulo: sin ubicación es {@code Ubicacion.NINGUNA}.
+         */
+        com.metricol.api.service.social.Ubicacion ubicacion,
+
         List<Destino> destinos,
 
         /**

@@ -1,0 +1,154 @@
+package com.metricol.api.service.metricas;
+
+import java.time.LocalDateTime;
+import java.util.List;
+import java.util.Map;
+import java.util.UUID;
+
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+import org.springframework.beans.factory.annotation.Value;
+import org.springframework.scheduling.annotation.Scheduled;
+import org.springframework.stereotype.Component;
+import org.springframework.web.client.HttpClientErrorException;
+
+import com.metricol.api.config.UploadPostProperties;
+import com.metricol.api.entity.PostTarget;
+import com.metricol.api.repository.PostTargetRepository;
+import com.metricol.api.service.social.UploadPostClient;
+
+/**
+ * Cada rato pregunta a las redes cómo les va a las publicaciones recientes y
+ * lo guarda en cada destino ({@link PostTarget#getVistas()} y compañía). Es lo
+ * que deja al agente aprender a qué hora y con qué hashtags le va mejor a cada
+ * cuenta (ver {@link LoQueFunciona}).
+ *
+ * <p>upload-post limita la lectura en vivo a 100 consultas cada 5 minutos, y
+ * ese tope es de toda la plataforma: por vuelta se leen como mucho
+ * {@code app.metricas.por-vuelta} (60) con una pausa entre cada una, y si el
+ * proveedor dice "demasiadas" la vuelta se corta ahí.
+ *
+ * <p>Su propio hilo, como el agente: son decenas de llamadas lentas y el
+ * programador de Spring tiene uno solo para todo.
+ */
+@Component
+public class MetricasWorker {
+
+    private static final Logger log = LoggerFactory.getLogger(MetricasWorker.class);
+
+    private final PostTargetRepository destinos;
+    private final UploadPostClient client;
+    private final UploadPostProperties props;
+    private final LoQueFunciona loQueFunciona;
+
+    @Value("${app.metricas.enabled:true}")
+    private boolean habilitado;
+
+    @Value("${app.metricas.por-vuelta:60}")
+    private int porVuelta;
+
+    @Value("${app.metricas.pausa-ms:2500}")
+    private long pausaMs;
+
+    private final java.util.concurrent.ExecutorService hilo = java.util.concurrent.Executors.newSingleThreadExecutor(t -> {
+        Thread h = new Thread(t, "metricas");
+        h.setDaemon(true);
+        return h;
+    });
+    private final java.util.concurrent.atomic.AtomicBoolean enCurso = new java.util.concurrent.atomic.AtomicBoolean();
+
+    public MetricasWorker(PostTargetRepository destinos, UploadPostClient client, UploadPostProperties props,
+            LoQueFunciona loQueFunciona) {
+        this.destinos = destinos;
+        this.client = client;
+        this.props = props;
+        this.loQueFunciona = loQueFunciona;
+    }
+
+    @jakarta.annotation.PreDestroy
+    void cerrar() {
+        hilo.shutdownNow();
+    }
+
+    @Scheduled(fixedDelayString = "${app.metricas.delay-ms:10800000}",
+            initialDelayString = "${app.metricas.initial-delay-ms:300000}")
+    public void trabajar() {
+        if (!habilitado || !props.isConfigured() || !enCurso.compareAndSet(false, true)) {
+            return;
+        }
+        hilo.submit(() -> {
+            try {
+                vuelta();
+            } catch (Exception ex) {
+                log.error("La lectura de métricas falló: {}", ex.toString());
+            } finally {
+                enCurso.set(false);
+            }
+        });
+    }
+
+    /** @return cuántas publicaciones quedaron con números nuevos */
+    int vuelta() {
+        LocalDateTime ahora = LocalDateTime.now();
+        List<Object[]> pendientes = destinos.porMedir(ahora.minusDays(14), ahora.minusHours(2), ahora.minusDays(2),
+                ahora.minusHours(12), ahora.minusDays(2), porVuelta);
+        int leidas = 0;
+        for (Object[] fila : pendientes) {
+            UUID id = UUID.fromString(String.valueOf(fila[0]));
+            String red = String.valueOf(fila[1]).toLowerCase();
+            String idEnLaRed = String.valueOf(fila[2]);
+            String perfil = String.valueOf(fila[3]);
+            LecturaDeMetricas.Metricas m;
+            try {
+                m = LecturaDeMetricas.leer(client.metricasDePublicacion(perfil, red, idEnLaRed), red);
+            } catch (HttpClientErrorException.TooManyRequests ex) {
+                log.warn("upload-post pidió bajar el ritmo de métricas; sigue en la próxima vuelta");
+                break;
+            } catch (Exception ex) {
+                // Una que falla (borrada en la red, una red sin métricas) no se
+                // reintenta en cada vuelta: se apunta el intento y espera su turno.
+                log.debug("Sin métricas para {} en {}: {}", idEnLaRed, red, ex.toString());
+                m = null;
+            }
+            if (guardar(id, m)) {
+                leidas++;
+            }
+            dormir();
+        }
+        if (leidas > 0) {
+            loQueFunciona.olvidar();
+            log.info("Métricas al día: {} de {} publicaciones", leidas, pendientes.size());
+        }
+        return leidas;
+    }
+
+    private boolean guardar(UUID id, LecturaDeMetricas.Metricas m) {
+        PostTarget t = destinos.findById(id).orElse(null);
+        if (t == null) {
+            return false;
+        }
+        boolean hay = m != null && !m.vacias();
+        if (hay) {
+            t.setVistas(m.vistas());
+            t.setAlcance(m.alcance());
+            t.setMeGusta(m.meGusta());
+            t.setComentarios(m.comentarios());
+            t.setCompartidos(m.compartidos());
+            t.setGuardados(m.guardados());
+        }
+        t.setMetricasEn(LocalDateTime.now());
+        destinos.save(t);
+        return hay;
+    }
+
+    private void dormir() {
+        if (pausaMs <= 0) {
+            return;
+        }
+        try {
+            Thread.sleep(pausaMs);
+        } catch (InterruptedException ex) {
+            Thread.currentThread().interrupt();
+        }
+    }
+}

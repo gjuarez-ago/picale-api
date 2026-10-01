@@ -198,6 +198,25 @@ public class Workspace {
         return Boolean.TRUE.equals(agenteActivo);
     }
 
+    // ------------------------------------------------------------ ubicación
+    // Dónde está el negocio, para etiquetar sus publicaciones. Cada red la pide
+    // a su manera (Facebook por API no la admite): se guarda lo de cada una.
+
+    /** Cómo se llama el lugar, para enseñarlo. Nulo = sin ubicación. */
+    @Column(length = 200)
+    private String ubicacionNombre;
+
+    /** El id del lugar en Instagram (sale del enlace de la ubicación). */
+    @Column(length = 40)
+    private String ubicacionInstagramId;
+
+    /** El id del lugar en TikTok; TikTok lo pide junto con su nombre. */
+    @Column(length = 80)
+    private String ubicacionTiktokId;
+
+    @Column(length = 200)
+    private String ubicacionTiktokNombre;
+
     @CreationTimestamp
     private LocalDateTime createdAt;
 }

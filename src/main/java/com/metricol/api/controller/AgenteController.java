@@ -40,9 +40,15 @@ public class AgenteController {
     private final PermissionService permisos;
     private final WorkspaceMembershipService membresias;
     private final com.metricol.api.service.agente.CuentaAparte otraCuenta;
+    private final com.metricol.api.service.metricas.LoQueFunciona loQueFunciona;
+    private final com.metricol.api.service.social.UbicacionDelNegocio ubicacion;
 
     public AgenteController(AgenteService agente, PermissionService permisos, WorkspaceMembershipService membresias,
-            com.metricol.api.service.agente.CuentaAparte otraCuenta) {
+            com.metricol.api.service.agente.CuentaAparte otraCuenta,
+            com.metricol.api.service.metricas.LoQueFunciona loQueFunciona,
+            com.metricol.api.service.social.UbicacionDelNegocio ubicacion) {
+        this.loQueFunciona = loQueFunciona;
+        this.ubicacion = ubicacion;
         this.agente = agente;
         this.permisos = permisos;
         this.membresias = membresias;
@@ -67,6 +73,36 @@ public class AgenteController {
     @GetMapping
     public ResponseEntity<ApiResponse<AgenteService.Estado>> estado(@AuthenticationPrincipal User currentUser) {
         return ResponseEntity.ok(ApiResponse.success(agente.estado(ws(currentUser))));
+    }
+
+    /** Lo que le funciona a la cuenta: sus mejores horas, sus hashtags y sus publicaciones que más rindieron. */
+    @GetMapping("/aprendizaje")
+    public ResponseEntity<ApiResponse<com.metricol.api.service.metricas.LoQueFunciona.Resumen>> aprendizaje(
+            @AuthenticationPrincipal User currentUser) {
+        return ResponseEntity.ok(ApiResponse.success(loQueFunciona.resumen(ws(currentUser))));
+    }
+
+    /** La ubicación con la que salen las publicaciones (Instagram y TikTok). */
+    @GetMapping("/ubicacion")
+    public ResponseEntity<ApiResponse<com.metricol.api.service.social.UbicacionDelNegocio.Vista>> ubicacion(
+            @AuthenticationPrincipal User currentUser) {
+        return ResponseEntity.ok(ApiResponse.success(ubicacion.ver(ws(currentUser))));
+    }
+
+    @PutMapping("/ubicacion")
+    public ResponseEntity<ApiResponse<com.metricol.api.service.social.UbicacionDelNegocio.Vista>> guardarUbicacion(
+            @AuthenticationPrincipal User currentUser,
+            @RequestBody com.metricol.api.service.social.UbicacionDelNegocio.Pedido pedido) {
+        permisos.exigir(currentUser, Permission.WORKSPACE_EDIT);
+        return ResponseEntity.ok(ApiResponse.success(ubicacion.guardar(ws(currentUser), pedido)));
+    }
+
+    /** Busca el lugar en TikTok, que pide elegirlo de su lista. */
+    @GetMapping("/ubicacion/tiktok")
+    public ResponseEntity<ApiResponse<List<com.metricol.api.service.social.UploadPostClient.LugarTiktok>>> lugaresTiktok(
+            @AuthenticationPrincipal User currentUser, @RequestParam("q") String q) {
+        permisos.exigir(currentUser, Permission.WORKSPACE_EDIT);
+        return ResponseEntity.ok(ApiResponse.success(ubicacion.buscarEnTiktok(ws(currentUser), q)));
     }
 
     @PutMapping

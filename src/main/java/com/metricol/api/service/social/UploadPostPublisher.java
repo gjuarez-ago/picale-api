@@ -291,11 +291,11 @@ public class UploadPostPublisher {
             // Sin medios el `title` ES el texto del post, no un titulo: va el
             // caption comun, recortado a la mas estrecha porque es un solo campo.
             return client.publishText(plan.profile(), platforms,
-                    EspecTexto.masEstricta(redesDelEnvio).recortar(baseComun));
+                    EspecTexto.masEstricta(redesDelEnvio).recortar(baseComun), plan.ubicacion());
         }
         if (plan.video()) {
             return client.publishVideo(plan.profile(), platforms, titulo, porRed,
-                    medios.get(0), plan.formato(), plan.portadaMs());
+                    medios.get(0), plan.formato(), plan.portadaMs(), plan.ubicacion());
         }
 
         // Aqui, y no antes, es donde las fotos se ajustan a lo que aceptan las
@@ -320,7 +320,7 @@ public class UploadPostPublisher {
         try {
             return client.publishPhotos(
                     plan.profile(), platforms, titulo, porRed, ajuste.urls(), plan.formato(),
-                    plan.musicaAutomatica());
+                    plan.musicaAutomatica(), plan.ubicacion());
         } catch (RuntimeException ex) {
             if (!ajuste.huboFallo()) {
                 throw ex;

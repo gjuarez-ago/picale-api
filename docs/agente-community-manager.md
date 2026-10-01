@@ -326,13 +326,14 @@ Reglas de gasto:
 | Primera versión: poder encenderlo y confiar | Después: que sea un buen community manager |
 |---|---|
 | Switch y marca de cada archivo | Aprobación automática por confianza |
-| Filtro de marca (va, observación, descartada) | Horas aprendidas por cuenta |
+| Filtro de marca (va, observación, descartada) | Respuestas a comentarios |
 | Reglas de cuidado y promociones vencidas | Fechas importantes por giro (10 de mayo, Buen Fin…) |
 | Formato, logo, tal cual o diseño, texto, todas las redes | Agrupar fotos parecidas en carruseles |
 | Calendario con topes, horario y espacio entre publicaciones | Videos con marca de agua y recorte |
 | Bandeja multi-cuenta: aprobar, cambiar, descartar, aprobar todas | Pedir material y reporte semanal |
-| Propuestas que vencen y replanear solo | Hashtags y ubicación por red |
-| Bitácora y pausa de emergencia | Métricas y respuestas a comentarios (si Upload-Post lo permite) |
+| Propuestas que vencen y replanear solo | Primer comentario con hashtags (`first_comment`) |
+| Bitácora y pausa de emergencia | Horas de la audiencia de TikTok (`/uploadposts/audience`) |
+| Métricas, horas y hashtags aprendidos por cuenta; ubicación del negocio | |
 
 ## Preguntas abiertas
 
@@ -343,3 +344,29 @@ Reglas de gasto:
 4. **¿Cuánto material guarda en reserva** antes de dejar de programar? Por ejemplo, programar dos
    semanas y guardar el resto.
 5. **La mezcla de contenido** (70 / 20 / 10): ¿fija para todos o se ajusta según el giro?
+
+## Lo que funciona (métricas, horas, hashtags y ubicación)
+
+- **Métricas.** `MetricasWorker` (cada 3 h, su propio hilo) lee de upload-post
+  `GET /uploadposts/post-analytics?platform_post_id=&platform=&user=` lo publicado en los
+  últimos 14 días: cada 12 h las primeras 48 h y luego cada 2 días. Como mucho 60 por vuelta con
+  2.5 s entre cada una (el proveedor permite 100 cada 5 min) y se corta si contesta 429. Se guarda
+  en `post_targets`: vistas, alcance, me gusta, comentarios, compartidos y guardados
+  (`LecturaDeMetricas` acepta los nombres de cada red; TikTok llama `favorites` a los guardados).
+  En el perfil `dev` va apagado (`METRICAS_ENABLED=true` para probarlo en local).
+- **Puntaje.** `me gusta + 2·comentarios + 3·compartidos + 3·guardados + vistas/50`, dividido
+  entre la mediana de la cuenta: cada cuenta se compara contra sí misma.
+- **Aprender** (`AprendizajeDeRendimiento`, sin estado). Con 8 o más publicaciones medidas en 90
+  días:
+  - Horas: el promedio de cada hora suavizado con sus vecinas; buena si pasa 1.05.
+  - Hashtags con 3 usos o más: buenos si su mediana baja pasa 1.25, flojos si su mediana alta no
+    llega a 0.7 (uno ambiguo queda neutral).
+- **Usarlo.** El calendario toma las dos mejores horas que caben en el horario del negocio,
+  separadas 3 h (si solo cabe una, la acompaña una de las de siempre), y la propuesta lo dice. Quien
+  escribe recibe "hashtags que le han funcionado / evítalos" en el contexto del negocio (agente y
+  "crear con IA").
+- **Ubicación.** Se configura una vez en la pantalla del agente:
+  - Instagram: `location_id`, sacado del enlace de la ubicación que se pega desde la app.
+  - TikTok: `tiktok_location_id` + `tiktok_location_name`, elegido con `GET /uploadposts/tiktok/locations?q=`.
+  - Facebook no tiene campo.
+  Se manda sola en cada envío (`UploadPostClient.ubicacion`).

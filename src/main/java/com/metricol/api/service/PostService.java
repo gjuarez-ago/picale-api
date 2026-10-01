@@ -806,6 +806,12 @@ public class PostService {
                         .caption(target.getCaption())
                         .captionEnviado(target.getCaptionEnviado())
                         .errorMessage(target.getErrorMessage())
+                        .vistas(target.getVistas())
+                        .meGusta(target.getMeGusta())
+                        .comentarios(target.getComentarios())
+                        .compartidos(target.getCompartidos())
+                        .guardados(target.getGuardados())
+                        .metricasEn(target.getMetricasEn())
                         .build())
                 .toList();
 

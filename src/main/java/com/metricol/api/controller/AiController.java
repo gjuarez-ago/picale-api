@@ -43,9 +43,12 @@ public class AiController {
     private final Redactor redactor;
     private final AiQuotaGuard cupo;
     private final PermissionService permisos;
+    private final com.metricol.api.service.metricas.LoQueFunciona loQueFunciona;
 
     public AiController(CaptionCopywriter copywriter, VisorDeMedios visor, Redactor redactor,
-            AiQuotaGuard cupo, PermissionService permisos) {
+            AiQuotaGuard cupo, PermissionService permisos,
+            com.metricol.api.service.metricas.LoQueFunciona loQueFunciona) {
+        this.loQueFunciona = loQueFunciona;
         this.copywriter = copywriter;
         this.visor = visor;
         this.redactor = redactor;
@@ -169,6 +172,7 @@ public class AiController {
                 workspace.getCiudad(),
                 workspace.getDescripcion(),
                 workspace.getObjetivo(),
-                MarcaDelNegocio.de(workspace.getBrandProfile()));
+                MarcaDelNegocio.de(workspace.getBrandProfile()),
+                com.metricol.api.service.metricas.LoQueFunciona.paraElRedactor(loQueFunciona.de(workspace.getId())));
     }
 }

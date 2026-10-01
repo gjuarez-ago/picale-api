@@ -61,6 +61,10 @@ spring:
 # application-prod.yml. Nada de esto vive ya en application.properties.
 
 app:
+  # La lectura de métricas pregunta a upload-post con la llave de verdad: en
+  # local y en las pruebas va apagada (METRICAS_ENABLED=true para probarla).
+  metricas:
+    enabled: ${METRICAS_ENABLED:false}
   # Desde donde se puede llamar a esta API: localhost y los tuneles de ngrok.
   cors:
     allowed-origins: "${CORS_ALLOWED_ORIGINS:http://localhost:*,https://*.ngrok-free.app,https://*.ngrok-free.dev,https://*.ngrok.app,https://*.ngrok.io}"

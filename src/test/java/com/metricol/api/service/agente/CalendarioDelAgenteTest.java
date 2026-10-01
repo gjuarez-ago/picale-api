@@ -38,6 +38,35 @@ class CalendarioDelAgenteTest {
     }
 
     @Test
+    @DisplayName("con horas aprendidas publica en las dos mejores que caben en su horario, separadas 3 horas")
+    void horasAprendidas() {
+        CalendarioDelAgente.Horario h = new CalendarioDelAgente.Horario(null, 9, 21).conPreferidas(List.of(
+                java.time.LocalTime.of(22, 0), // fuera del horario
+                java.time.LocalTime.of(19, 0),
+                java.time.LocalTime.of(20, 0), // muy pegada a las 19
+                java.time.LocalTime.of(13, 0)));
+        assertThat(h.horas()).containsExactly(java.time.LocalTime.of(13, 0), java.time.LocalTime.of(19, 0));
+
+        List<LocalDateTime> tomados = new ArrayList<>();
+        for (int i = 0; i < 2; i++) {
+            tomados.add(CalendarioDelAgente.siguienteHueco(LUNES_9AM, tomados, 2, h));
+        }
+        assertThat(tomados).containsExactly(LocalDateTime.of(2026, 10, 5, 13, 0), LocalDateTime.of(2026, 10, 5, 19, 0));
+    }
+
+    @Test
+    @DisplayName("si solo una hora aprendida cabe, la acompaña una de las de siempre; sin ninguna, las de siempre")
+    void horasAprendidasQueNoCaben() {
+        CalendarioDelAgente.Horario una = new CalendarioDelAgente.Horario(null, 9, 21)
+                .conPreferidas(List.of(java.time.LocalTime.of(20, 0)));
+        assertThat(una.horas()).containsExactly(java.time.LocalTime.of(11, 0), java.time.LocalTime.of(20, 0));
+
+        CalendarioDelAgente.Horario ninguna = new CalendarioDelAgente.Horario(null, 9, 21)
+                .conPreferidas(List.of(java.time.LocalTime.of(23, 0)));
+        assertThat(ninguna.horas()).containsExactly(java.time.LocalTime.of(11, 0), java.time.LocalTime.of(18, 0));
+    }
+
+    @Test
     @DisplayName("con tope de una al día, una por día")
     void unaAlDia() {
         List<LocalDateTime> tomados = new ArrayList<>();

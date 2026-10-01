@@ -51,22 +51,71 @@ public final class CalendarioDelAgente {
      * @param desde hora de inicio, 0–23
      * @param hasta hora de fin, 1–24; una publicación a las {@code hasta} ya no cabe
      */
-    public record Horario(Set<DayOfWeek> dias, int desde, int hasta) {
+    /**
+     * @param preferidas las horas que mejor le funcionan a la cuenta, de mejor a
+     *                   peor (ver {@code LoQueFunciona}); vacía = las de siempre
+     */
+    public record Horario(Set<DayOfWeek> dias, int desde, int hasta, List<LocalTime> preferidas) {
 
         public static final Horario SIEMPRE = new Horario(EnumSet.allOf(DayOfWeek.class), 9, 21);
+
+        /** Separación mínima entre las dos publicaciones de un día. */
+        static final int SEPARACION_HORAS = 3;
 
         public Horario {
             dias = dias == null || dias.isEmpty() ? EnumSet.allOf(DayOfWeek.class) : EnumSet.copyOf(dias);
             desde = Math.max(0, Math.min(23, desde));
             hasta = Math.max(desde + 1, Math.min(24, hasta));
+            preferidas = preferidas == null ? List.of() : List.copyOf(preferidas);
         }
 
-        /** Las horas fijas que caen dentro del horario; si ninguna cae, la mitad del horario. */
+        public Horario(Set<DayOfWeek> dias, int desde, int hasta) {
+            this(dias, desde, hasta, List.of());
+        }
+
+        /** El mismo horario, con las horas que la cuenta aprendió. */
+        public Horario conPreferidas(List<LocalTime> horas) {
+            return new Horario(dias, desde, hasta, horas);
+        }
+
+        private boolean dentro(LocalTime h) {
+            return h.getHour() >= desde && h.getHour() < hasta;
+        }
+
+        /**
+         * Las horas del día en que se publica, en orden. Con horas aprendidas,
+         * las dos mejores que caen en el horario y se separan al menos tres
+         * horas (si solo cabe una, la acompaña una de las de siempre). Sin
+         * ellas, las fijas que caen dentro; y si ninguna cae, la mitad del horario.
+         */
         List<LocalTime> horas() {
-            List<LocalTime> dentro = HORAS.stream()
-                    .filter(h -> h.getHour() >= desde && h.getHour() < hasta)
-                    .toList();
-            return dentro.isEmpty() ? List.of(LocalTime.of((desde + hasta) / 2, 0)) : dentro;
+            List<LocalTime> elegidas = new java.util.ArrayList<>();
+            for (LocalTime p : preferidas) {
+                if (dentro(p) && separada(p, elegidas)) {
+                    elegidas.add(p);
+                }
+                if (elegidas.size() == 2) {
+                    break;
+                }
+            }
+            if (elegidas.size() == 1) {
+                for (LocalTime h : HORAS) {
+                    if (dentro(h) && separada(h, elegidas)) {
+                        elegidas.add(h);
+                        break;
+                    }
+                }
+            }
+            if (!elegidas.isEmpty()) {
+                elegidas.sort(null);
+                return List.copyOf(elegidas);
+            }
+            List<LocalTime> fijas = HORAS.stream().filter(this::dentro).toList();
+            return fijas.isEmpty() ? List.of(LocalTime.of((desde + hasta) / 2, 0)) : fijas;
+        }
+
+        private static boolean separada(LocalTime h, List<LocalTime> otras) {
+            return otras.stream().allMatch(o -> Math.abs(o.getHour() - h.getHour()) >= SEPARACION_HORAS);
         }
     }
 

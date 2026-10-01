@@ -120,6 +120,8 @@ public class AgenteService {
     /** Para leer o actuar en otra cuenta desde una petición web. */
     private final CuentaAparte otraCuenta;
     private final com.metricol.api.config.VideoLimitsProperties videoLimites;
+    /** Lo que le funciona a cada cuenta: sus mejores horas y hashtags. */
+    private final com.metricol.api.service.metricas.LoQueFunciona loQueFunciona;
 
     public AgenteService(WorkspaceRepository workspaces, MediaAssetRepository assets, PostRepository posts,
             SocialAccountRepository cuentas, RevisorDeMarca revisor, Redactor redactor, PostService postService,
@@ -127,7 +129,9 @@ public class AgenteService {
             AiQuotaGuard cupoIa, LogoSobreFoto logo, HuellaDeImagen huellas, CampaignImageService generador,
             CreditService creditos, RetoqueDeFoto retoque, MedidorDeVideo medidor,
             com.metricol.api.config.VideoLimitsProperties videoLimites, AnalistaDeVideo analista,
-            EditorDeVideo editor, CuentaAparte otraCuenta) {
+            EditorDeVideo editor, CuentaAparte otraCuenta,
+            com.metricol.api.service.metricas.LoQueFunciona loQueFunciona) {
+        this.loQueFunciona = loQueFunciona;
         this.otraCuenta = otraCuenta;
         this.analista = analista;
         this.editor = editor;
@@ -709,7 +713,27 @@ public class AgenteService {
         List<CalendarioDelAgente.Tomado> tomados = posts.tomadosConCategoria(ahora).stream()
                 .map(r -> new CalendarioDelAgente.Tomado((LocalDateTime) r[0], (String) r[1]))
                 .toList();
-        return CalendarioDelAgente.siguienteHueco(ahora, tomados, limites.maxPorDia(), horario(w), categoria);
+        return conRazon(w, CalendarioDelAgente.siguienteHueco(ahora, tomados, limites.maxPorDia(),
+                horarioAprendido(w), categoria));
+    }
+
+    /**
+     * El horario del negocio con las horas que mejor le funcionan, cuando ya
+     * hay publicaciones medidas suficientes para saberlo.
+     */
+    CalendarioDelAgente.Horario horarioAprendido(Workspace w) {
+        com.metricol.api.service.metricas.AprendizajeDeRendimiento.Aprendido a = loQueFunciona.de(w.getId());
+        return a.suficiente() ? horario(w).conPreferidas(a.horas()) : horario(w);
+    }
+
+    /** Si el hueco cae en una de sus mejores horas, se dice: es parte del porqué. */
+    private CalendarioDelAgente.Hueco conRazon(Workspace w, CalendarioDelAgente.Hueco hueco) {
+        if (hueco.razon() == null && com.metricol.api.service.metricas.LoQueFunciona.esBuenaHora(
+                loQueFunciona.de(w.getId()), hueco.cuando().toLocalTime())) {
+            return new CalendarioDelAgente.Hueco(hueco.cuando(),
+                    "Es de las horas en que mejor te va, según cómo les fue a tus publicaciones.");
+        }
+        return hueco;
     }
 
     /**
@@ -832,7 +856,7 @@ public class AgenteService {
             }
             tomados.add(new CalendarioDelAgente.Tomado(cuando, (String) r[1]));
         }
-        return CalendarioDelAgente.siguienteHueco(ahora, tomados, limites.maxPorDia(), horario(w),
+        return CalendarioDelAgente.siguienteHueco(ahora, tomados, limites.maxPorDia(), horarioAprendido(w),
                 CalendarioDelAgente.Categoria.de(grupo.get(0).getAgenteCategoria()));
     }
 
@@ -1215,9 +1239,10 @@ public class AgenteService {
         return workspaces.findById(id).orElseThrow(() -> new ResourceNotFoundException("Espacio no encontrado."));
     }
 
-    private static Redactor.Negocio negocio(Workspace w) {
+    private Redactor.Negocio negocio(Workspace w) {
         return new Redactor.Negocio(w.getName(), w.getGiro(), w.getCiudad(), w.getDescripcion(), w.getObjetivo(),
-                MarcaDelNegocio.de(w.getBrandProfile()));
+                MarcaDelNegocio.de(w.getBrandProfile()),
+                com.metricol.api.service.metricas.LoQueFunciona.paraElRedactor(loQueFunciona.de(w.getId())));
     }
 
     /** Lo que se le encarga a quien escribe: un objetivo, no un texto que mejorar. */
