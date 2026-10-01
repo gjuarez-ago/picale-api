@@ -217,20 +217,26 @@ public class UploadPostClient {
     }
 
     /**
-     * Busca lugares en TikTok ({@code GET /uploadposts/tiktok/locations?q=}).
-     * La forma de la respuesta no está documentada del todo: se aceptan las
-     * llaves de siempre ({@code locations}, {@code data}, {@code results}) y en
-     * cada lugar {@code id}/{@code location_id} y {@code name}/{@code title}.
+     * Busca lugares en TikTok ({@code GET /uploadposts/tiktok/locations?q=&profile=}).
+     * Pide el perfil (sin él contesta "profile is required") y responde
+     * {@code {"locations": [{"location_id", "location_name", "location_address"}]}}
+     * (visto en producción el 1 oct 2026). Se aceptan además otros nombres por
+     * si cambia, sin depender de uno solo.
      */
     @SuppressWarnings("unchecked")
-    public List<LugarTiktok> buscarLugaresTiktok(String user, String texto) {
+    public List<LugarTiktok> buscarLugaresTiktok(String perfil, String texto) {
         Map<String, Object> cuerpo = consultas.get()
                 .uri(uriBuilder -> uriBuilder.path("/uploadposts/tiktok/locations")
                         .queryParam("q", texto)
-                        .queryParam("user", user)
+                        .queryParam("profile", perfil)
                         .build())
                 .retrieve()
                 .body(Map.class);
+        return lugaresDe(cuerpo);
+    }
+
+    /** Lee la respuesta del buscador de lugares. Separado para probarlo sin red. */
+    static List<LugarTiktok> lugaresDe(Map<String, Object> cuerpo) {
         List<LugarTiktok> lugares = new java.util.ArrayList<>();
         if (cuerpo == null) {
             return lugares;
@@ -256,7 +262,7 @@ public class UploadPostClient {
             String id = primero(f, "id", "location_id", "poi_id");
             String nombre = primero(f, "name", "title", "location_name", "poi_name");
             if (id != null && nombre != null) {
-                lugares.add(new LugarTiktok(id, nombre, primero(f, "address", "city", "subtitle")));
+                lugares.add(new LugarTiktok(id, nombre, primero(f, "location_address", "address", "city", "subtitle")));
             }
         }
         return lugares;

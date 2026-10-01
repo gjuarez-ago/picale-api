@@ -55,4 +55,21 @@ class UbicacionTest {
         cliente().ubicacion(body, List.of("instagram"), Ubicacion.NINGUNA);
         assertThat(body).isEmpty();
     }
+
+    @Test
+    @DisplayName("lee la respuesta real del buscador de lugares de TikTok (location_id, location_name, location_address)")
+    void lugaresDeTiktok() {
+        java.util.Map<String, Object> real = java.util.Map.of("success", true, "query", "Merida Yucatan",
+                "locations", List.of(
+                        java.util.Map.of("location_address", "C. 50, Centro, 97000 Mérida, Yuc., Mexico",
+                                "location_id", "42203861124285763", "location_name", "Mérida Yucatán"),
+                        java.util.Map.of("location_id", "1", "location_address", "sin nombre")));
+        List<UploadPostClient.LugarTiktok> lugares = UploadPostClient.lugaresDe(real);
+        assertThat(lugares).hasSize(1);
+        assertThat(lugares.get(0).id()).isEqualTo("42203861124285763");
+        assertThat(lugares.get(0).nombre()).isEqualTo("Mérida Yucatán");
+        assertThat(lugares.get(0).direccion()).contains("Centro");
+        assertThat(UploadPostClient.lugaresDe(java.util.Map.of("success", false, "message", "profile is required"))).isEmpty();
+        assertThat(UploadPostClient.lugaresDe(null)).isEmpty();
+    }
 }
