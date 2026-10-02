@@ -62,4 +62,5 @@ siembran la tabla la primera vez. Ver `LimitesConfigurables`.
 | Redes (upload-post) | `service/social/*` |
 | IA (OpenAI) | `service/ai/*` |
 | Bitácora de lo que hacen las IA conectadas (MCP) | `service/bitacora/*`, `controller/BitacoraIaController`, [docs/bitacora-ia.md](docs/bitacora-ia.md) |
+| IA conectadas: ver y desconectar asistentes | `service/conexiones/*`, `controller/ConexionesIaController`, [docs/conexiones-ia.md](docs/conexiones-ia.md) |
 | Infraestructura | `Dockerfile`, `docker-compose.vps.yml`, `nginx/metricol.conf`, `deploy-vps.sh` |
