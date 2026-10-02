@@ -273,7 +273,8 @@ public interface MediaAssetRepository extends JpaRepository<MediaAsset, UUID> {
               and (m.agenteEtapa is null
                    or m.agenteEtapa in (com.metricol.api.enums.EtapaAgente.PENDIENTE,
                                         com.metricol.api.enums.EtapaAgente.OBSERVACION,
-                                        com.metricol.api.enums.EtapaAgente.DESCARTADA)
+                                        com.metricol.api.enums.EtapaAgente.DESCARTADA,
+                                        com.metricol.api.enums.EtapaAgente.ANALIZADA)
                    or (m.agenteEtapa = com.metricol.api.enums.EtapaAgente.REVISANDO and m.agenteTomadoEn < :vencido))
             """)
     int tomar(UUID id, LocalDateTime ahora, LocalDateTime vencido);
@@ -287,7 +288,8 @@ public interface MediaAssetRepository extends JpaRepository<MediaAsset, UUID> {
                    or (m.type = com.metricol.api.enums.MediaType.VIDEO and m.thumbnailUrl is not null))
               and (m.generadaPorIa is null or m.generadaPorIa = false)
               and (m.agenteEtapa is null or m.agenteEtapa in (com.metricol.api.enums.EtapaAgente.PENDIENTE,
-                                                             com.metricol.api.enums.EtapaAgente.REVISANDO))
+                                                             com.metricol.api.enums.EtapaAgente.REVISANDO,
+                                                             com.metricol.api.enums.EtapaAgente.ANALIZADA))
               and m.createdAt >= :desde
               and (m.storageKey is null or m.storageKey not like 'logos/%')
               and not exists (select 1 from Workspace w where w.logoUrl = m.url)
@@ -303,11 +305,29 @@ public interface MediaAssetRepository extends JpaRepository<MediaAsset, UUID> {
             where m.huella is not null
               and m.agenteEtapa in (com.metricol.api.enums.EtapaAgente.PROPUESTA,
                                     com.metricol.api.enums.EtapaAgente.APROBADA,
-                                    com.metricol.api.enums.EtapaAgente.OBSERVACION)
+                                    com.metricol.api.enums.EtapaAgente.OBSERVACION,
+                                    com.metricol.api.enums.EtapaAgente.ANALIZADA)
             """)
     List<MediaAsset> yaTrabajadasConHuella();
 
     long countByAgenteEtapa(com.metricol.api.enums.EtapaAgente etapa);
+
+    /** Las que esperan a organizarse, en el orden en que se subieron. Hibernate filtra por tenant. */
+    List<MediaAsset> findByAgenteEtapaOrderByCreatedAtAscIdAsc(com.metricol.api.enums.EtapaAgente etapa);
+
+    /**
+     * Toma una analizada para organizarla (pasa a REVISANDO), o 0 si otro ya la
+     * tomó: el proceso de fondo y un botón no arman dos veces la misma tanda.
+     */
+    @org.springframework.data.jpa.repository.Modifying
+    @org.springframework.transaction.annotation.Transactional
+    @Query("""
+            update MediaAsset m
+            set m.agenteEtapa = com.metricol.api.enums.EtapaAgente.REVISANDO, m.agenteTomadoEn = :ahora
+            where m.id = :id and m.agenteEtapa = com.metricol.api.enums.EtapaAgente.ANALIZADA
+            """)
+    int tomarAnalizada(@org.springframework.data.repository.query.Param("id") java.util.UUID id,
+            @org.springframework.data.repository.query.Param("ahora") LocalDateTime ahora);
 
     /**
      * La clave en R2 de cada archivo que sigue vivo, con su workspace.

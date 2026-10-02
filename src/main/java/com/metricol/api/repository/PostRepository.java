@@ -82,13 +82,14 @@ public interface PostRepository extends JpaRepository<Post, UUID> {
     long disenosDelAgenteDesde(LocalDateTime desde);
 
     /**
-     * Los huecos ya tomados desde {@code desde}: lo programado o en cola, y lo
-     * que el agente ya propuso. Con esto el agente no apila dos en la misma
+     * Los huecos del feed ya tomados desde {@code desde}: lo programado o en
+     * cola, y lo que el agente ya propuso. Las historias van aparte. Con esto el agente no apila dos en la misma
      * hora ni pasa del tope del día.
      */
     @Query("""
             select coalesce(p.scheduledAt, p.fechaPropuesta) from Post p
             where p.deletedAt is null
+              and (p.format is null or p.format <> com.metricol.api.enums.PostFormat.STORY)
               and ((p.status in (com.metricol.api.enums.PostStatus.SCHEDULED, com.metricol.api.enums.PostStatus.QUEUED)
                     and p.scheduledAt >= :desde)
                 or (p.status = com.metricol.api.enums.PostStatus.DRAFT and p.propuestaAgente = true
@@ -101,12 +102,28 @@ public interface PostRepository extends JpaRepository<Post, UUID> {
             select coalesce(p.scheduledAt, p.fechaPropuesta), p.agenteCategoria
             from Post p
             where p.deletedAt is null
+              and (p.format is null or p.format <> com.metricol.api.enums.PostFormat.STORY)
               and ((p.status in (com.metricol.api.enums.PostStatus.SCHEDULED, com.metricol.api.enums.PostStatus.QUEUED)
                     and p.scheduledAt >= :desde)
                 or (p.status = com.metricol.api.enums.PostStatus.DRAFT and p.propuestaAgente = true
                     and p.fechaPropuesta >= :desde))
             """)
     List<Object[]> tomadosConCategoria(LocalDateTime desde);
+
+    /**
+     * Las historias ya programadas o propuestas desde {@code desde}. Llevan su
+     * propio ritmo: no cuentan para el tope del feed ni para su mezcla.
+     */
+    @Query("""
+            select coalesce(p.scheduledAt, p.fechaPropuesta) from Post p
+            where p.deletedAt is null
+              and p.format = com.metricol.api.enums.PostFormat.STORY
+              and ((p.status in (com.metricol.api.enums.PostStatus.SCHEDULED, com.metricol.api.enums.PostStatus.QUEUED)
+                    and p.scheduledAt >= :desde)
+                or (p.status = com.metricol.api.enums.PostStatus.DRAFT and p.propuestaAgente = true
+                    and p.fechaPropuesta >= :desde))
+            """)
+    List<LocalDateTime> historiasTomadas(LocalDateTime desde);
 
     /** Una publicación por su id, si la persona todavía la tiene. */
     java.util.Optional<Post> findByIdAndDeletedAtIsNull(UUID id);

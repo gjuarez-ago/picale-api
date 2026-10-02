@@ -122,6 +122,18 @@ public class AgenteService {
     private final com.metricol.api.config.VideoLimitsProperties videoLimites;
     /** Lo que le funciona a cada cuenta: sus mejores horas y hashtags. */
     private final com.metricol.api.service.metricas.LoQueFunciona loQueFunciona;
+    /** Quien arma la tanda: carruseles, posts e historias. */
+    private final OrganizadorDeContenido organizador;
+
+    /**
+     * Cuánto se espera sin fotos nuevas para organizar una tanda: subir veinte
+     * fotos lleva unos minutos, y organizarlas a la mitad partiría un carrusel.
+     */
+    @org.springframework.beans.factory.annotation.Value("${app.agente.espera-minutos:10}")
+    private int esperaMinutos = 10;
+
+    /** Dos fotos subidas con más de esto entre una y otra son de tandas distintas. */
+    static final int SESION_MINUTOS = 15;
 
     public AgenteService(WorkspaceRepository workspaces, MediaAssetRepository assets, PostRepository posts,
             SocialAccountRepository cuentas, RevisorDeMarca revisor, Redactor redactor, PostService postService,
@@ -130,7 +142,8 @@ public class AgenteService {
             CreditService creditos, RetoqueDeFoto retoque, MedidorDeVideo medidor,
             com.metricol.api.config.VideoLimitsProperties videoLimites, AnalistaDeVideo analista,
             EditorDeVideo editor, CuentaAparte otraCuenta,
-            com.metricol.api.service.metricas.LoQueFunciona loQueFunciona) {
+            com.metricol.api.service.metricas.LoQueFunciona loQueFunciona, OrganizadorDeContenido organizador) {
+        this.organizador = organizador;
         this.loQueFunciona = loQueFunciona;
         this.otraCuenta = otraCuenta;
         this.analista = analista;
@@ -306,6 +319,14 @@ public class AgenteService {
      * @return cuántas fotos llevó a algún lado
      */
     public int vuelta(UUID workspaceId) {
+        return vuelta(workspaceId, false);
+    }
+
+    /**
+     * @param ahoraMismo organiza las tandas sin esperar a que se termine de subir
+     *                   (el botón "Revisar ahora")
+     */
+    int vuelta(UUID workspaceId, boolean ahoraMismo) {
         Workspace w = workspace(workspaceId);
         if (!w.conAgente() || w.getAgenteDesde() == null) {
             return 0;
@@ -332,11 +353,280 @@ public class AgenteService {
             if (!tomar(asset)) {
                 continue;
             }
-            if (procesar(asset, w, destino, false)) {
+            // Los videos van directo (ya deciden Reel o historia); las fotos
+            // primero se analizan y luego se organizan con las de su tanda.
+            boolean listo = asset.getType() == com.metricol.api.enums.MediaType.VIDEO
+                    ? procesar(asset, w, destino, false)
+                    : analizarFoto(asset, w, destino, false);
+            if (listo) {
                 hechas++;
             }
         }
+        organizar(w, destino, ahoraMismo);
         return hechas;
+    }
+
+    // ------------------------------------------------------------ analizar y organizar
+
+    /**
+     * Revisa una foto contra la marca. Si no va (o no se pudo), la deja donde
+     * corresponde y devuelve nulo; si va, devuelve la revisión.
+     */
+    private RevisorDeMarca.Revision revisarFoto(MediaAsset asset, Workspace w, List<SocialAccount> destino,
+            boolean forzar) {
+        if (destino.isEmpty()) {
+            marcar(asset, EtapaAgente.OBSERVACION, "No tienes redes conectadas que publiquen fotos.");
+            return null;
+        }
+        // Repetidas, antes de gastar en la IA: la misma toma subida dos veces no
+        // son dos publicaciones. Se queda la que llegó primero. Si la persona
+        // la rescata (forzar), va aunque se parezca.
+        if (!forzar) {
+            MediaAsset igual = repetidaDe(asset);
+            if (igual != null) {
+                marcar(asset, EtapaAgente.DESCARTADA, "Casi igual a «" + igual.getFileName()
+                        + "», que ya trabajé: me quedé con esa.");
+                return null;
+            }
+        }
+        boolean marcaCompleta = BrandService.completitud(w).percent() >= MARCA_SUFICIENTE;
+        RevisorDeMarca.Revision revision = revisor.revisar(asset.getUrl(), negocio(w), marcaCompleta);
+        if (revision == null) {
+            marcar(asset, EtapaAgente.PENDIENTE, "No pude revisarla todavía; lo vuelvo a intentar en un rato.");
+            return null;
+        }
+        if (!forzar && revision.veredicto() != RevisorDeMarca.Veredicto.VA) {
+            marcar(asset, revision.veredicto() == RevisorDeMarca.Veredicto.OBSERVACION
+                    ? EtapaAgente.OBSERVACION
+                    : EtapaAgente.DESCARTADA, revision.motivo());
+            return null;
+        }
+        if (asset.getDescripcionIa() == null || asset.getDescripcionIa().isBlank()) {
+            asset.setDescripcionIa(revision.descripcion().isBlank() ? null : revision.descripcion());
+        }
+        return revision;
+    }
+
+    /**
+     * El primer paso: la analiza y, si va, la deja ANALIZADA con su revisión
+     * guardada, para organizarla con las demás que se subieron con ella.
+     *
+     * @return si quedó en algún sitio; {@code false} = sigue pendiente
+     */
+    boolean analizarFoto(MediaAsset asset, Workspace w, List<SocialAccount> destino, boolean forzar) {
+        RevisorDeMarca.Revision revision = revisarFoto(asset, w, destino, forzar);
+        if (revision == null) {
+            return asset.getAgenteEtapa() != EtapaAgente.PENDIENTE;
+        }
+        asset.setAgenteAnalisis(RevisorDeMarca.aJson(revision, forzar));
+        marcar(asset, EtapaAgente.ANALIZADA, "La revisé: la acomodo con las demás que subiste.");
+        return true;
+    }
+
+    /** Una foto de la tanda con lo que se sabe de ella. */
+    private record EnTanda(MediaAsset asset, RevisorDeMarca.Revision revision, boolean forzada) {
+    }
+
+    /**
+     * El segundo paso: las analizadas se juntan por tanda (subidas con menos de
+     * {@link #SESION_MINUTOS} entre una y otra) y cada tanda se organiza cuando
+     * ya no llegan fotos nuevas ({@code app.agente.espera-minutos}).
+     *
+     * @return cuántas publicaciones propuso
+     */
+    int organizar(Workspace w, List<SocialAccount> destino, boolean ahoraMismo) {
+        List<MediaAsset> analizadas = assets.findByAgenteEtapaOrderByCreatedAtAscIdAsc(EtapaAgente.ANALIZADA);
+        if (analizadas.isEmpty()) {
+            return 0;
+        }
+        LocalDateTime ahora = LocalDateTime.now();
+        int propuestas = 0;
+        for (List<MediaAsset> tanda : tandas(analizadas)) {
+            LocalDateTime ultima = tanda.get(tanda.size() - 1).getCreatedAt();
+            if (!ahoraMismo && ultima != null && ultima.isAfter(ahora.minusMinutes(esperaMinutos))) {
+                continue;
+            }
+            try {
+                cupoIa.exigirCupo();
+            } catch (RuntimeException topeDelDia) {
+                break;
+            }
+            List<EnTanda> fotos = new ArrayList<>();
+            for (MediaAsset a : tanda) {
+                if (assets.tomarAnalizada(a.getId(), LocalDateTime.now()) != 1) {
+                    continue;
+                }
+                a.setAgenteEtapa(EtapaAgente.REVISANDO);
+                RevisorDeMarca.Revision rev = RevisorDeMarca.deJson(a.getAgenteAnalisis());
+                if (rev == null) {
+                    marcar(a, EtapaAgente.PENDIENTE, "No pude leer lo que vi de ella; la vuelvo a revisar.");
+                    continue;
+                }
+                fotos.add(new EnTanda(a, rev, RevisorDeMarca.forzada(a.getAgenteAnalisis())));
+            }
+            if (!fotos.isEmpty()) {
+                propuestas += organizarTanda(w, destino, fotos, null);
+            }
+        }
+        return propuestas;
+    }
+
+    /** Las analizadas partidas en tandas: una pausa de más de {@link #SESION_MINUTOS} corta. */
+    static List<List<MediaAsset>> tandas(List<MediaAsset> enOrden) {
+        List<List<MediaAsset>> tandas = new ArrayList<>();
+        List<MediaAsset> actual = new ArrayList<>();
+        LocalDateTime previa = null;
+        for (MediaAsset a : enOrden) {
+            LocalDateTime t = a.getCreatedAt();
+            if (previa != null && t != null && t.isAfter(previa.plusMinutes(SESION_MINUTOS)) && !actual.isEmpty()) {
+                tandas.add(actual);
+                actual = new ArrayList<>();
+            }
+            actual.add(a);
+            if (t != null) {
+                previa = t;
+            }
+        }
+        if (!actual.isEmpty()) {
+            tandas.add(actual);
+        }
+        return tandas;
+    }
+
+    /**
+     * Arma las publicaciones de una tanda: la IA propone (si hay dos o más) y
+     * las reglas mandan. Cada grupo se produce con su formato.
+     *
+     * @param instruccion lo que pidió la persona al rehacer un carrusel, o nulo
+     */
+    private int organizarTanda(Workspace w, List<SocialAccount> destino, List<EnTanda> fotos, String instruccion) {
+        List<OrganizadorDeContenido.Foto> numeradas = new ArrayList<>();
+        for (int i = 0; i < fotos.size(); i++) {
+            numeradas.add(new OrganizadorDeContenido.Foto(i + 1, fotos.get(i).revision()));
+        }
+        boolean hayHistorias = !cuentasPara(PostFormat.STORY).isEmpty();
+        List<OrganizadorDeContenido.Grupo> grupos = OrganizadorDeContenido.normalizar(
+                fotos.size() >= 2 ? organizador.proponer(numeradas, instruccion) : null,
+                numeradas, formatos.de(PostFormat.PHOTO).maxArchivos(), hayHistorias);
+        int hechas = 0;
+        for (OrganizadorDeContenido.Grupo g : grupos) {
+            List<EnTanda> suyas = g.fotos().stream().map(n -> fotos.get(n - 1)).toList();
+            try {
+                boolean ok = g.formato() == OrganizadorDeContenido.Formato.CARRUSEL
+                        ? proponerCarrusel(w, destino, suyas, g.tema(), g.porque())
+                        : proponerFoto(suyas.get(0).asset(), w, destino, suyas.get(0).revision(),
+                                suyas.get(0).forzada(), null, g.formato() == OrganizadorDeContenido.Formato.HISTORIA);
+                if (ok) {
+                    hechas++;
+                }
+            } catch (RuntimeException ex) {
+                log.warn("El agente no pudo armar una publicación de la tanda: {}", ex.toString());
+                suyas.forEach(f -> marcar(f.asset(), EtapaAgente.PENDIENTE,
+                        "No pude preparar la publicación; lo vuelvo a intentar en un rato."));
+            }
+        }
+        return hechas;
+    }
+
+    /**
+     * Un carrusel: las fotos reales en el orden del organizador (la primera es
+     * la portada), cada una con su retoque si lo pide, el logo solo en la
+     * portada, y un texto que habla del conjunto. Sin diseño con IA: no gasta
+     * créditos. Una foto que no da la calidad sale del carrusel a Observación;
+     * si quedan menos de dos, va como post.
+     */
+    private boolean proponerCarrusel(Workspace w, List<SocialAccount> destino, List<EnTanda> fotos, String tema,
+            String porque) {
+        List<EnTanda> quedan = new ArrayList<>();
+        List<String> urls = new ArrayList<>();
+        List<String> pasos = new ArrayList<>();
+        int retocadas = 0;
+        boolean conLogo = false;
+        for (EnTanda f : fotos) {
+            // Cero diseños disponibles: en un carrusel no se diseña, se cuida la foto.
+            DecisorDelAgente.Decision d = DecisorDelAgente.decidir(f.revision().diagnostico(),
+                    new DecisorDelAgente.Contexto(0, ajusteDeDiseno(w)));
+            if (d.tratamiento() == DecisorDelAgente.Tratamiento.OBSERVACION) {
+                marcar(f.asset(), EtapaAgente.OBSERVACION, d.explicacion());
+                continue;
+            }
+            MediaAsset base = f.asset();
+            if (d.tratamiento() == DecisorDelAgente.Tratamiento.RETOQUE) {
+                MediaAsset retocada = retoque.retocar(f.asset(), w.getId());
+                if (retocada != null) {
+                    base = retocada;
+                    retocadas++;
+                }
+            }
+            String url = base.getUrl();
+            if (urls.isEmpty() && d.logo()) {
+                String sellada = logo.sellar(base, w.getLogoUrl(), w.getId());
+                if (sellada != null) {
+                    url = sellada;
+                    conLogo = true;
+                }
+            }
+            quedan.add(f);
+            urls.add(url);
+        }
+        if (quedan.size() < 2) {
+            boolean alguna = false;
+            for (EnTanda f : quedan) {
+                alguna |= proponerFoto(f.asset(), w, destino, f.revision(), f.forzada(), null, false);
+            }
+            return alguna;
+        }
+        if (retocadas > 0) {
+            pasos.add(retocadas == 1 ? "Retoqué una foto." : "Retoqué " + retocadas + " fotos.");
+        }
+        if (conLogo) {
+            pasos.add("Le puse tu logo a la portada.");
+        }
+
+        EnTanda portada = quedan.get(0);
+        Set<Platform> redes = destino.stream().map(SocialAccount::getPlatform)
+                .collect(Collectors.toCollection(LinkedHashSet::new));
+        String sobre = tema == null || tema.isBlank() ? portada.revision().tema() : tema;
+        String encargo = "Haz una publicacion tipo carrusel de " + quedan.size() + " fotos"
+                + (sobre.isBlank() ? "" : " sobre " + sobre) + ": "
+                + (portada.revision().idea().isBlank() ? "presentalo como un recorrido" : portada.revision().idea());
+        List<String> queSeVe = new ArrayList<>();
+        for (int i = 0; i < quedan.size(); i++) {
+            String d = quedan.get(i).revision().descripcion();
+            if (!d.isBlank()) {
+                queSeVe.add("Foto " + (i + 1) + ": " + d);
+            }
+        }
+        Redactor.Borrador borrador = redactor.redactar(encargo, queSeVe, redes, negocio(w));
+        CalendarioDelAgente.Categoria categoria = categoria(portada.revision().diagnostico());
+        CalendarioDelAgente.Hueco hueco = hueco(w, categoria);
+
+        PostSaveRequest pedido = new PostSaveRequest();
+        pedido.setCaption(texto(borrador));
+        pedido.setTitulo(borrador.titulo());
+        pedido.setBrief(encargo);
+        pedido.setMediaUrls(urls);
+        pedido.setFormat(PostFormat.PHOTO.name());
+        pedido.setSocialAccountIds(destino.stream().map(SocialAccount::getId).toList());
+        Map<String, String> porRed = new LinkedHashMap<>();
+        borrador.textos().forEach((red, t) -> porRed.put(red.name(), t));
+        pedido.setCaptionsPorRed(porRed);
+        ConUbicacion lugar = ubicacionPara(w, redes, portada.revision().tipo());
+        pedido.setConUbicacion(lugar.va());
+
+        boolean forzada = quedan.stream().allMatch(EnTanda::forzada);
+        String porQue = forzada ? "Me dijiste que va." : "Va con tu marca.";
+        String carrusel = " Hice carrusel con " + quedan.size() + " fotos" + (sobre.isBlank() ? "" : " de " + sobre)
+                + ": " + (porque == null || porque.isBlank() ? "son del mismo tema y juntas cuentan más." : sinPunto(porque) + ".");
+        String motivo = porQue + carrusel + (pasos.isEmpty() ? "" : " " + String.join(" ", pasos)) + lugar.frase()
+                + " " + cuandoYDonde(redes, hueco);
+
+        Post creada = postService.crearPropuesta(pedido, hueco.cuando(), motivo, portada.asset().getUrl(),
+                "CARRUSEL", categoria.name());
+        creada.setAgenteFotosUrls(String.join("\n", quedan.stream().map(f -> f.asset().getUrl()).toList()));
+        posts.save(creada);
+        quedan.forEach(f -> marcar(f.asset(), EtapaAgente.PROPUESTA, motivo));
+        return true;
     }
 
     /**
@@ -355,41 +645,44 @@ public class AgenteService {
         if (asset.getType() == com.metricol.api.enums.MediaType.VIDEO) {
             return procesarVideo(asset, w, forzar, cambio);
         }
-        if (destino.isEmpty()) {
-            marcar(asset, EtapaAgente.OBSERVACION, "No tienes redes conectadas que publiquen fotos.");
-            return true;
-        }
-        // Repetidas, antes de gastar en la IA: la misma toma subida dos veces no
-        // son dos publicaciones. Se queda la que llegó primero. Si la persona
-        // la rescata (forzar), va aunque se parezca.
-        if (!forzar) {
-            MediaAsset igual = repetidaDe(asset);
-            if (igual != null) {
-                marcar(asset, EtapaAgente.DESCARTADA, "Casi igual a «" + igual.getFileName()
-                        + "», que ya trabajé: me quedé con esa.");
-                return true;
-            }
-        }
-
-        Redactor.Negocio negocio = negocio(w);
-        boolean marcaCompleta = BrandService.completitud(w).percent() >= MARCA_SUFICIENTE;
-
-        RevisorDeMarca.Revision revision = revisor.revisar(asset.getUrl(), negocio, marcaCompleta);
+        // Una sola, a mano (Revisar ahora, Sí va, ¿Le cambiamos algo?): se
+        // revisa y se propone ya, como post o historia según la regla de una sola.
+        RevisorDeMarca.Revision revision = revisarFoto(asset, w, destino, forzar);
         if (revision == null) {
-            marcar(asset, EtapaAgente.PENDIENTE, "No pude revisarla todavía; lo vuelvo a intentar en un rato.");
-            return false;
+            return asset.getAgenteEtapa() != EtapaAgente.PENDIENTE;
         }
-        if (!forzar && revision.veredicto() != RevisorDeMarca.Veredicto.VA) {
-            marcar(asset, revision.veredicto() == RevisorDeMarca.Veredicto.OBSERVACION
-                    ? EtapaAgente.OBSERVACION
-                    : EtapaAgente.DESCARTADA, revision.motivo());
-            return true;
+        boolean historia = OrganizadorDeContenido.sola(new OrganizadorDeContenido.Foto(1, revision),
+                !cuentasPara(PostFormat.STORY).isEmpty(), true).formato() == OrganizadorDeContenido.Formato.HISTORIA;
+        return proponerFoto(asset, w, destino, revision, forzar, cambio, historia);
+    }
+
+    /**
+     * Una foto ya revisada, como post o como historia.
+     *
+     * @param historia va de historia: a las redes que las aceptan, sin diseño,
+     *                 con su propio calendario
+     */
+    private boolean proponerFoto(MediaAsset asset, Workspace w, List<SocialAccount> destino,
+            RevisorDeMarca.Revision revision, boolean forzar, Cambio cambio, boolean historia) {
+        Redactor.Negocio negocio = negocio(w);
+        if (historia) {
+            List<SocialAccount> deHistorias = cuentasPara(PostFormat.STORY);
+            if (deHistorias.isEmpty()) {
+                historia = false;
+            } else {
+                destino = deHistorias;
+            }
         }
 
         // La IA ya calificó la foto; el decisor resuelve qué necesita.
         DecisorDelAgente.Decision decision = DecisorDelAgente.decidir(revision.diagnostico(),
                 new DecisorDelAgente.Contexto(disenosDisponibles(w), ajusteDeDiseno(w)));
         decision = conCambio(decision, cambio, disenosDisponibles(w));
+        // Una historia es del momento: se cuida la foto, no se diseña.
+        if (historia && decision.tratamiento() == DecisorDelAgente.Tratamiento.DISENO) {
+            decision = new DecisorDelAgente.Decision(DecisorDelAgente.Tratamiento.TAL_CUAL, decision.logo(),
+                    decision.prioridad(), decision.pasos());
+        }
         if (decision.tratamiento() == DecisorDelAgente.Tratamiento.OBSERVACION) {
             marcar(asset, EtapaAgente.OBSERVACION, decision.explicacion());
             return true;
@@ -416,7 +709,7 @@ public class AgenteService {
                     revision.descripcion().isBlank() ? List.of() : List.of(revision.descripcion()),
                     redes, negocio);
 
-            CalendarioDelAgente.Hueco hueco = hueco(w, categoria(revision.diagnostico()));
+            CalendarioDelAgente.Hueco hueco = historia ? huecoDeHistoria(w) : hueco(w, categoria(revision.diagnostico()));
             LocalDateTime fecha = hueco.cuando();
 
             // Retoque y logo sobre copias: la original no se toca. Lo que no se
@@ -446,7 +739,7 @@ public class AgenteService {
             pedido.setTitulo(borrador.titulo());
             pedido.setBrief(encargo);
             pedido.setMediaUrls(List.of(publicar));
-            pedido.setFormat(PostFormat.PHOTO.name());
+            pedido.setFormat((historia ? PostFormat.STORY : PostFormat.PHOTO).name());
             pedido.setSocialAccountIds(destino.stream().map(SocialAccount::getId).toList());
             Map<String, String> porRed = new LinkedHashMap<>();
             borrador.textos().forEach((red, t) -> porRed.put(red.name(), t));
@@ -454,13 +747,12 @@ public class AgenteService {
             ConUbicacion lugar = ubicacionPara(w, redes, revision.tipo());
             pedido.setConUbicacion(lugar.va());
 
-            String motivo = porQue + " " + String.join(" ", pasos) + lugar.frase() + " " + cuandoYDonde(redes, hueco);
+            String deHistoria = historia ? " Va de historia: es del momento y está en vertical." : "";
+            String motivo = porQue + " " + String.join(" ", pasos) + deHistoria + lugar.frase() + " "
+                    + cuandoYDonde(redes, hueco);
             postService.crearPropuesta(pedido, fecha, motivo, asset.getUrl(), decision.tratamiento().name(),
                     categoria(revision.diagnostico()).name());
 
-            if (asset.getDescripcionIa() == null || asset.getDescripcionIa().isBlank()) {
-                asset.setDescripcionIa(revision.descripcion().isBlank() ? null : revision.descripcion());
-            }
             marcar(asset, EtapaAgente.PROPUESTA, motivo);
             return true;
         } catch (RuntimeException ex) {
@@ -576,7 +868,8 @@ public class AgenteService {
             }
             Redactor.Borrador borrador = redactor.redactar(encargo, queSeVe, redes, negocio);
             CalendarioDelAgente.Categoria categoria = categoria(analisis.comoDiagnostico());
-            CalendarioDelAgente.Hueco hueco = hueco(w, categoria);
+            CalendarioDelAgente.Hueco hueco = decision.formato() == PostFormat.STORY ? huecoDeHistoria(w)
+                    : hueco(w, categoria);
 
             PostSaveRequest pedido = new PostSaveRequest();
             pedido.setCaption(texto(borrador));
@@ -746,6 +1039,12 @@ public class AgenteService {
         return s.isEmpty() ? s : Character.toLowerCase(s.charAt(0)) + s.substring(1);
     }
 
+    /** El siguiente hueco para una historia: su propio ritmo, aparte del feed. */
+    private CalendarioDelAgente.Hueco huecoDeHistoria(Workspace w) {
+        LocalDateTime ahora = LocalDateTime.now();
+        return CalendarioDelAgente.siguienteHuecoDeHistoria(ahora, posts.historiasTomadas(ahora), horario(w));
+    }
+
     /** El siguiente hueco que respeta el horario, los topes y la mezcla de la semana. */
     private CalendarioDelAgente.Hueco hueco(Workspace w, CalendarioDelAgente.Categoria categoria) {
         LocalDateTime ahora = LocalDateTime.now();
@@ -886,6 +1185,17 @@ public class AgenteService {
         LocalDateTime ahora = LocalDateTime.now();
         LocalDateTime suya = grupo.get(0).getFechaPropuesta();
         int porQuitar = suya == null ? 0 : grupo.size();
+        if (grupo.get(0).getFormat() == PostFormat.STORY) {
+            List<LocalDateTime> historias = new ArrayList<>();
+            for (LocalDateTime cuando : posts.historiasTomadas(ahora)) {
+                if (porQuitar > 0 && cuando != null && cuando.equals(suya)) {
+                    porQuitar--;
+                    continue;
+                }
+                historias.add(cuando);
+            }
+            return CalendarioDelAgente.siguienteHuecoDeHistoria(ahora, historias, horario(w));
+        }
         List<CalendarioDelAgente.Tomado> tomados = new ArrayList<>();
         for (Object[] r : posts.tomadosConCategoria(ahora)) {
             LocalDateTime cuando = (LocalDateTime) r[0];
@@ -1120,6 +1430,9 @@ public class AgenteService {
             throw new IllegalArgumentException("Escribe qué le cambiamos.");
         }
         Post post = propuestaPendiente(postId);
+        if (post.getAgenteFotosUrls() != null && !post.getAgenteFotosUrls().isBlank()) {
+            return cambiarCarrusel(post, texto, workspaceId);
+        }
         String original = post.getAgenteFotoUrl() != null ? post.getAgenteFotoUrl() : post.getMediaUrls().get(0);
         MediaAsset asset = assets.findByUrlIn(List.of(original)).stream().findFirst()
                 .orElseThrow(() -> new IllegalStateException("Ya no encuentro la foto original de esta propuesta."));
@@ -1154,6 +1467,41 @@ public class AgenteService {
         }
         replanear(w);
         return propuestasDe(original);
+    }
+
+    /**
+     * Rehacer un carrusel: sus fotos vuelven a organizarse con lo que pidió la
+     * persona ("sepáralas", "quita la 3", "la portada que sea la del frente").
+     * No se vuelven a mirar: se usa lo que ya se vio de cada una.
+     */
+    private List<PostResponse> cambiarCarrusel(Post post, String texto, UUID workspaceId) {
+        List<String> originales = originalesDe(post);
+        Map<String, MediaAsset> porUrl = new LinkedHashMap<>();
+        assets.findByUrlIn(originales).forEach(a -> porUrl.put(a.getUrl(), a));
+        cupoIa.exigirCupo();
+        for (Post hermana : grupoDe(post)) {
+            postService.delete(hermana.getId());
+        }
+        Workspace w = workspace(workspaceId);
+        List<EnTanda> fotos = new ArrayList<>();
+        for (String url : originales) {
+            MediaAsset a = porUrl.get(url);
+            if (a == null) {
+                continue;
+            }
+            RevisorDeMarca.Revision rev = RevisorDeMarca.deJson(a.getAgenteAnalisis());
+            if (rev == null) {
+                marcar(a, EtapaAgente.PENDIENTE, "La vuelvo a revisar para rehacer el carrusel.");
+                continue;
+            }
+            marcar(a, EtapaAgente.REVISANDO, a.getAgenteMotivo());
+            fotos.add(new EnTanda(a, rev, true));
+        }
+        if (!fotos.isEmpty()) {
+            organizarTanda(w, cuentasParaFotos(), fotos, texto);
+        }
+        replanear(w);
+        return postService.propuestasDelAgente(p -> p.getAgenteFotoUrl() != null && originales.contains(p.getAgenteFotoUrl()));
     }
 
     /** Las propuestas que salieron de una foto. */
@@ -1232,7 +1580,7 @@ public class AgenteService {
         if (!w.conAgente()) {
             throw new IllegalStateException("Enciende el agente para que revise lo nuevo.");
         }
-        return vuelta(workspaceId);
+        return vuelta(workspaceId, true);
     }
 
     // ------------------------------------------------------------ piezas
@@ -1338,9 +1686,18 @@ public class AgenteService {
         assets.save(asset);
     }
 
+    /** Las fotos originales de una propuesta: las del carrusel, la de una foto, o lo que publica. */
+    static List<String> originalesDe(Post post) {
+        if (post.getAgenteFotosUrls() != null && !post.getAgenteFotosUrls().isBlank()) {
+            return java.util.Arrays.stream(post.getAgenteFotosUrls().split("\n")).map(String::strip)
+                    .filter(u -> !u.isEmpty()).toList();
+        }
+        return post.getAgenteFotoUrl() != null ? List.of(post.getAgenteFotoUrl()) : post.getMediaUrls();
+    }
+
     /** La foto original de la propuesta (no la copia con logo): esa es la que cambia de etapa. */
     private void etapaDeSusFotos(Post post, EtapaAgente etapa, String motivo) {
-        List<String> urls = post.getAgenteFotoUrl() != null ? List.of(post.getAgenteFotoUrl()) : post.getMediaUrls();
+        List<String> urls = originalesDe(post);
         for (MediaAsset a : assets.findByUrlIn(urls)) {
             marcar(a, etapa, motivo == null ? a.getAgenteMotivo() : motivo);
         }

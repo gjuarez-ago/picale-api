@@ -104,6 +104,15 @@ public class Post {
     private Boolean conUbicacion;
 
     /**
+     * Las fotos originales de un carrusel del agente, una por línea y en
+     * orden (la primera, la portada, es también {@link #agenteFotoUrl}). Nulo
+     * en lo de una sola foto. Con esto aprobar, descartar o rehacer alcanza a
+     * todas sus fotos y no solo a la portada.
+     */
+    @jakarta.persistence.Column(length = 2000)
+    private String agenteFotosUrls;
+
+    /**
      * Las fotos —o el video— de la publicación, en el orden en que se verán.
      *
      * <p>Una lista y no un solo campo porque un carrusel es UNA publicación

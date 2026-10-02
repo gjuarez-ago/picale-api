@@ -146,7 +146,11 @@ public final class CalendarioDelAgente {
     /** Los primeros {@code cuantos} huecos libres, en orden. */
     static List<LocalDateTime> huecosLibres(LocalDateTime ahora, Collection<LocalDateTime> tomados, int maxPorDia,
             Horario horario, int cuantos) {
-        List<LocalTime> horas = horario.horas();
+        return huecosLibres(ahora, tomados, maxPorDia, horario, horario.horas(), cuantos);
+    }
+
+    private static List<LocalDateTime> huecosLibres(LocalDateTime ahora, Collection<LocalDateTime> tomados,
+            int maxPorDia, Horario horario, List<LocalTime> horas, int cuantos) {
         int tope = Math.max(1, Math.min(maxPorDia, horas.size()));
         LocalDateTime desde = ahora.plusHours(MARGEN_HORAS);
 
@@ -179,6 +183,40 @@ public final class CalendarioDelAgente {
             }
         }
         return libres;
+    }
+
+    // ------------------------------------------------------------ historias
+
+    /**
+     * Las horas de las historias. Llevan su propio ritmo, como en las cuentas
+     * grandes: varias al día, aparte del feed, sin quitarle lugar.
+     */
+    static final List<LocalTime> HORAS_HISTORIA = List.of(
+            LocalTime.of(10, 0), LocalTime.of(13, 0), LocalTime.of(17, 0), LocalTime.of(20, 0));
+
+    /** Cuántas historias como mucho en un día. */
+    static final int HISTORIAS_POR_DIA = 3;
+
+    /**
+     * El siguiente hueco para una historia: en el horario del negocio, sin
+     * pasar de {@link #HISTORIAS_POR_DIA} al día y separadas dos horas de las
+     * otras historias. El feed no cuenta: son dos ritmos aparte.
+     *
+     * @param historias las historias ya programadas o propuestas
+     */
+    public static Hueco siguienteHuecoDeHistoria(LocalDateTime ahora, Collection<LocalDateTime> historias,
+            Horario horario) {
+        List<LocalTime> horas = HORAS_HISTORIA.stream()
+                .filter(h -> h.getHour() >= horario.desde() && h.getHour() < horario.hasta())
+                .toList();
+        if (horas.isEmpty()) {
+            horas = List.of(LocalTime.of((horario.desde() + horario.hasta()) / 2, 0));
+        }
+        List<LocalDateTime> libres = huecosLibres(ahora, historias, HISTORIAS_POR_DIA, horario, horas, 1);
+        LocalDateTime cuando = libres.isEmpty()
+                ? ahora.plusHours(MARGEN_HORAS).toLocalDate().plusDays(DIAS_MAXIMOS + 1L).atTime(horas.get(0))
+                : libres.get(0);
+        return new Hueco(cuando, null);
     }
 
     // ------------------------------------------------------------ la mezcla

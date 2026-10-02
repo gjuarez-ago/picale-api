@@ -28,5 +28,11 @@ public enum EtapaAgente {
      * candado que evita que dos lo revisen a la vez y salgan dos propuestas.
      * Si quien lo tomó se cae, a los 20 minutos vuelve a estar libre.
      */
-    REVISANDO
+    REVISANDO,
+
+    /**
+     * Revisada y aprobada por la marca, esperando a que se organice con las
+     * demás de su tanda (carrusel, post o historia). Ver {@code OrganizadorDeContenido}.
+     */
+    ANALIZADA
 }

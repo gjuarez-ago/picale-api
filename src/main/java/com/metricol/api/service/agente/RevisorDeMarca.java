@@ -39,9 +39,25 @@ public class RevisorDeMarca {
      * @param descripcion qué se ve, para quien escribe el texto
      * @param idea        qué comunicaría un community manager con esta foto
      * @param diagnostico cómo está la foto; con esto decide {@link DecisorDelAgente}
+     * @param orientacion VERTICAL, HORIZONTAL o CUADRADA: una historia solo con vertical
+     * @param efimero     es del momento (la promoción de hoy, un evento en curso, detrás de
+     *                    cámaras): va mejor en historias que en el feed
+     * @param tema        de qué trata, en pocas palabras ("depa Calle 60", "tacos al pastor"):
+     *                    con esto se agrupan las de una tanda en carruseles
      */
     public record Revision(Veredicto veredicto, String motivo, String descripcion, String idea,
-            DecisorDelAgente.Diagnostico diagnostico) {
+            DecisorDelAgente.Diagnostico diagnostico, String orientacion, boolean efimero, String tema) {
+
+        public Revision {
+            orientacion = orientacion == null || orientacion.isBlank() ? "CUADRADA" : orientacion;
+            tema = tema == null ? "" : tema;
+        }
+
+        /** Sin lo de organizar (orientación, momento, tema): lo de antes y las pruebas. */
+        public Revision(Veredicto veredicto, String motivo, String descripcion, String idea,
+                DecisorDelAgente.Diagnostico diagnostico) {
+            this(veredicto, motivo, descripcion, idea, diagnostico, "CUADRADA", false, "");
+        }
 
         /** Una foto buena del tipo dado: las pruebas y lo que no trae diagnóstico. */
         public Revision(Veredicto veredicto, String motivo, String descripcion, String idea, String tipo) {
@@ -51,6 +67,10 @@ public class RevisorDeMarca {
 
         public String tipo() {
             return diagnostico.tipo();
+        }
+
+        public boolean vertical() {
+            return "VERTICAL".equals(orientacion);
         }
     }
 
@@ -72,7 +92,10 @@ public class RevisorDeMarca {
              "fuerza": 1-5,
              "esArte": true | false,
              "necesitaTexto": true | false,
-             "intencion": "VENDER" | "INFORMAR" | "COMUNIDAD" | "CONFIANZA"}
+             "intencion": "VENDER" | "INFORMAR" | "COMUNIDAD" | "CONFIANZA",
+             "orientacion": "VERTICAL" | "HORIZONTAL" | "CUADRADA",
+             "efimero": true | false,
+             "tema": "de que trata en 2 a 5 palabras, lo mismo para fotos de lo mismo"}
 
             Como calificar:
             - calidad: luz, nitidez, encuadre y resolucion. 5 = foto profesional,
@@ -87,6 +110,13 @@ public class RevisorDeMarca {
               funcionar: un precio, una oferta, una fecha, un evento, un
               lanzamiento. Una foto de producto sin promocion no lo necesita.
             - intencion: para que serviria publicarla.
+            - orientacion: como esta tomada la foto (vertical = mas alta que ancha).
+            - efimero: es del momento y pierde sentido en unos dias: la promocion
+              de hoy, un evento en curso, detras de camaras, el dia a dia del
+              local. Un producto bien fotografiado o el local no son efimeros.
+            - tema: el objeto o asunto concreto ("depa Calle 60", "tacos al
+              pastor", "evento aniversario"). Dos fotos del mismo producto o del
+              mismo lugar llevan el mismo tema.
 
             VA: encaja con lo que el negocio vende o con su dia a dia (su
             producto, su local, su equipo, sus clientes, sus eventos).
@@ -202,11 +232,69 @@ public class RevisorDeMarca {
                 n.path("necesitaTexto").asBoolean(false),
                 intencion,
                 n.path("tipo").asText("OTRO").strip().toUpperCase(Locale.ROOT));
+        String orientacion = n.path("orientacion").asText("CUADRADA").strip().toUpperCase(Locale.ROOT);
+        if (!List.of("VERTICAL", "HORIZONTAL", "CUADRADA").contains(orientacion)) {
+            orientacion = "CUADRADA";
+        }
         return new Revision(veredicto,
                 recortar(n.path("motivo").asText(""), 400),
                 recortar(n.path("descripcion").asText(""), 900),
                 recortar(n.path("idea").asText(""), 400),
-                diagnostico);
+                diagnostico,
+                orientacion,
+                n.path("efimero").asBoolean(false),
+                recortar(n.path("tema").asText(""), 80));
+    }
+
+    // ------------------------------------------------------------ guardarla
+
+    /**
+     * La revisión como JSON, para guardarla en el archivo
+     * ({@code MediaAsset.agenteAnalisis}) mientras espera a que se organice la
+     * tanda. {@code forzada}: la persona dijo que va (no se vuelve a preguntar).
+     */
+    public static String aJson(Revision r, boolean forzada) {
+        com.fasterxml.jackson.databind.node.ObjectNode n = new ObjectMapper().createObjectNode();
+        n.put("veredicto", r.veredicto().name());
+        n.put("motivo", r.motivo());
+        n.put("descripcion", r.descripcion());
+        n.put("idea", r.idea());
+        DecisorDelAgente.Diagnostico d = r.diagnostico();
+        n.put("calidad", d.calidad());
+        n.put("queFalla", d.queFalla());
+        n.put("arreglable", d.arreglable());
+        n.put("fuerza", d.fuerza());
+        n.put("esArte", d.esArte());
+        n.put("necesitaTexto", d.necesitaTexto());
+        n.put("intencion", d.intencion().name());
+        n.put("tipo", d.tipo());
+        n.put("orientacion", r.orientacion());
+        n.put("efimero", r.efimero());
+        n.put("tema", r.tema());
+        n.put("forzada", forzada);
+        return n.toString();
+    }
+
+    /** Lo guardado con {@link #aJson}, o nulo si no se puede leer. */
+    public static Revision deJson(String json) {
+        if (json == null || json.isBlank()) {
+            return null;
+        }
+        try {
+            // Se guardó ya validado: sin marca incompleta que corregir.
+            return new RevisorDeMarca(null).interpretar(json, true);
+        } catch (Exception ex) {
+            return null;
+        }
+    }
+
+    /** Si al guardarla la persona ya había dicho que va. */
+    public static boolean forzada(String json) {
+        try {
+            return json != null && new ObjectMapper().readTree(json).path("forzada").asBoolean(false);
+        } catch (Exception ex) {
+            return false;
+        }
     }
 
     private static String recortar(String s, int max) {

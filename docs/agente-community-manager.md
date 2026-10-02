@@ -376,3 +376,31 @@ Reglas de gasto:
     propiedad), testimonios ni en lo que no reconoce, y lo dice en el porqué.
   - En Crear publicación hay un interruptor para quitarla o ponerla.
   - Pendiente: la ubicación propia de cada publicación (la casa que se vende, el lugar del evento).
+
+## Organizar lo que se sube (carrusel, historia o post)
+
+Como lo hace un community manager: primero ve todo lo que llegó y después decide cómo sale.
+
+1. **Analizar.** Cada foto pasa por el revisor de marca, que además dice su orientación
+   (vertical, cuadrada, horizontal), si es del momento (`efimero`) y de qué trata (`tema`). Si va,
+   queda en `ANALIZADA` con ese análisis guardado (`MediaAsset.agenteAnalisis`). Los videos siguen su
+   camino de siempre.
+2. **Juntar la tanda.** Las fotos subidas sin una pausa de más de 15 min entre una y otra son una
+   tanda. Se organiza cuando lleva `app.agente.espera-minutos` (10) sin subidas nuevas, para no
+   partir una sesión a la mitad.
+3. **Proponer.** Con 2 fotos o más, una llamada de texto (`AGENTE_ORGANIZAR`, sin volver a ver las
+   fotos) propone los grupos: carrusel para lo que cuenta una misma historia (mismo lugar, producto o
+   evento, antes y después, paso a paso), historia para lo vertical y del momento, post para la foto
+   que se sostiene sola.
+4. **Reglas que mandan** (`OrganizadorDeContenido.normalizar`):
+   - Cada foto en una sola publicación; la que nadie acomodó sale sola.
+   - Carrusel de 2 a `app.post.max-photos` (6); si pasa, se parte, y la que queda suelta es post.
+   - Historia de una foto, solo vertical y solo si hay cuentas con historias; si no, post.
+   - Sin respuesta de la IA, cada foto con la regla de una sola.
+5. **Producir.** El carrusel usa la decisión de cada foto (retoque si lo pidió, fuera las que solo
+   observan, logo solo en la portada), un solo texto y un solo hueco del feed. La historia va en su
+   propio calendario: 10, 13, 17 y 20 h, hasta 3 al día, sin quitarle huecos al feed.
+
+En la propuesta se ve la etiqueta (Carrusel · N fotos, Historia, Reel o Post) y las miniaturas en
+orden. "Sepáralas" en un carrusel lo vuelve a organizar con esa instrucción, sin volver a revisar
+las fotos.

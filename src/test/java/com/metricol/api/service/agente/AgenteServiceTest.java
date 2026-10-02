@@ -55,7 +55,9 @@ import com.metricol.api.service.storage.R2StorageService;
         "app.scheduling.poll-delay-ms=3600000",
         "app.media.orphan-delay-ms=3600000",
         "app.media.unused-delay-ms=3600000",
-        "app.agente.enabled=false"
+        "app.agente.enabled=false",
+        // Organiza la tanda en la misma vuelta: las pruebas no esperan diez minutos.
+        "app.agente.espera-minutos=0"
 })
 class AgenteServiceTest {
 
@@ -106,6 +108,10 @@ class AgenteServiceTest {
 
     @MockitoBean
     private com.metricol.api.service.agente.video.AnalistaDeVideo analista;
+
+    /** Sin propuesta de la IA (nulo): cada foto sale con la regla de una sola. */
+    @MockitoBean
+    private OrganizadorDeContenido organizador;
 
     private MediaAsset video(String nombre) {
         MediaAsset a = assets.save(MediaAsset.builder()
@@ -550,19 +556,118 @@ class AgenteServiceTest {
         enElWorkspace(() -> {
             conInstagram();
             agente.encender(ws.getId(), true);
-            foto("toma-1.jpg");
+            MediaAsset primera = foto("toma-1.jpg");
             MediaAsset segunda = foto("toma-2.jpg");
             when(huellas.de(any(MediaAsset.class))).thenReturn(0x0F0F0F0F0F0F0F0FL);
             revisaComo(RevisorDeMarca.Veredicto.VA, "va");
 
             agente.vuelta(ws.getId());
 
+            // Subidas en el mismo instante: cuál se queda depende del orden de la base. Una sola sale.
             assertThat(posts.propuestasDelAgente()).hasSize(1);
-            assertThat(assets.findById(segunda.getId())).get().satisfies(a -> {
-                assertThat(a.getAgenteEtapa()).isEqualTo(EtapaAgente.DESCARTADA);
-                assertThat(a.getAgenteMotivo()).contains("Casi igual a «toma-1.jpg»");
-            });
+            List<MediaAsset> dos = List.of(assets.findById(primera.getId()).orElseThrow(),
+                    assets.findById(segunda.getId()).orElseThrow());
+            assertThat(dos).extracting(MediaAsset::getAgenteEtapa)
+                    .containsExactlyInAnyOrder(EtapaAgente.PROPUESTA, EtapaAgente.DESCARTADA);
+            assertThat(dos).filteredOn(a -> a.getAgenteEtapa() == EtapaAgente.DESCARTADA)
+                    .allMatch(a -> a.getAgenteMotivo().contains("Casi igual a «toma-"));
             org.mockito.Mockito.verify(revisor, org.mockito.Mockito.times(1)).revisar(anyString(), any(), anyBoolean());
+        });
+    }
+
+    private static void pausa() {
+        try {
+            Thread.sleep(20);
+        } catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
+        }
+    }
+
+    private void revisaComoTema(String orientacion, boolean efimero, String tema) {
+        when(revisor.revisar(anyString(), any(), anyBoolean())).thenReturn(new RevisorDeMarca.Revision(
+                RevisorDeMarca.Veredicto.VA, "es el depa", "Una recámara con vista", "Presumir el depa",
+                DecisorDelAgente.Diagnostico.BUENA, orientacion, efimero, tema));
+    }
+
+    @Test
+    @DisplayName("tres fotos del mismo depa son un carrusel: una propuesta, en el orden del organizador, y aprobarla las aprueba todas")
+    void carrusel() {
+        enElWorkspace(() -> {
+            conInstagram();
+            agente.encender(ws.getId(), true);
+            // Guardadas seguidas pueden caer en el mismo instante: el orden de subida lo fija la pausa.
+            MediaAsset sala = foto("sala.jpg");
+            pausa();
+            MediaAsset recamara = foto("recamara.jpg");
+            pausa();
+            MediaAsset vista = foto("vista.jpg");
+            revisaComoTema("CUADRADA", false, "depa Calle 60");
+            when(organizador.proponer(org.mockito.ArgumentMatchers.anyList(), org.mockito.ArgumentMatchers.isNull()))
+                    .thenReturn(List.of(new OrganizadorDeContenido.Grupo(OrganizadorDeContenido.Formato.CARRUSEL,
+                            List.of(3, 1, 2), "depa Calle 60", "son del mismo depa")));
+
+            agente.vuelta(ws.getId());
+
+            assertThat(posts.propuestasDelAgente()).hasSize(1);
+            Post p = posts.propuestasDelAgente().get(0);
+            assertThat(p.getMediaUrls()).containsExactly(vista.getUrl(), sala.getUrl(), recamara.getUrl());
+            assertThat(p.getAgenteTratamiento()).isEqualTo("CARRUSEL");
+            assertThat(p.getAgenteMotivo()).contains("Hice carrusel con 3 fotos de depa Calle 60");
+            assertThat(List.of(sala, recamara, vista)).allSatisfy(a -> assertThat(assets.findById(a.getId())).get()
+                    .extracting(MediaAsset::getAgenteEtapa).isEqualTo(EtapaAgente.PROPUESTA));
+
+            agente.aprobar(p.getId(), ws.getId());
+            assertThat(List.of(sala, recamara, vista)).allSatisfy(a -> assertThat(assets.findById(a.getId())).get()
+                    .extracting(MediaAsset::getAgenteEtapa).isEqualTo(EtapaAgente.APROBADA));
+        });
+    }
+
+    @Test
+    @DisplayName("«sepáralas» en un carrusel lo reorganiza con esa instrucción, sin volver a mirar las fotos")
+    void separarCarrusel() {
+        enElWorkspace(() -> {
+            conInstagram();
+            agente.encender(ws.getId(), true);
+            foto("a.jpg");
+            foto("b.jpg");
+            revisaComoTema("CUADRADA", false, "tacos");
+            when(organizador.proponer(org.mockito.ArgumentMatchers.anyList(), org.mockito.ArgumentMatchers.isNull()))
+                    .thenReturn(List.of(new OrganizadorDeContenido.Grupo(OrganizadorDeContenido.Formato.CARRUSEL,
+                            List.of(1, 2), "tacos", "")));
+            when(organizador.proponer(org.mockito.ArgumentMatchers.anyList(), org.mockito.ArgumentMatchers.eq("sepáralas")))
+                    .thenReturn(List.of(
+                            new OrganizadorDeContenido.Grupo(OrganizadorDeContenido.Formato.POST, List.of(1), "tacos", ""),
+                            new OrganizadorDeContenido.Grupo(OrganizadorDeContenido.Formato.POST, List.of(2), "tacos", "")));
+            agente.vuelta(ws.getId());
+            Post carrusel = posts.propuestasDelAgente().get(0);
+            assertThat(carrusel.getMediaUrls()).hasSize(2);
+
+            List<PostResponse> nuevas = agente.cambiar(carrusel.getId(), "sepáralas", ws.getId());
+
+            assertThat(nuevas).hasSize(2).allMatch(n -> n.getMediaUrls().size() == 1);
+            assertThat(posts.findByIdAndDeletedAtIsNull(carrusel.getId())).isEmpty();
+            // Lo que se vio de cada foto se reutiliza: la IA de visión no se vuelve a llamar.
+            org.mockito.Mockito.verify(revisor, org.mockito.Mockito.times(2)).revisar(anyString(), any(), anyBoolean());
+        });
+    }
+
+    @Test
+    @DisplayName("una foto vertical del momento va de historia, con su calendario aparte del feed")
+    void historia() {
+        enElWorkspace(() -> {
+            conInstagram();
+            agente.encender(ws.getId(), true);
+            foto("promo-hoy.jpg");
+            revisaComoTema("VERTICAL", true, "2x1 de hoy");
+
+            agente.vuelta(ws.getId());
+
+            Post p = posts.propuestasDelAgente().get(0);
+            assertThat(p.getFormat()).isEqualTo(com.metricol.api.enums.PostFormat.STORY);
+            assertThat(p.getAgenteMotivo()).contains("Va de historia");
+            assertThat(java.util.Set.of(10, 13, 17, 20)).contains(p.getFechaPropuesta().getHour());
+            // No ocupa lugar del feed: los huecos del feed no la cuentan.
+            assertThat(posts.huecosTomados(LocalDateTime.now())).isEmpty();
         });
     }
 

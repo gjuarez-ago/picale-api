@@ -43,5 +43,8 @@ public enum AiOperacion {
     AGENTE_TRANSCRIBIR,
 
     /** El agente mira un video completo (varios cuadros y lo que se dice). */
-    AGENTE_VIDEO
+    AGENTE_VIDEO,
+
+    /** Organizar una tanda de fotos en carruseles, posts e historias (una llamada de texto por tanda). */
+    AGENTE_ORGANIZAR
 }
