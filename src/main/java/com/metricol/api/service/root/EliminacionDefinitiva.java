@@ -271,6 +271,8 @@ public class EliminacionDefinitiva {
         sql.update("delete from social_accounts where tenant_id = :t", t);
         sql.update("delete from media_assets where tenant_id = :t", t);
         sql.update("delete from ai_usage where workspace_id = :ws", ws);
+        // La bitácora de lo que hicieron las IA en ese espacio se va con él.
+        sql.update("delete from acciones_ia where workspace_id = :ws", ws);
         sql.update("delete from daily_publish_usage where workspace_id = :ws", ws);
         sql.update("delete from credit_movements where workspace_id = :ws", ws);
         sql.update("delete from image_credits where workspace_id = :ws", ws);
@@ -293,6 +295,9 @@ public class EliminacionDefinitiva {
         }
         sql.update("delete from workspace_members where user_id = :u", u);
         sql.update("delete from organization_members where user_id = :u", u);
+        // Lo que una IA hizo en su nombre en espacios que siguen vivos se queda
+        // en la bitácora de esos espacios, pero ya sin nombrarla.
+        sql.update("update acciones_ia set user_id = null, user_email = null where user_id = :u", u);
         sql.update("delete from email_verification_codes where lower(email) = lower(:e)",
                 new MapSqlParameterSource("e", correo == null ? "" : correo));
         sql.update("delete from users where id = :u", u);

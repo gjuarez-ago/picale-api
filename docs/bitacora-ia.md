@@ -61,6 +61,10 @@ cualquier cambio de esquema, respaldar la base antes. Las API anteriores a
 este cambio ignoran las cabeceras sin error: el MCP funciona igual, solo que
 sin bitácora (su herramienta lo dice).
 
+La eliminación definitiva (`service/root/EliminacionDefinitiva`) la conoce:
+al borrar un espacio se borra su bitácora; al borrar una persona, sus filas
+en espacios que siguen vivos se quedan pero sin `user_id` ni `user_email`.
+
 ## Siguiente
 
 - Pantalla "Actividad de la IA" en el panel web y en la app, con filtro por
