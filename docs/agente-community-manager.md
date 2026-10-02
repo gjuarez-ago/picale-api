@@ -401,6 +401,24 @@ Como lo hace un community manager: primero ve todo lo que llegó y después deci
    observan, logo solo en la portada), un solo texto y un solo hueco del feed. La historia va en su
    propio calendario: 10, 13, 17 y 20 h, hasta 3 al día, sin quitarle huecos al feed.
 
+**Repetidos y ráfagas** (`HuellaDeImagen`, sin IA):
+- La misma toma (6 bits o menos de diferencia en la huella) se descarta antes de revisarla,
+  contra todo lo ya trabajado. Foto con foto y video con video.
+- Un video se compara por el cuadro de su mitad (la entrada suele ser la misma en todos), antes
+  de pagar por analizarlo.
+- HEIC y WebP, que Java no lee, pasan por ffmpeg.
+- Ráfaga: dentro de una tanda, las tomas de hasta 12 bits de diferencia son de lo mismo. Sale la
+  mejor (calidad + fuerza que dio la IA; si empatan, la más nítida por la varianza del
+  laplaciano) y las demás van a Descartadas, de donde se rescatan. No entran las piezas
+  diseñadas (dos flyers con la misma plantilla son dos mensajes) ni las que la persona dijo
+  que van.
+
+**Lo rescatado enseña.** Rescatar algo de Observación o Descartadas lo marca
+(`MediaAsset.agenteRescatada`). Las descripciones de las últimas 8 rescatadas van al revisor
+como "lo que el dueño ya te dijo que sí va", para que no vuelva a dudar de esos temas. El
+revisor también acepta los temas del campo del negocio aunque no sean su servicio principal
+(un despacho fiscal que habla de gastos médicos deducibles).
+
 En la propuesta se ve la etiqueta (Carrusel · N fotos, Historia, Reel o Post) y las miniaturas en
 orden. "Sepáralas" en un carrusel lo vuelve a organizar con esa instrucción, sin volver a revisar
 las fotos.

@@ -310,6 +310,14 @@ public interface MediaAssetRepository extends JpaRepository<MediaAsset, UUID> {
             """)
     List<MediaAsset> yaTrabajadasConHuella();
 
+    /** Las que la persona rescató ("sí va"), las más nuevas primero: lo que el revisor ya no debe dudar. */
+    @Query("""
+            select m from MediaAsset m
+            where m.agenteRescatada = true and m.descripcionIa is not null
+            order by m.createdAt desc
+            """)
+    List<MediaAsset> rescatadas(org.springframework.data.domain.Pageable pagina);
+
     long countByAgenteEtapa(com.metricol.api.enums.EtapaAgente etapa);
 
     /** Las que esperan a organizarse, en el orden en que se subieron. Hibernate filtra por tenant. */

@@ -159,6 +159,13 @@ public class MediaAsset {
     @Column(length = 8000)
     private String agenteAnalisis;
 
+    /**
+     * La persona la sacó de Observación o Descartadas diciendo que sí va. Lo
+     * que se ve en estas le dice al revisor qué temas son de la marca, para no
+     * volver a dudar de ellos. Nulo = no.
+     */
+    private Boolean agenteRescatada;
+
     public boolean deLaIa() {
         return Boolean.TRUE.equals(generadaPorIa);
     }

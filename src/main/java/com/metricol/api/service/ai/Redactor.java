@@ -161,7 +161,24 @@ public class Redactor {
             ObjetivoRedes objetivo,
             MarcaDelNegocio marca,
             /** Lo que sus métricas dicen que le funciona (hashtags), en una línea; nulo si aún no se sabe. */
-            String aprendido) {
+            String aprendido,
+            /**
+             * Lo que el dueño rescató de Observación o Descartadas ("sí va"), en
+             * pocas líneas: para que quien revisa no vuelva a dudar de esos temas.
+             * Nulo si nunca rescató nada.
+             */
+            String loQueSiVa) {
+
+        /** Sin lo rescatado: el que escribe no lo necesita. */
+        public Negocio(String nombre, String giro, String ciudad, String descripcion, ObjetivoRedes objetivo,
+                MarcaDelNegocio marca, String aprendido) {
+            this(nombre, giro, ciudad, descripcion, objetivo, marca, aprendido, null);
+        }
+
+        /** El mismo negocio con lo que el dueño ya dijo que sí va. */
+        public Negocio conLoQueSiVa(String siVa) {
+            return new Negocio(nombre, giro, ciudad, descripcion, objetivo, marca, aprendido, siVa);
+        }
 
         /** Sin perfil de marca: lo que se sabía antes de que existiera. */
         public Negocio(String nombre, String giro, String ciudad, String descripcion, ObjetivoRedes objetivo) {

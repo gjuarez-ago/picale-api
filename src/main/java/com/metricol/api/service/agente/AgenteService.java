@@ -390,7 +390,7 @@ public class AgenteService {
             }
         }
         boolean marcaCompleta = BrandService.completitud(w).percent() >= MARCA_SUFICIENTE;
-        RevisorDeMarca.Revision revision = revisor.revisar(asset.getUrl(), negocio(w), marcaCompleta);
+        RevisorDeMarca.Revision revision = revisor.revisar(asset.getUrl(), negocioParaRevisar(w), marcaCompleta);
         if (revision == null) {
             marcar(asset, EtapaAgente.PENDIENTE, "No pude revisarla todavía; lo vuelvo a intentar en un rato.");
             return null;
@@ -424,7 +424,7 @@ public class AgenteService {
     }
 
     /** Una foto de la tanda con lo que se sabe de ella. */
-    private record EnTanda(MediaAsset asset, RevisorDeMarca.Revision revision, boolean forzada) {
+    record EnTanda(MediaAsset asset, RevisorDeMarca.Revision revision, boolean forzada) {
     }
 
     /**
@@ -464,11 +464,94 @@ public class AgenteService {
                 }
                 fotos.add(new EnTanda(a, rev, RevisorDeMarca.forzada(a.getAgenteAnalisis())));
             }
+            fotos = sinRafagas(fotos);
             if (!fotos.isEmpty()) {
                 propuestas += organizarTanda(w, destino, fotos, null);
             }
         }
         return propuestas;
+    }
+
+    /**
+     * De cada ráfaga (tomas seguidas de lo mismo), la mejor; las demás a
+     * Descartadas, de donde se rescatan si se prefiere otra. Es lo primero que
+     * hace un community manager con lo que le mandan: no publica diez veces la
+     * misma foto ni mete cinco casi iguales en un carrusel.
+     */
+    private List<EnTanda> sinRafagas(List<EnTanda> fotos) {
+        List<EnTanda> quedan = new ArrayList<>();
+        for (List<EnTanda> rafaga : rafagas(fotos)) {
+            EnTanda mejor = mejorDe(rafaga, huellas::nitidez);
+            quedan.add(mejor);
+            for (EnTanda otra : rafaga) {
+                if (otra != mejor) {
+                    marcar(otra.asset(), EtapaAgente.DESCARTADA, "Es de la misma ráfaga que «"
+                            + mejor.asset().getFileName() + "»: me quedé con esa, que se ve mejor. "
+                            + "Si prefieres esta, rescátala.");
+                }
+            }
+        }
+        quedan.sort(java.util.Comparator.comparingInt(fotos::indexOf));
+        return quedan;
+    }
+
+    /**
+     * Las fotos de una tanda agrupadas por ráfaga, en su orden. Una foto entra
+     * a una ráfaga si se parece a la primera de ella ({@link HuellaDeImagen#RAFAGA}).
+     * No entran las que no tienen huella, las que la persona dijo que van, ni
+     * las piezas diseñadas: dos flyers con la misma plantilla se parecen y son
+     * dos mensajes distintos.
+     */
+    static List<List<EnTanda>> rafagas(List<EnTanda> fotos) {
+        List<List<EnTanda>> grupos = new ArrayList<>();
+        for (EnTanda f : fotos) {
+            Long h = f.asset().getHuella();
+            boolean puede = h != null && !f.forzada() && !f.revision().diagnostico().esArte();
+            List<EnTanda> suya = null;
+            if (puede) {
+                for (List<EnTanda> g : grupos) {
+                    EnTanda primera = g.get(0);
+                    Long hp = primera.asset().getHuella();
+                    if (hp != null && !primera.forzada() && !primera.revision().diagnostico().esArte()
+                            && HuellaDeImagen.distancia(h, hp) <= HuellaDeImagen.RAFAGA) {
+                        suya = g;
+                        break;
+                    }
+                }
+            }
+            if (suya == null) {
+                suya = new ArrayList<>();
+                grupos.add(suya);
+            }
+            suya.add(f);
+        }
+        return grupos;
+    }
+
+    /**
+     * La mejor toma de una ráfaga: la que la IA calificó mejor (calidad y
+     * fuerza) y, si empatan, la más nítida. La nitidez solo se mide aquí, en
+     * las pocas que compiten.
+     */
+    static EnTanda mejorDe(List<EnTanda> rafaga, java.util.function.Function<MediaAsset, Double> nitidez) {
+        if (rafaga.size() == 1) {
+            return rafaga.get(0);
+        }
+        Map<EnTanda, Double> nitidas = new java.util.IdentityHashMap<>();
+        java.util.function.Function<EnTanda, Double> nitidezDe = f -> nitidas.computeIfAbsent(f, x -> {
+            Double n = nitidez.apply(x.asset());
+            return n == null ? -1.0 : n;
+        });
+        java.util.Comparator<EnTanda> mejor = java.util.Comparator
+                .comparingInt((EnTanda f) -> f.revision().diagnostico().calidad() + f.revision().diagnostico().fuerza())
+                .thenComparing(nitidezDe::apply);
+        EnTanda gana = rafaga.get(0);
+        for (EnTanda f : rafaga) {
+            if (mejor.compare(f, gana) > 0) {
+                gana = f;
+            }
+        }
+        return gana;
     }
 
     /** Las analizadas partidas en tandas: una pausa de más de {@link #SESION_MINUTOS} corta. */
@@ -806,8 +889,19 @@ public class AgenteService {
             return true;
         }
 
+        // Repetido, antes de pagar por mirarlo y escucharlo: el mismo video
+        // subido dos veces no son dos Reels. Si la persona lo rescata, va.
+        if (!forzar) {
+            MediaAsset igual = repetidaDe(video, () -> huellas.deVideo(video, duracion));
+            if (igual != null) {
+                marcar(video, EtapaAgente.DESCARTADA, "Casi igual a «" + igual.getFileName()
+                        + "», que ya trabajé: me quedé con ese.");
+                return true;
+            }
+        }
+
         // El Analista: lo mira entero y lo escucha.
-        Redactor.Negocio negocio = negocio(w);
+        Redactor.Negocio negocio = negocioParaRevisar(w);
         boolean marcaCompleta = BrandService.completitud(w).percent() >= MARCA_SUFICIENTE;
         AnalisisDeVideo analisis = analista.analizar(video, duracion, negocio, marcaCompleta);
         if (analisis == null) {
@@ -1363,8 +1457,14 @@ public class AgenteService {
         List<SocialAccount> destino = validarRevisable(asset);
         // Las mismas reglas que cualquier revisión: el tope de IA del día y el candado.
         cupoIa.exigirCupo();
+        boolean rescate = asset.getAgenteEtapa() == EtapaAgente.OBSERVACION
+                || asset.getAgenteEtapa() == EtapaAgente.DESCARTADA;
         if (!tomar(asset)) {
             throw new IllegalStateException("Ya la estoy revisando; en un momento la ves.");
+        }
+        if (rescate) {
+            // Lo que se ve en ella le enseña al revisor que ese tema es de la marca.
+            asset.setAgenteRescatada(true);
         }
         if (!procesar(asset, workspace(workspaceId), destino, true)) {
             throw new IllegalStateException("No pude prepararla ahora; lo intento de nuevo en un rato.");
@@ -1591,7 +1691,15 @@ public class AgenteService {
      * contra ella. Sin huella (formato que Java no lee) no hay comparación.
      */
     private MediaAsset repetidaDe(MediaAsset asset) {
-        Long h = asset.getHuella() != null ? asset.getHuella() : huellas.de(asset);
+        return repetidaDe(asset, () -> huellas.de(asset));
+    }
+
+    /**
+     * @param calcular cómo sacar la huella si todavía no la tiene (una foto se
+     *                 lee entera; un video, por el cuadro de su mitad)
+     */
+    private MediaAsset repetidaDe(MediaAsset asset, java.util.function.Supplier<Long> calcular) {
+        Long h = asset.getHuella() != null ? asset.getHuella() : calcular.get();
         if (h == null) {
             return null;
         }
@@ -1600,11 +1708,29 @@ public class AgenteService {
             assets.save(asset);
         }
         for (MediaAsset otra : assets.yaTrabajadasConHuella()) {
-            if (!otra.getId().equals(asset.getId()) && HuellaDeImagen.parecidas(h, otra.getHuella())) {
+            // Foto con foto y video con video: el cuadro de un video puede parecerse a una foto suya.
+            if (!otra.getId().equals(asset.getId()) && otra.getType() == asset.getType()
+                    && HuellaDeImagen.parecidas(h, otra.getHuella())) {
                 return otra;
             }
         }
         return null;
+    }
+
+    /** Cuántas rescatadas se le cuentan al revisor: las últimas, que es lo que el dueño tiene en mente. */
+    private static final int RESCATADAS_EN_CONTEXTO = 8;
+
+    /**
+     * El negocio como lo necesita quien revisa: con lo que el dueño ya
+     * rescató, para no mandar otra vez a Observación los temas que dijo que sí.
+     */
+    private Redactor.Negocio negocioParaRevisar(Workspace w) {
+        List<String> siVa = assets.rescatadas(PageRequest.of(0, RESCATADAS_EN_CONTEXTO)).stream()
+                .map(MediaAsset::getDescripcionIa)
+                .map(d -> "- " + (d.length() > 160 ? d.substring(0, 160) + "…" : d.strip()))
+                .distinct()
+                .toList();
+        return negocio(w).conLoQueSiVa(siVa.isEmpty() ? null : String.join("\n", siVa));
     }
 
     /** Las cuentas a las que puede ir una foto: conectadas, encendidas, con página y que acepten fotos. */

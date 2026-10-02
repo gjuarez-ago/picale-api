@@ -226,6 +226,8 @@ class AgenteServiceTest {
         when(storage.esNuestra(anyString())).thenReturn(true);
         // Mockito devuelve 0 y no null para un Long: sin esto todas serían "la misma foto".
         when(huellas.de(any(MediaAsset.class))).thenReturn(null);
+        when(huellas.deVideo(any(MediaAsset.class), org.mockito.ArgumentMatchers.anyDouble())).thenReturn(null);
+        when(huellas.nitidez(any(MediaAsset.class))).thenReturn(null);
         when(redactor.redactar(anyString(), any(), any(), any())).thenReturn(new Redactor.Borrador(
                 "Depa con vista al mar", "Vive frente al mar en Cancún.",
                 Map.of(Platform.INSTAGRAM, "Vive frente al mar en Cancún. ✨")));
@@ -572,6 +574,121 @@ class AgenteServiceTest {
             assertThat(dos).filteredOn(a -> a.getAgenteEtapa() == EtapaAgente.DESCARTADA)
                     .allMatch(a -> a.getAgenteMotivo().contains("Casi igual a «toma-"));
             org.mockito.Mockito.verify(revisor, org.mockito.Mockito.times(1)).revisar(anyString(), any(), anyBoolean());
+        });
+    }
+
+    @Test
+    @DisplayName("de una ráfaga sale la más nítida; las demás a Descartadas, y la distinta sale aparte")
+    void rafaga() {
+        enElWorkspace(() -> {
+            conInstagram();
+            agente.encender(ws.getId(), true);
+            MediaAsset movida = foto("rafaga-1.jpg");
+            MediaAsset nitida = foto("rafaga-2.jpg");
+            MediaAsset otra = foto("fachada.jpg");
+            // 8 bits de diferencia: no es la misma foto (6), pero sí la misma ráfaga (12).
+            when(huellas.de(any(MediaAsset.class))).thenAnswer(i -> switch (((MediaAsset) i.getArgument(0)).getFileName()) {
+                case "rafaga-1.jpg" -> 0x0000000000000000L;
+                case "rafaga-2.jpg" -> 0x00000000000000FFL;
+                default -> 0xFFFFFFFF00000000L;
+            });
+            when(huellas.nitidez(any(MediaAsset.class))).thenAnswer(
+                    i -> "rafaga-2.jpg".equals(((MediaAsset) i.getArgument(0)).getFileName()) ? 900.0 : 120.0);
+            revisaComo(RevisorDeMarca.Veredicto.VA, "va");
+
+            agente.vuelta(ws.getId());
+
+            assertThat(posts.propuestasDelAgente()).hasSize(2);
+            assertThat(assets.findById(nitida.getId())).get().extracting(MediaAsset::getAgenteEtapa)
+                    .isEqualTo(EtapaAgente.PROPUESTA);
+            assertThat(assets.findById(otra.getId())).get().extracting(MediaAsset::getAgenteEtapa)
+                    .isEqualTo(EtapaAgente.PROPUESTA);
+            assertThat(assets.findById(movida.getId())).get().satisfies(a -> {
+                assertThat(a.getAgenteEtapa()).isEqualTo(EtapaAgente.DESCARTADA);
+                assertThat(a.getAgenteMotivo()).contains("misma ráfaga que «rafaga-2.jpg»");
+            });
+        });
+    }
+
+    @Test
+    @DisplayName("dos flyers con la misma plantilla no son ráfaga: cada uno es su mensaje")
+    void flyersNoSonRafaga() {
+        enElWorkspace(() -> {
+            conInstagram();
+            agente.encender(ws.getId(), true);
+            foto("flyer-1.jpg");
+            foto("flyer-2.jpg");
+            when(huellas.de(any(MediaAsset.class))).thenAnswer(
+                    i -> "flyer-1.jpg".equals(((MediaAsset) i.getArgument(0)).getFileName()) ? 0L : 0xFFL);
+            when(revisor.revisar(anyString(), any(), anyBoolean())).thenReturn(new RevisorDeMarca.Revision(
+                    RevisorDeMarca.Veredicto.VA, "va", "Un flyer de deducciones", "Informar",
+                    new DecisorDelAgente.Diagnostico(4, "", true, 4, true, true, DecisorDelAgente.Intencion.INFORMAR,
+                            "PROMOCION")));
+
+            agente.vuelta(ws.getId());
+
+            assertThat(posts.propuestasDelAgente()).hasSize(2);
+        });
+    }
+
+    @Test
+    @DisplayName("el mismo video subido dos veces: el segundo a Descartadas sin pagar por analizarlo")
+    void videoRepetido() {
+        enElWorkspace(() -> {
+            conInstagram();
+            agente.encender(ws.getId(), true);
+            MediaAsset uno = video("recorrido.mp4");
+            pausa();
+            MediaAsset otro = video("recorrido-otra-vez.mp4");
+            when(medidor.medir(any())).thenReturn(new com.metricol.api.service.media.FfmpegImagen.MedidasVideo(1080, 1920, 20.4));
+            when(huellas.deVideo(any(MediaAsset.class), org.mockito.ArgumentMatchers.anyDouble())).thenReturn(0x0F0FL);
+            when(analista.analizar(any(), org.mockito.ArgumentMatchers.anyDouble(), any(), anyBoolean()))
+                    .thenReturn(new com.metricol.api.service.agente.video.AnalisisDeVideo(RevisorDeMarca.Veredicto.VA,
+                            "es un recorrido del depa", "Recorren el depa", "Presumir la vista",
+                            "RECORRIDO", 4, "", true, false, false, DecisorDelAgente.Intencion.VENDER, 9.8,
+                            List.of(), 0, 20.4, ""));
+
+            agente.vuelta(ws.getId());
+
+            assertThat(posts.propuestasDelAgente()).hasSize(1);
+            assertThat(assets.findById(uno.getId())).get().extracting(MediaAsset::getAgenteEtapa)
+                    .isEqualTo(EtapaAgente.PROPUESTA);
+            assertThat(assets.findById(otro.getId())).get().satisfies(a -> {
+                assertThat(a.getAgenteEtapa()).isEqualTo(EtapaAgente.DESCARTADA);
+                assertThat(a.getAgenteMotivo()).contains("Casi igual a «recorrido.mp4»");
+            });
+            org.mockito.Mockito.verify(analista, org.mockito.Mockito.times(1))
+                    .analizar(any(), org.mockito.ArgumentMatchers.anyDouble(), any(), anyBoolean());
+        });
+    }
+
+    @Test
+    @DisplayName("lo que rescatas le enseña al revisor: la siguiente revisión ya sabe que ese tema sí va")
+    void rescatarEnsena() {
+        enElWorkspace(() -> {
+            conInstagram();
+            agente.encender(ws.getId(), true);
+            MediaAsset dudosa = foto("gastos-medicos.jpg");
+            when(revisor.revisar(anyString(), any(), anyBoolean())).thenReturn(new RevisorDeMarca.Revision(
+                    RevisorDeMarca.Veredicto.OBSERVACION, "no es tu servicio principal",
+                    "Infografia sobre deducir gastos medicos", "Informar", "OTRO"));
+            agente.vuelta(ws.getId());
+            assertThat(assets.findById(dudosa.getId())).get().extracting(MediaAsset::getAgenteEtapa)
+                    .isEqualTo(EtapaAgente.OBSERVACION);
+
+            agente.decidir(dudosa.getId(), true, ws.getId());
+            assertThat(assets.findById(dudosa.getId())).get().extracting(MediaAsset::getAgenteRescatada)
+                    .isEqualTo(true);
+
+            foto("deducciones.jpg");
+            agente.vuelta(ws.getId());
+
+            org.mockito.ArgumentCaptor<Redactor.Negocio> negocio = org.mockito.ArgumentCaptor.forClass(Redactor.Negocio.class);
+            org.mockito.Mockito.verify(revisor, org.mockito.Mockito.atLeastOnce())
+                    .revisar(anyString(), negocio.capture(), anyBoolean());
+            assertThat(negocio.getValue().loQueSiVa()).contains("deducir gastos medicos");
+            assertThat(RevisorDeMarca.contexto(negocio.getValue(), true)).contains("ya te dijo que SI va")
+                    .contains("deducir gastos medicos");
         });
     }
 

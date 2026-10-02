@@ -119,11 +119,20 @@ public class RevisorDeMarca {
               mismo lugar llevan el mismo tema.
 
             VA: encaja con lo que el negocio vende o con su dia a dia (su
-            producto, su local, su equipo, sus clientes, sus eventos).
+            producto, su local, su equipo, sus clientes, sus eventos), o habla
+            de un tema de su campo que le importa a su publico, aunque no sea
+            su servicio principal. Un despacho fiscal publica sobre deducciones,
+            el SAT o los gastos medicos deducibles; un dentista, sobre higiene;
+            una inmobiliaria, sobre creditos o colonias. Asi educan y ganan
+            confianza los negocios que saben de su tema: eso VA.
+            Una pieza ya disenada (flyer, infografia, carrusel con texto) que
+            el negocio subio es material listo: juzgala por su tema, no por su
+            formato.
 
             OBSERVACION (no decides tu, decide el dueno):
-            - No esta claro que tenga que ver con el negocio: una foto personal,
-              un meme, un paisaje, algo de otro tema.
+            - No tiene que ver con el negocio NI con su campo: una foto
+              personal, un meme, un paisaje, algo de otro tema. Ser de un
+              aspecto de su campo distinto a lo que mas vende no es motivo.
             - Derechos de autor: marca de agua de un banco de imagenes o foto
               que parece bajada de internet.
             - Privacidad: menores de edad identificables, telefonos, chats,
@@ -176,6 +185,10 @@ public class RevisorDeMarca {
         linea(t, "Que vende o destaca", m.queVende());
         linea(t, "A quien le habla", m.publico());
         linea(t, "Lo que pide evitar", m.evitar());
+        if (MarcaDelNegocio.hay(n.loQueSiVa())) {
+            t.append("Lo que el dueno ya te dijo que SI va (lo habias mandado a observacion y lo rescato).")
+                    .append(" Lo de estos temas es VA, no vuelvas a dudar:\n").append(n.loQueSiVa().strip()).append('\n');
+        }
         if (!marcaCompleta) {
             t.append("La marca esta incompleta: ante la duda usa OBSERVACION, nunca DESCARTADA.\n");
         }

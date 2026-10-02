@@ -49,6 +49,24 @@ class HuellaDeImagenTest {
     }
 
     @Test
+    @DisplayName("la nitidez distingue la toma nítida de la movida")
+    void nitidez() throws Exception {
+        BufferedImage nitida = ImageIO.read(new java.io.ByteArrayInputStream(foto(800, 600, 30, "png")));
+        // Movida: la misma, achicada y vuelta a agrandar, que borra los bordes.
+        BufferedImage chica = new BufferedImage(80, 60, BufferedImage.TYPE_INT_RGB);
+        Graphics2D g = chica.createGraphics();
+        g.setRenderingHint(java.awt.RenderingHints.KEY_INTERPOLATION, java.awt.RenderingHints.VALUE_INTERPOLATION_BILINEAR);
+        g.drawImage(nitida, 0, 0, 80, 60, null);
+        g.dispose();
+        BufferedImage movida = new BufferedImage(800, 600, BufferedImage.TYPE_INT_RGB);
+        g = movida.createGraphics();
+        g.setRenderingHint(java.awt.RenderingHints.KEY_INTERPOLATION, java.awt.RenderingHints.VALUE_INTERPOLATION_BILINEAR);
+        g.drawImage(chica, 0, 0, 800, 600, null);
+        g.dispose();
+        assertThat(HuellaDeImagen.nitidez(nitida)).isGreaterThan(HuellaDeImagen.nitidez(movida) * 2);
+    }
+
+    @Test
     @DisplayName("lo que no es una imagen no tiene huella")
     void noEsImagen() {
         assertThat(HuellaDeImagen.de("hola".getBytes())).isNull();
