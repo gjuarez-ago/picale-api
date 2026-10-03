@@ -420,7 +420,8 @@ Como lo hace un community manager: primero ve todo lo que llegó y después deci
   dicen "Le cambié la hora porque no llegó tu sí a tiempo".
 - Caducidad (`Post.agenteCaducaEn`, calculada en la primera vuelta): lo del momento (historia, o
   foto/video que el revisor marcó `efimero`) dura 24 h, o hasta 3 h después de su primera fecha
-  si cae más tarde; lo demás, 14 días. Pasada, o si el siguiente hueco cae después, no se
+  si cae más tarde; lo demás, 14 días, o 3 días después de su primera fecha si el calendario la
+  dejó más lejos. Pasada, o si el siguiente hueco cae después, no se
   publica: se retira y sus fotos vuelven a Observación con "¿Todavía va?". Con "sí" se prepara
   de nuevo con una fecha que tenga sentido.
 - Con el agente en pausa no se mueve nada. Aprobar tarde programa en el siguiente hueco, salvo

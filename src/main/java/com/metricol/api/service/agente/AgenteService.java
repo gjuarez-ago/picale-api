@@ -1277,7 +1277,8 @@ public class AgenteService {
      * Hasta cuándo puede esperar el sí, calculada una vez y guardada. Se
      * calcula en la primera vuelta tras crearla, cuando su fecha es todavía
      * la original: lo del momento vive un día, o hasta tres horas después de
-     * esa fecha si cae más tarde (que no caduque antes de su primera hora).
+     * esa fecha si cae más tarde (que no caduque antes de su primera hora); lo
+     * demás, dos semanas o hasta tres días después de esa fecha.
      */
     LocalDateTime caducidad(Post p) {
         if (p.getAgenteCaducaEn() != null) {
@@ -1291,7 +1292,12 @@ public class AgenteService {
                 caduca = p.getFechaPropuesta().plusHours(3);
             }
         } else {
+            // Con el calendario lleno, una puede quedar a más de dos semanas:
+            // que no caduque antes de que llegue su hora, y tenga unos días después.
             caduca = creada.plus(VIDA_NORMAL);
+            if (p.getFechaPropuesta() != null && p.getFechaPropuesta().plusDays(3).isAfter(caduca)) {
+                caduca = p.getFechaPropuesta().plusDays(3);
+            }
         }
         p.setAgenteCaducaEn(caduca);
         posts.save(p);

@@ -849,6 +849,26 @@ class AgenteServiceTest {
     }
 
     @Test
+    @DisplayName("una que el calendario dejó a más de dos semanas no caduca antes de su hora")
+    void lejanaNoCaducaAntes() {
+        enElWorkspace(() -> {
+            conInstagram();
+            agente.encender(ws.getId(), true);
+            foto("sala.jpg");
+            revisaComoTema("CUADRADA", false, "depa");
+            agente.vuelta(ws.getId());
+            Post p = posts.propuestasDelAgente().get(0);
+            LocalDateTime lejos = LocalDateTime.now().plusDays(20).withNano(0);
+            p.setFechaPropuesta(lejos);
+            posts.save(p);
+
+            agente.vuelta(ws.getId());
+
+            assertThat(posts.findById(p.getId()).orElseThrow().getAgenteCaducaEn()).isEqualTo(lejos.plusDays(3));
+        });
+    }
+
+    @Test
     @DisplayName("lo normal espera dos semanas; luego también pregunta en vez de salir tarde")
     void normalCaduca() {
         enElWorkspace(() -> {
