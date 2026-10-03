@@ -31,8 +31,10 @@ reciben 401 aunque el JWT siga siendo válido.
 
 ## Tabla
 
-`conexiones_ia`: id, user_id, user_email, cliente, cliente_id, creada_en,
-expira_en, ultima_actividad_en, ultima_accion, revocada_en. La crea Hibernate
+`conexiones_ia`: id, user_id, user_email, cliente, cliente_id, alcance
+(`read` si la persona conectó en solo lectura, `write` si la IA también puede
+actuar; el MCP es quien lo hace cumplir), creada_en, expira_en,
+ultima_actividad_en, ultima_accion, revocada_en. La crea Hibernate
 con `ddl-auto=update`. La eliminación definitiva de una persona borra sus
 conexiones (`EliminacionDefinitiva.borrarPersona`).
 

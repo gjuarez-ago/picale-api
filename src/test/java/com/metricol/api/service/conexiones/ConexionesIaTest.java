@@ -43,6 +43,9 @@ class ConexionesIaTest {
         assertThat(c.getExpiraEn()).isAfter(LocalDateTime.now().plusMinutes(50));
         assertThat(c.activa(LocalDateTime.now())).isTrue();
         assertThat(servicio.crear(ana, "", null, null).getCliente()).isEqualTo("Asistente de IA");
+        assertThat(c.getAlcance()).isEqualTo("write");
+        assertThat(servicio.crear(ana, "Claude", null, null, "read").getAlcance()).isEqualTo("read");
+        assertThat(servicio.crear(ana, "Claude", null, null, "cualquier-cosa").getAlcance()).isEqualTo("write");
     }
 
     @Test

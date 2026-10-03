@@ -38,6 +38,10 @@ public class ConexionesIa {
     }
 
     public ConexionIa crear(User persona, String cliente, String clienteId, Long expiraEpoch) {
+        return crear(persona, cliente, clienteId, expiraEpoch, null);
+    }
+
+    public ConexionIa crear(User persona, String cliente, String clienteId, Long expiraEpoch, String alcance) {
         String nombre = recorte(cliente == null || cliente.isBlank() ? "Asistente de IA" : cliente.strip(), 80);
         LocalDateTime expira = expiraEpoch == null || expiraEpoch <= 0 ? null
                 : LocalDateTime.ofInstant(Instant.ofEpochSecond(expiraEpoch), ZoneId.systemDefault());
@@ -46,6 +50,7 @@ public class ConexionesIa {
                 .userEmail(persona.getEmail())
                 .cliente(nombre)
                 .clienteId(recorte(clienteId, 300))
+                .alcance("read".equalsIgnoreCase(alcance == null ? "" : alcance.strip()) ? "read" : "write")
                 .expiraEn(expira)
                 .build());
     }

@@ -57,6 +57,11 @@ public class ConexionIa {
     @Column(length = 300)
     private String clienteId;
 
+    /** "read" si la persona conectó en solo lectura; "write" si la IA también puede actuar. */
+    @Builder.Default
+    @Column(nullable = false, length = 10)
+    private String alcance = "write";
+
     @Builder.Default
     @Column(nullable = false, updatable = false)
     private LocalDateTime creadaEn = LocalDateTime.now();

@@ -52,7 +52,7 @@ public class ConexionesIaController {
             return ResponseEntity.badRequest().body(ApiResponse.error("VALIDATION_ERROR", "Falta el nombre del cliente de IA."));
         }
         return ResponseEntity.status(HttpStatus.CREATED).body(ApiResponse.success(ConexionIaResponse.de(
-                conexiones.crear(currentUser, request.cliente(), request.clienteId(), request.expiraEpoch()))));
+                conexiones.crear(currentUser, request.cliente(), request.clienteId(), request.expiraEpoch(), request.alcance()))));
     }
 
     @GetMapping

@@ -9,6 +9,7 @@ import com.metricol.api.entity.ConexionIa;
 public record ConexionIaResponse(
         UUID id,
         String cliente,
+        String alcance,
         LocalDateTime creadaEn,
         LocalDateTime expiraEn,
         LocalDateTime ultimaActividadEn,
@@ -17,7 +18,8 @@ public record ConexionIaResponse(
         boolean activa) {
 
     public static ConexionIaResponse de(ConexionIa c) {
-        return new ConexionIaResponse(c.getId(), c.getCliente(), c.getCreadaEn(), c.getExpiraEn(),
-                c.getUltimaActividadEn(), c.getUltimaAccion(), c.getRevocadaEn(), c.activa(LocalDateTime.now()));
+        return new ConexionIaResponse(c.getId(), c.getCliente(), c.getAlcance() == null ? "write" : c.getAlcance(),
+                c.getCreadaEn(), c.getExpiraEn(), c.getUltimaActividadEn(), c.getUltimaAccion(), c.getRevocadaEn(),
+                c.activa(LocalDateTime.now()));
     }
 }
