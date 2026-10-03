@@ -52,6 +52,16 @@ fi
 
 SHA="$(cat BUILD_SHA)"
 
+# Se empaqueta lo CONFIRMADO (git archive HEAD), no la carpeta de trabajo: si hay
+# cambios a medias sin commit (de esta sesion o de otra), no viajan a produccion.
+# Sin .git (una copia limpia que ya vino de git archive) se empaqueta la carpeta.
+ORIGEN="."
+if [ -d .git ]; then
+  ORIGEN="$(mktemp -d)"
+  git archive HEAD | tar -x -C "$ORIGEN"
+  cp BUILD_SHA "$ORIGEN/BUILD_SHA"
+fi
+
 echo "==> Empaquetando el codigo ($SHA)"
 # Se excluye target/ porque la imagen compila dentro: mandar 71 MB de jar por
 # la red para luego no usarlo es tiempo tirado. Y .env se queda fuera a
@@ -64,7 +74,8 @@ tar --exclude=target \
     --exclude=.env.vps \
     --exclude=uploads \
     --exclude='*.log' \
-    -czf /tmp/metricol-api.tar.gz .
+    -czf /tmp/metricol-api.tar.gz -C "$ORIGEN" .
+if [ "$ORIGEN" != "." ]; then rm -rf "$ORIGEN"; fi
 
 echo "==> Copiando a $VM"
 # Con el commit en el nombre y borrado al usarse: /tmp es compartido y lo que dejo
