@@ -83,5 +83,8 @@ public class PostResponse {
 
     /** La cambió de hora porque no llegó el sí a tiempo: se le dice a la persona. */
     private boolean agenteMovida;
+
+    /** Hasta cuándo espera el sí; después se retira y pregunta si todavía va. Nula si aún no se calcula. */
+    private LocalDateTime agenteCaducaEn;
     private List<PostTargetResponse> targets;
 }

@@ -849,6 +849,40 @@ class AgenteServiceTest {
     }
 
     @Test
+    @DisplayName("con la fila del sí llena, lo nuevo se revisa y se guarda en reserva; entra al hacerse lugar")
+    void filaLlena() {
+        Object real = org.springframework.test.util.AopTestUtils.getTargetObject(agente);
+        org.springframework.test.util.ReflectionTestUtils.setField(real, "topeFila", 1);
+        try {
+            enElWorkspace(() -> {
+                conInstagram();
+                agente.encender(ws.getId(), true);
+                foto("sala.jpg");
+                revisaComoTema("CUADRADA", false, "depa");
+                agente.vuelta(ws.getId());
+                Post primera = posts.propuestasDelAgente().get(0);
+                assertThat(primera.getAgenteCaducaEn()).as("la caducidad sale desde la primera vuelta").isNotNull();
+
+                MediaAsset otra = foto("fachada.jpg");
+                agente.vuelta(ws.getId());
+                assertThat(posts.propuestasDelAgente()).hasSize(1);
+                assertThat(assets.findById(otra.getId())).get().extracting(MediaAsset::getAgenteEtapa)
+                        .isEqualTo(EtapaAgente.ANALIZADA);
+                AgenteService.Estado e = agente.estado(ws.getId());
+                assertThat(e.enReserva()).isEqualTo(1);
+                assertThat(e.porRevisar()).isZero();
+
+                agente.descartar(primera.getId());
+                agente.vuelta(ws.getId());
+                assertThat(assets.findById(otra.getId())).get().extracting(MediaAsset::getAgenteEtapa)
+                        .isEqualTo(EtapaAgente.PROPUESTA);
+            });
+        } finally {
+            org.springframework.test.util.ReflectionTestUtils.setField(real, "topeFila", 6);
+        }
+    }
+
+    @Test
     @DisplayName("una que el calendario dejó a más de dos semanas no caduca antes de su hora")
     void lejanaNoCaducaAntes() {
         enElWorkspace(() -> {
@@ -858,8 +892,10 @@ class AgenteServiceTest {
             revisaComoTema("CUADRADA", false, "depa");
             agente.vuelta(ws.getId());
             Post p = posts.propuestasDelAgente().get(0);
+            // Como si el calendario la hubiera puesto ahí al crearla: sin caducidad todavía.
             LocalDateTime lejos = LocalDateTime.now().plusDays(20).withNano(0);
             p.setFechaPropuesta(lejos);
+            p.setAgenteCaducaEn(null);
             posts.save(p);
 
             agente.vuelta(ws.getId());

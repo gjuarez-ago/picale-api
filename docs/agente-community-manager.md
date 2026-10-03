@@ -413,6 +413,16 @@ Como lo hace un community manager: primero ve todo lo que llegó y después deci
   diseñadas (dos flyers con la misma plantilla son dos mensajes) ni las que la persona dijo
   que van.
 
+**Fila corta.** Hasta `app.agente.tope-fila` (6) propuestas esperan el sí a la vez. Con la fila
+llena, las fotos se revisan igual pero se quedan en reserva (ANALIZADA) y los videos esperan sin
+tocarse; entran conforme se aprueba, descarta o retira algo. `Estado.enReserva` lo cuenta, y la app
+dice "Tu asistente tiene N fotos guardadas para después". Lo pedido a mano (Sí va, Revisar ahora,
+Cambiar) no cuenta contra el tope.
+
+**Urgencia.** `PostResponse.agenteCaducaEn` (calculada al terminar la vuelta en que se crea) deja a la
+app y la web avisar: "Apruébala antes de las 4:00 pm; si no, la retiro…" cuando le queda menos de
+un día, y "Sale hoy: necesita tu sí antes de esa hora".
+
 **Si no llega el sí a tiempo** (`reacomodarVencidas`, en cada vuelta con el agente encendido):
 - Nada sale sin aprobar. A 30 min de su hora, una propuesta sin sí se mueve al siguiente hueco
   libre (horario, topes, mezcla; las historias en su calendario). Solo esa: las demás conservan

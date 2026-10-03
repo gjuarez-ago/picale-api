@@ -841,6 +841,7 @@ public class PostService {
                 .fechaPropuesta(post.getFechaPropuesta())
                 .agenteMotivo(post.getAgenteMotivo())
                 .agenteMovida(post.getAgenteMovidaVeces() != null && post.getAgenteMovidaVeces() > 0)
+                .agenteCaducaEn(post.getAgenteCaducaEn())
                 .targets(targets)
                 .build();
     }

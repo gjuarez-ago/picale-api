@@ -132,6 +132,20 @@ public class AgenteService {
     @org.springframework.beans.factory.annotation.Value("${app.agente.espera-minutos:10}")
     private int esperaMinutos = 10;
 
+    /**
+     * Cuántas propuestas pueden esperar el sí a la vez. Un community manager
+     * le manda a su cliente lo de la semana, no tres semanas de golpe: con la
+     * fila llena, lo revisado se queda en reserva (ANALIZADA) y entra conforme
+     * se aprueba, se descarta o se publica. Así nada se hace viejo esperando.
+     */
+    @org.springframework.beans.factory.annotation.Value("${app.agente.tope-fila:6}")
+    private int topeFila = 6;
+
+    /** ¿Ya hay suficientes esperando el sí? Lo pedido a mano (un botón) no cuenta contra esto. */
+    boolean filaLlena() {
+        return posts.contarPropuestasDelAgente() >= topeFila;
+    }
+
     /** Dos fotos subidas con más de esto entre una y otra son de tandas distintas. */
     static final int SESION_MINUTOS = 15;
 
@@ -173,10 +187,11 @@ public class AgenteService {
     /**
      * @param dias      días en que publica, 1 = lunes … 7 = domingo
      * @param programadas lo que el agente ya dejó programado y todavía no sale: lo que congela la pausa
+     * @param enReserva   ya revisadas, guardadas porque la fila del sí está llena: entran conforme se aprueba
      */
     public record Estado(boolean activo, LocalDateTime desde, long porRevisar, long propuestas,
             long enObservacion, long descartadas, int marcaPercent, List<Integer> dias, int horaDesde,
-            int horaHasta, long programadas) {
+            int horaHasta, long programadas, long enReserva) {
     }
 
     public Estado estado(UUID workspaceId) {
@@ -184,12 +199,18 @@ public class AgenteService {
         long porRevisar = w.conAgente() && w.getAgenteDesde() != null
                 ? assets.porRevisarDelAgente(w.getAgenteDesde())
                 : 0;
+        // Con la fila llena, las ya revisadas no están "revisándose": esperan su turno.
+        long enReserva = 0;
+        if (porRevisar > 0 && filaLlena()) {
+            enReserva = assets.countByAgenteEtapa(EtapaAgente.ANALIZADA);
+            porRevisar = Math.max(0, porRevisar - enReserva);
+        }
         CalendarioDelAgente.Horario h = horario(w);
         return new Estado(w.conAgente(), w.getAgenteDesde(), porRevisar, posts.contarPropuestasDelAgente(),
                 assets.countByAgenteEtapa(EtapaAgente.OBSERVACION), assets.countByAgenteEtapa(EtapaAgente.DESCARTADA),
                 BrandService.completitud(w).percent(),
                 h.dias().stream().map(java.time.DayOfWeek::getValue).sorted().toList(), h.desde(), h.hasta(),
-                posts.contarProgramadasDelAgente());
+                posts.contarProgramadasDelAgente(), enReserva);
     }
 
     /**
@@ -349,6 +370,10 @@ public class AgenteService {
                 log.info("El agente de {} llegó al tope de IA del día; sigue mañana.", workspaceId);
                 break;
             }
+            // Un video va directo a propuesta: con la fila llena espera sin tocarse.
+            if (asset.getType() == com.metricol.api.enums.MediaType.VIDEO && filaLlena()) {
+                continue;
+            }
             // Si un botón ("Revisar ahora", "Que la revise") ya la tomó, es suya.
             if (!tomar(asset)) {
                 continue;
@@ -363,6 +388,13 @@ public class AgenteService {
             }
         }
         organizar(w, destino, ahoraMismo);
+        // La caducidad de lo recién propuesto, ya: así la app sabe desde el
+        // principio hasta cuándo puede esperar, con la fecha original intacta.
+        for (Post p : posts.propuestasDelAgente()) {
+            if (p.getAgenteCaducaEn() == null && p.getFechaPropuesta() != null) {
+                caducidad(p);
+            }
+        }
         return hechas;
     }
 
@@ -445,6 +477,10 @@ public class AgenteService {
             LocalDateTime ultima = tanda.get(tanda.size() - 1).getCreatedAt();
             if (!ahoraMismo && ultima != null && ultima.isAfter(ahora.minusMinutes(esperaMinutos))) {
                 continue;
+            }
+            // Fila llena: lo demás se queda en reserva, ya revisado, hasta que haya lugar.
+            if (filaLlena()) {
+                break;
             }
             try {
                 cupoIa.exigirCupo();
