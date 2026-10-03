@@ -80,5 +80,8 @@ public class PostResponse {
 
     /** Qué hizo el agente y por qué. */
     private String agenteMotivo;
+
+    /** La cambió de hora porque no llegó el sí a tiempo: se le dice a la persona. */
+    private boolean agenteMovida;
     private List<PostTargetResponse> targets;
 }

@@ -734,6 +734,8 @@ public class AgenteService {
         if (revision == null) {
             return asset.getAgenteEtapa() != EtapaAgente.PENDIENTE;
         }
+        // Lo que vio, guardado: con esto se sabe después si es del momento (cuánto puede esperar el sí).
+        asset.setAgenteAnalisis(RevisorDeMarca.aJson(revision, forzar));
         boolean historia = OrganizadorDeContenido.sola(new OrganizadorDeContenido.Foto(1, revision),
                 !cuentasPara(PostFormat.STORY).isEmpty(), true).formato() == OrganizadorDeContenido.Formato.HISTORIA;
         return proponerFoto(asset, w, destino, revision, forzar, cambio, historia);
@@ -1230,18 +1232,111 @@ public class AgenteService {
      * revisar no se pierda.
      */
     void reacomodarVencidas(Workspace w) {
-        LocalDateTime limite = LocalDateTime.now().plusMinutes(30);
+        LocalDateTime ahora = LocalDateTime.now();
+        LocalDateTime limite = ahora.plusMinutes(30);
         java.util.Set<UUID> hechas = new java.util.HashSet<>();
+        boolean caducaron = false;
         for (Post p : posts.propuestasDelAgente()) {
-            if (hechas.contains(p.getId()) || p.getFechaPropuesta() == null || !p.getFechaPropuesta().isBefore(limite)) {
+            if (hechas.contains(p.getId()) || p.getFechaPropuesta() == null) {
                 continue;
             }
             // Las versiones de un diseño se mueven juntas: son una publicación.
             List<Post> grupo = grupoDe(p);
             grupo.forEach(g -> hechas.add(g.getId()));
+            LocalDateTime caduca = caducidad(p);
+            if (!ahora.isBefore(caduca)) {
+                caducar(grupo);
+                caducaron = true;
+                continue;
+            }
+            if (!p.getFechaPropuesta().isBefore(limite)) {
+                continue;
+            }
             LocalDateTime nueva = huecoSin(w, grupo).cuando();
-            grupo.forEach(g -> moverA(g, nueva));
+            // Lo del momento no se pasa a cuando ya no tiene sentido.
+            if (nueva.isAfter(caduca)) {
+                caducar(grupo);
+                caducaron = true;
+                continue;
+            }
+            grupo.forEach(g -> moverA(g, nueva, true));
         }
+        // Quedaron huecos: lo que venía después se adelanta.
+        if (caducaron) {
+            replanear(w);
+        }
+    }
+
+    /** Cuánto puede esperar el sí lo del momento (una historia, la promoción de hoy). */
+    static final java.time.Duration VIDA_DEL_MOMENTO = java.time.Duration.ofHours(24);
+
+    /** Cuánto puede esperar lo demás: después de dos semanas, mejor preguntar. */
+    static final java.time.Duration VIDA_NORMAL = java.time.Duration.ofDays(14);
+
+    /**
+     * Hasta cuándo puede esperar el sí, calculada una vez y guardada. Se
+     * calcula en la primera vuelta tras crearla, cuando su fecha es todavía
+     * la original: lo del momento vive un día, o hasta tres horas después de
+     * esa fecha si cae más tarde (que no caduque antes de su primera hora).
+     */
+    LocalDateTime caducidad(Post p) {
+        if (p.getAgenteCaducaEn() != null) {
+            return p.getAgenteCaducaEn();
+        }
+        LocalDateTime creada = p.getCreatedAt() != null ? p.getCreatedAt() : LocalDateTime.now();
+        LocalDateTime caduca;
+        if (delMomento(p)) {
+            caduca = creada.plus(VIDA_DEL_MOMENTO);
+            if (p.getFechaPropuesta() != null && p.getFechaPropuesta().plusHours(3).isAfter(caduca)) {
+                caduca = p.getFechaPropuesta().plusHours(3);
+            }
+        } else {
+            caduca = creada.plus(VIDA_NORMAL);
+        }
+        p.setAgenteCaducaEn(caduca);
+        posts.save(p);
+        return caduca;
+    }
+
+    /** Una historia, o algo que el revisor o el analista marcaron como del momento. */
+    boolean delMomento(Post p) {
+        if (p.getFormat() == PostFormat.STORY) {
+            return true;
+        }
+        for (MediaAsset a : assets.findByUrlIn(originalesDe(p))) {
+            if (efimero(a.getAgenteAnalisis())) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    static boolean efimero(String analisis) {
+        if (analisis == null || analisis.isBlank()) {
+            return false;
+        }
+        try {
+            return new com.fasterxml.jackson.databind.ObjectMapper().readTree(analisis).path("efimero").asBoolean(false);
+        } catch (Exception ex) {
+            return false;
+        }
+    }
+
+    /**
+     * Se le acabó el tiempo sin el sí: no se publica. La propuesta se retira
+     * y sus fotos vuelven a preguntar, con el porqué. Nada se pierde: con
+     * "sí, va" se prepara de nuevo, con una fecha que sí tiene sentido.
+     */
+    private void caducar(List<Post> grupo) {
+        Post p = grupo.get(0);
+        boolean momento = delMomento(p);
+        for (Post g : grupo) {
+            postService.delete(g.getId());
+        }
+        etapaDeSusFotos(p, EtapaAgente.OBSERVACION, momento
+                ? "Era del momento y no llegó tu sí a tiempo, así que no la publiqué. ¿Todavía va?"
+                : "Esperó tu sí dos semanas y no la publiqué. ¿Todavía va?");
+        log.info("Propuesta {} caducó sin aprobarse ({}).", p.getId(), momento ? "del momento" : "dos semanas");
     }
 
     /**
@@ -1305,8 +1400,16 @@ public class AgenteService {
 
     /** La mueve de fecha y corrige la fecha que dice su explicación, para que no mienta. */
     private void moverA(Post p, LocalDateTime nueva) {
+        moverA(p, nueva, false);
+    }
+
+    /** @param porTarde se movió porque no llegó el sí a tiempo (no por adelantarla): se le dice */
+    private void moverA(Post p, LocalDateTime nueva, boolean porTarde) {
         LocalDateTime vieja = p.getFechaPropuesta();
         p.setFechaPropuesta(nueva);
+        if (porTarde) {
+            p.setAgenteMovidaVeces((p.getAgenteMovidaVeces() == null ? 0 : p.getAgenteMovidaVeces()) + 1);
+        }
         if (vieja != null && p.getAgenteMotivo() != null) {
             p.setAgenteMotivo(p.getAgenteMotivo().replace(FECHA.format(vieja), FECHA.format(nueva)));
         }
@@ -1331,6 +1434,13 @@ public class AgenteService {
     public PostResponse aprobar(UUID postId, UUID workspaceId) {
         Post post = propuestaPendiente(postId);
         List<Post> grupo = grupoDe(post);
+        // Con el agente en pausa nadie la retiró a tiempo: lo del momento que
+        // ya pasó no se publica aunque se apruebe tarde.
+        if (!LocalDateTime.now().isBefore(caducidad(post)) && delMomento(post)) {
+            caducar(grupo);
+            throw new IllegalStateException("Era del momento y su día ya pasó, así que no la publiqué. "
+                    + "Te la dejé como pregunta por si todavía va.");
+        }
         LocalDateTime cuando = post.getFechaPropuesta();
         if (cuando == null || cuando.isBefore(LocalDateTime.now().plusMinutes(10))) {
             cuando = huecoSin(workspace(workspaceId), grupo).cuando();

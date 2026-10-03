@@ -840,6 +840,7 @@ public class PostService {
                 .propuestaAgente(post.delAgente())
                 .fechaPropuesta(post.getFechaPropuesta())
                 .agenteMotivo(post.getAgenteMotivo())
+                .agenteMovida(post.getAgenteMovidaVeces() != null && post.getAgenteMovidaVeces() > 0)
                 .targets(targets)
                 .build();
     }

@@ -290,6 +290,17 @@ public class Post {
     /** Cuándo propone el agente que salga. Solo en sus propuestas. */
     private LocalDateTime fechaPropuesta;
 
+    /**
+     * Hasta cuándo puede esperar el sí. Pasada, no se publica: se retira y la
+     * foto vuelve a preguntar "¿todavía va?". Lo del momento dura un día; lo
+     * demás, dos semanas. Nula = todavía no calculada (se calcula en la
+     * primera vuelta, con la fecha original aún intacta).
+     */
+    private LocalDateTime agenteCaducaEn;
+
+    /** Cuántas veces la cambió de hora por no llegar el sí a tiempo. Nula = ninguna. */
+    private Integer agenteMovidaVeces;
+
     /** Qué hizo el agente y por qué, para enseñarlo en la propuesta. */
     @Column(length = 1000)
     private String agenteMotivo;

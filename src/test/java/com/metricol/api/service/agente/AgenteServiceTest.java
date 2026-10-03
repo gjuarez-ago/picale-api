@@ -789,6 +789,109 @@ class AgenteServiceTest {
     }
 
     @Test
+    @DisplayName("sin tu sí a tiempo, solo esa se mueve al siguiente hueco y queda marcada; las demás no se tocan")
+    void vencidaSeMueve() {
+        enElWorkspace(() -> {
+            conInstagram();
+            agente.encender(ws.getId(), true);
+            foto("sala.jpg");
+            pausa();
+            foto("fachada.jpg");
+            revisaComoTema("CUADRADA", false, "depa");
+            agente.vuelta(ws.getId());
+            List<Post> dos = posts.propuestasDelAgente();
+            assertThat(dos).hasSize(2);
+
+            Post vencida = dos.get(0);
+            Post otra = dos.get(1);
+            LocalDateTime deLaOtra = otra.getFechaPropuesta();
+            vencida.setFechaPropuesta(LocalDateTime.now().minusHours(1));
+            posts.save(vencida);
+
+            agente.vuelta(ws.getId());
+
+            Post movida = posts.findById(vencida.getId()).orElseThrow();
+            assertThat(movida.getFechaPropuesta()).isAfter(LocalDateTime.now());
+            assertThat(movida.getAgenteMovidaVeces()).isEqualTo(1);
+            assertThat(movida.getAgenteCaducaEn()).isAfter(LocalDateTime.now().plusDays(13));
+            assertThat(posts.findById(otra.getId()).orElseThrow().getFechaPropuesta()).isEqualTo(deLaOtra);
+            assertThat(agente.propuestas()).filteredOn(r -> r.getId().equals(vencida.getId()))
+                    .allMatch(PostResponse::isAgenteMovida);
+        });
+    }
+
+    @Test
+    @DisplayName("lo del momento sin tu sí en su día no se publica: vuelve a preguntar si todavía va")
+    void momentoCaduca() {
+        enElWorkspace(() -> {
+            conInstagram();
+            agente.encender(ws.getId(), true);
+            MediaAsset promo = foto("promo-hoy.jpg");
+            revisaComoTema("VERTICAL", true, "2x1 de hoy");
+            agente.vuelta(ws.getId());
+            Post p = posts.propuestasDelAgente().get(0);
+            // Su caducidad se calcula en la siguiente vuelta: un día.
+            agente.vuelta(ws.getId());
+            assertThat(posts.findById(p.getId()).orElseThrow().getAgenteCaducaEn())
+                    .isBefore(LocalDateTime.now().plusHours(30));
+
+            Post guardada = posts.findById(p.getId()).orElseThrow();
+            guardada.setAgenteCaducaEn(LocalDateTime.now().minusMinutes(1));
+            posts.save(guardada);
+            agente.vuelta(ws.getId());
+
+            assertThat(posts.propuestasDelAgente()).isEmpty();
+            assertThat(assets.findById(promo.getId())).get().satisfies(a -> {
+                assertThat(a.getAgenteEtapa()).isEqualTo(EtapaAgente.OBSERVACION);
+                assertThat(a.getAgenteMotivo()).contains("Era del momento").contains("¿Todavía va?");
+            });
+        });
+    }
+
+    @Test
+    @DisplayName("lo normal espera dos semanas; luego también pregunta en vez de salir tarde")
+    void normalCaduca() {
+        enElWorkspace(() -> {
+            conInstagram();
+            agente.encender(ws.getId(), true);
+            MediaAsset sala = foto("sala.jpg");
+            revisaComoTema("CUADRADA", false, "depa");
+            agente.vuelta(ws.getId());
+            Post p = posts.propuestasDelAgente().get(0);
+            p.setAgenteCaducaEn(LocalDateTime.now().minusMinutes(1));
+            posts.save(p);
+
+            agente.vuelta(ws.getId());
+
+            assertThat(posts.propuestasDelAgente()).isEmpty();
+            assertThat(assets.findById(sala.getId())).get().extracting(MediaAsset::getAgenteMotivo).asString()
+                    .contains("dos semanas");
+        });
+    }
+
+    @Test
+    @DisplayName("con el agente en pausa, aprobar tarde lo del momento no lo publica: lo dice y pregunta")
+    void aprobarTardeLoDelMomento() {
+        enElWorkspace(() -> {
+            conInstagram();
+            agente.encender(ws.getId(), true);
+            MediaAsset promo = foto("promo-hoy.jpg");
+            revisaComoTema("VERTICAL", true, "2x1 de hoy");
+            agente.vuelta(ws.getId());
+            agente.encender(ws.getId(), false);
+            Post p = posts.propuestasDelAgente().get(0);
+            p.setAgenteCaducaEn(LocalDateTime.now().minusMinutes(1));
+            posts.save(p);
+
+            org.assertj.core.api.Assertions.assertThatThrownBy(() -> agente.aprobar(p.getId(), ws.getId()))
+                    .isInstanceOf(IllegalStateException.class).hasMessageContaining("su día ya pasó");
+            assertThat(posts.propuestasDelAgente()).isEmpty();
+            assertThat(assets.findById(promo.getId())).get().extracting(MediaAsset::getAgenteEtapa)
+                    .isEqualTo(EtapaAgente.OBSERVACION);
+        });
+    }
+
+    @Test
     @DisplayName("una promoción con créditos se diseña con IA: la propuesta lleva el diseño y lo dice")
     void promocionConDiseno() {
         enElWorkspace(() -> {

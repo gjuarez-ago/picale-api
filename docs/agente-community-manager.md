@@ -413,6 +413,20 @@ Como lo hace un community manager: primero ve todo lo que llegó y después deci
   diseñadas (dos flyers con la misma plantilla son dos mensajes) ni las que la persona dijo
   que van.
 
+**Si no llega el sí a tiempo** (`reacomodarVencidas`, en cada vuelta con el agente encendido):
+- Nada sale sin aprobar. A 30 min de su hora, una propuesta sin sí se mueve al siguiente hueco
+  libre (horario, topes, mezcla; las historias en su calendario). Solo esa: las demás conservan
+  su fecha y lo aprobado no se toca. Queda marcada (`Post.agenteMovidaVeces`) y la app y la web
+  dicen "Le cambié la hora porque no llegó tu sí a tiempo".
+- Caducidad (`Post.agenteCaducaEn`, calculada en la primera vuelta): lo del momento (historia, o
+  foto/video que el revisor marcó `efimero`) dura 24 h, o hasta 3 h después de su primera fecha
+  si cae más tarde; lo demás, 14 días. Pasada, o si el siguiente hueco cae después, no se
+  publica: se retira y sus fotos vuelven a Observación con "¿Todavía va?". Con "sí" se prepara
+  de nuevo con una fecha que tenga sentido.
+- Con el agente en pausa no se mueve nada. Aprobar tarde programa en el siguiente hueco, salvo
+  lo del momento ya caducado: se retira y se dice.
+- Al retirarse una, lo que venía después se adelanta (`replanear`).
+
 **Lo rescatado enseña.** Rescatar algo de Observación o Descartadas lo marca
 (`MediaAsset.agenteRescatada`). Las descripciones de las últimas 8 rescatadas van al revisor
 como "lo que el dueño ya te dijo que sí va", para que no vuelva a dudar de esos temas. El
