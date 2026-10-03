@@ -133,6 +133,14 @@ public class MediaAsset {
      */
     private Boolean generadaPorIa;
 
+    /**
+     * La imagen la creó un modelo de IA (un diseño de Crear con IA o del
+     * agente). No es lo mismo que {@link #generadaPorIa}, que también marca las
+     * copias de una foto real (retocada o con el logo encima): esas son fotos
+     * reales y no llevan la etiqueta de "hecha con IA" al publicarse.
+     */
+    private Boolean creadaConIa;
+
     /** En qué va con el agente. Nulo = no lo ha tocado. Ver {@link EtapaAgente}. */
     @Enumerated(EnumType.STRING)
     private EtapaAgente agenteEtapa;

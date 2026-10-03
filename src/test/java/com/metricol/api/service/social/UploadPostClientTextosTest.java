@@ -40,6 +40,18 @@ class UploadPostClientTextosTest {
 
     private static final List<String> REDES = List.of("tiktok", "instagram", "linkedin", "facebook");
 
+    @org.junit.jupiter.api.Test
+    @org.junit.jupiter.api.DisplayName("lo hecho con IA lleva la etiqueta de cada red; lo demás no")
+    void etiquetaDeIa() {
+        org.springframework.util.MultiValueMap<String, Object> con = new org.springframework.util.LinkedMultiValueMap<>();
+        cliente().etiquetaDeIa(con, true);
+        org.assertj.core.api.Assertions.assertThat(con.getFirst("is_ai_generated")).isEqualTo("true");
+
+        org.springframework.util.MultiValueMap<String, Object> sin = new org.springframework.util.LinkedMultiValueMap<>();
+        cliente().etiquetaDeIa(sin, false);
+        org.assertj.core.api.Assertions.assertThat(sin.containsKey("is_ai_generated")).isFalse();
+    }
+
     private UploadPostClient cliente() {
         UploadPostProperties props = new UploadPostProperties();
         props.setBaseUrl("http://localhost");

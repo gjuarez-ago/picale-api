@@ -883,6 +883,32 @@ class AgenteServiceTest {
     }
 
     @Test
+    @DisplayName("una persona hecha con IA se pregunta antes; si dices que va, se propone")
+    void personaHechaConIa() {
+        enElWorkspace(() -> {
+            conInstagram();
+            agente.encender(ws.getId(), true);
+            MediaAsset retrato = foto("retrato.jpg");
+            when(revisor.revisar(anyString(), any(), anyBoolean())).thenReturn(new RevisorDeMarca.Revision(
+                    RevisorDeMarca.Veredicto.VA, "va", "Un hombre de traje frente a una oficina", "Presentar al titular",
+                    DecisorDelAgente.Diagnostico.BUENA, "VERTICAL", false, "titular",
+                    new RevisorDeMarca.Autenticidad(true, true, false, false)));
+
+            agente.vuelta(ws.getId());
+
+            assertThat(posts.propuestasDelAgente()).isEmpty();
+            assertThat(assets.findById(retrato.getId())).get().satisfies(a -> {
+                assertThat(a.getAgenteEtapa()).isEqualTo(EtapaAgente.OBSERVACION);
+                assertThat(a.getAgenteMotivo()).contains("persona hecha con IA");
+                assertThat(RevisorDeMarca.pareceIa(a.getAgenteAnalisis())).isTrue();
+            });
+
+            agente.decidir(retrato.getId(), true, ws.getId());
+            assertThat(posts.propuestasDelAgente()).hasSize(1);
+        });
+    }
+
+    @Test
     @DisplayName("una que el calendario dejó a más de dos semanas no caduca antes de su hora")
     void lejanaNoCaducaAntes() {
         enElWorkspace(() -> {

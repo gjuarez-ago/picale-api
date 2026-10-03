@@ -86,16 +86,43 @@ public class PostPublishStore {
     private final WorkspaceRepository workspaceRepository;
     private final VideoLimitsProperties videoLimits;
     private final PublishQuotaService cuotas;
+    private final com.metricol.api.repository.MediaAssetRepository assets;
 
     public PostPublishStore(
             PostRepository postRepository,
             WorkspaceRepository workspaceRepository,
             VideoLimitsProperties videoLimits,
-            PublishQuotaService cuotas) {
+            PublishQuotaService cuotas,
+            com.metricol.api.repository.MediaAssetRepository assets) {
         this.postRepository = postRepository;
         this.workspaceRepository = workspaceRepository;
         this.videoLimits = videoLimits;
         this.cuotas = cuotas;
+        this.assets = assets;
+    }
+
+    /**
+     * ¿Lleva algo hecho con IA? Una imagen que creó la IA, o una foto que el
+     * revisor vio hecha con IA y la persona dijo que va. Se miran también las
+     * originales de una propuesta del agente: una copia con el logo de una
+     * imagen de IA sigue siendo de IA. Nunca lanza: sin saberlo, no se etiqueta.
+     */
+    boolean hechaConIa(Post post) {
+        try {
+            List<String> urls = new ArrayList<>(post.getMediaUrls());
+            if (post.getAgenteFotoUrl() != null) {
+                urls.add(post.getAgenteFotoUrl());
+            }
+            if (post.getAgenteFotosUrls() != null && !post.getAgenteFotosUrls().isBlank()) {
+                urls.addAll(List.of(post.getAgenteFotosUrls().split("\n")));
+            }
+            return !urls.isEmpty() && assets.findByUrlIn(urls).stream().anyMatch(a ->
+                    Boolean.TRUE.equals(a.getCreadaConIa())
+                            || com.metricol.api.service.agente.RevisorDeMarca.pareceIa(a.getAgenteAnalisis()));
+        } catch (RuntimeException ex) {
+            log.warn("No pude saber si {} lleva algo hecho con IA: {}", post.getId(), ex.toString());
+            return false;
+        }
     }
 
     /**
@@ -236,6 +263,7 @@ public class PostPublishStore {
                 post.getPortadaMs(),
                 Boolean.FALSE.equals(post.getConUbicacion())
                         ? com.metricol.api.service.social.Ubicacion.NINGUNA : ubicacionDe(workspaceId),
+                hechaConIa(post),
                 destinos,
                 null);
     }
@@ -615,7 +643,8 @@ public class PostPublishStore {
      */
     private PublishPlan vacio(UUID postId, UUID workspaceId, PublishOutcome atajo) {
         return new PublishPlan(postId, workspaceId, null, null, null, List.of(), false,
-                PostFormat.PHOTO, false, null, com.metricol.api.service.social.Ubicacion.NINGUNA, List.of(), atajo);
+                PostFormat.PHOTO, false, null, com.metricol.api.service.social.Ubicacion.NINGUNA, false, List.of(),
+                atajo);
     }
 
     /** La ubicación del negocio, si la configuró; nunca nula. */

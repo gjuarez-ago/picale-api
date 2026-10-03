@@ -62,6 +62,13 @@ public record PublishPlan(
          */
         com.metricol.api.service.social.Ubicacion ubicacion,
 
+        /**
+         * Lleva una imagen creada con IA (o que el revisor vio hecha con IA):
+         * se publica con la etiqueta de cada red ("Información de IA"). Las
+         * fotos reales retocadas o con logo no la llevan.
+         */
+        boolean hechaConIa,
+
         List<Destino> destinos,
 
         /**

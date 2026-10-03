@@ -53,6 +53,15 @@ public class MediaStatusBackfill {
                 log.warn("No se pudo quitar el check de etapa del agente de media_assets: {}",
                         ex.getMessage());
             }
+            // Las que creó la IA antes de la columna: para la etiqueta de "hecha con IA".
+            try {
+                int creadas = repository.marcarCreadasConIa();
+                if (creadas > 0) {
+                    log.info("Imágenes creadas con IA marcadas: {}", creadas);
+                }
+            } catch (Exception ex) {
+                log.warn("No se pudo marcar las imágenes creadas con IA: {}", ex.getMessage());
+            }
 
             try {
                 int actualizados = repository.marcarAntiguosComoListos();

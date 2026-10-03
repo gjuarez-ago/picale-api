@@ -116,14 +116,24 @@ public class UploadPostClient {
                 Ubicacion.NINGUNA);
     }
 
-    @SuppressWarnings("unchecked")
     public Map<String, Object> publishPhotos(
             String user, List<String> platforms, String titulo,
             Map<String, String> captionsPorRed, List<String> photoUrls, PostFormat formato,
             boolean musicaAutomatica, Ubicacion ubicacion) {
+        return publishPhotos(user, platforms, titulo, captionsPorRed, photoUrls, formato, musicaAutomatica,
+                ubicacion, false);
+    }
+
+    /** @param hechaConIa lleva algo creado con IA: se publica con la etiqueta de cada red */
+    @SuppressWarnings("unchecked")
+    public Map<String, Object> publishPhotos(
+            String user, List<String> platforms, String titulo,
+            Map<String, String> captionsPorRed, List<String> photoUrls, PostFormat formato,
+            boolean musicaAutomatica, Ubicacion ubicacion, boolean hechaConIa) {
         MultiValueMap<String, Object> body = cuerpoFotos(
                 user, platforms, titulo, captionsPorRed, formato, musicaAutomatica);
         ubicacion(body, platforms, ubicacion);
+        etiquetaDeIa(body, hechaConIa);
         // El orden importa: es el que verá quien deslice el carrusel, y es el
         // que la persona eligió en la pantalla de captura.
         photoUrls.forEach(url -> body.add("photos[]", download(url)));
@@ -148,12 +158,20 @@ public class UploadPostClient {
         return publishVideo(user, platforms, titulo, captionsPorRed, videoUrl, formato, portadaMs, Ubicacion.NINGUNA);
     }
 
-    @SuppressWarnings("unchecked")
     public Map<String, Object> publishVideo(String user, List<String> platforms, String titulo,
             Map<String, String> captionsPorRed, String videoUrl, PostFormat formato, Integer portadaMs,
             Ubicacion ubicacion) {
+        return publishVideo(user, platforms, titulo, captionsPorRed, videoUrl, formato, portadaMs, ubicacion, false);
+    }
+
+    /** @param hechaConIa lleva algo creado con IA: se publica con la etiqueta de cada red */
+    @SuppressWarnings("unchecked")
+    public Map<String, Object> publishVideo(String user, List<String> platforms, String titulo,
+            Map<String, String> captionsPorRed, String videoUrl, PostFormat formato, Integer portadaMs,
+            Ubicacion ubicacion, boolean hechaConIa) {
         MultiValueMap<String, Object> body = cuerpoVideo(user, platforms, titulo, captionsPorRed, formato, portadaMs);
         ubicacion(body, platforms, ubicacion);
+        etiquetaDeIa(body, hechaConIa);
         ByteArrayResource video = download(videoUrl);
         body.add("video", video);
         portadaDeInstagram(body, platforms, formato, video, portadaMs);
@@ -293,6 +311,18 @@ public class UploadPostClient {
         if (u.enTiktok() && platforms.contains("tiktok")) {
             body.add("tiktok_location_id", u.tiktokId());
             body.add("tiktok_location_name", u.tiktokNombre());
+        }
+    }
+
+    /**
+     * La etiqueta de contenido hecho con IA: {@code is_ai_generated} es el alias
+     * de upload-post para el campo de cada red (Instagram "Información de IA",
+     * TikTok {@code is_aigc}, YouTube contenido sintético, Reels de Facebook).
+     * Es una declaración nuestra: upload-post no la verifica.
+     */
+    void etiquetaDeIa(MultiValueMap<String, Object> body, boolean hechaConIa) {
+        if (hechaConIa) {
+            body.add("is_ai_generated", "true");
         }
     }
 

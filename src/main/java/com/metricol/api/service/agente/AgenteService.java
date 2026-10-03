@@ -433,6 +433,15 @@ public class AgenteService {
                     : EtapaAgente.DESCARTADA, revision.motivo());
             return null;
         }
+        // Lo hecho con IA que puede pasar por real (una persona, una causa, la
+        // oficina) se pregunta antes: es lo que más le resta credibilidad a una
+        // cuenta. Se guarda lo visto para ponerle la etiqueta si la persona dice que va.
+        String dudaDeIa = revision.autenticidad().duda();
+        if (!forzar && dudaDeIa != null) {
+            asset.setAgenteAnalisis(RevisorDeMarca.aJson(revision, false));
+            marcar(asset, EtapaAgente.OBSERVACION, dudaDeIa);
+            return null;
+        }
         if (asset.getDescripcionIa() == null || asset.getDescripcionIa().isBlank()) {
             asset.setDescripcionIa(revision.descripcion().isBlank() ? null : revision.descripcion());
         }

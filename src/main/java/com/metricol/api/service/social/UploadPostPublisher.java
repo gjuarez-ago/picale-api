@@ -295,7 +295,7 @@ public class UploadPostPublisher {
         }
         if (plan.video()) {
             return client.publishVideo(plan.profile(), platforms, titulo, porRed,
-                    medios.get(0), plan.formato(), plan.portadaMs(), plan.ubicacion());
+                    medios.get(0), plan.formato(), plan.portadaMs(), plan.ubicacion(), plan.hechaConIa());
         }
 
         // Aqui, y no antes, es donde las fotos se ajustan a lo que aceptan las
@@ -320,7 +320,7 @@ public class UploadPostPublisher {
         try {
             return client.publishPhotos(
                     plan.profile(), platforms, titulo, porRed, ajuste.urls(), plan.formato(),
-                    plan.musicaAutomatica(), plan.ubicacion());
+                    plan.musicaAutomatica(), plan.ubicacion(), plan.hechaConIa());
         } catch (RuntimeException ex) {
             if (!ajuste.huboFallo()) {
                 throw ex;

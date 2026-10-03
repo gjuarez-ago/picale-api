@@ -121,6 +121,19 @@ public interface MediaAssetRepository extends JpaRepository<MediaAsset, UUID> {
     void quitarCheckDeEtapaDelAgente();
 
     /**
+     * Las imágenes que creó la IA antes de que existiera {@code creadaConIa}:
+     * Crear con IA las nombra "contenido-v…". Las copias retocadas o con logo
+     * no llevan ese nombre, así que no se confunden.
+     */
+    @Modifying
+    @Transactional
+    @Query(value = """
+            update media_assets set creada_con_ia = true
+            where creada_con_ia is null and generada_por_ia = true and file_name like 'contenido-v%'
+            """, nativeQuery = true)
+    int marcarCreadasConIa();
+
+    /**
      * Videos ya confirmados a los que todavía les falta la miniatura.
      *
      * <p>En SQL nativo por lo mismo que la consulta de arriba: corre al

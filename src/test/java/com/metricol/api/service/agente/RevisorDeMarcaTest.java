@@ -24,6 +24,33 @@ class RevisorDeMarcaTest {
     }
 
     @Test
+    @DisplayName("lee las señales de autenticidad y las guarda; sin ellas, nada que dudar")
+    void autenticidad() throws Exception {
+        var r = revisor.interpretar("{\"veredicto\":\"VA\",\"pareceIa\":true,\"personaRealista\":true,"
+                + "\"causaSocial\":false,\"lugarDelNegocio\":false}", true);
+        assertThat(r.autenticidad().pareceIa()).isTrue();
+        assertThat(r.autenticidad().personaRealista()).isTrue();
+        String json = RevisorDeMarca.aJson(r, false);
+        assertThat(RevisorDeMarca.pareceIa(json)).isTrue();
+        assertThat(RevisorDeMarca.deJson(json).autenticidad()).isEqualTo(r.autenticidad());
+
+        assertThat(revisor.interpretar("{\"veredicto\":\"VA\"}", true).autenticidad())
+                .isEqualTo(RevisorDeMarca.Autenticidad.NINGUNA);
+    }
+
+    @Test
+    @DisplayName("la regla de IA: persona, causa o lugar del negocio se preguntan; un diseño con IA va")
+    void reglaDeIa() {
+        assertThat(new RevisorDeMarca.Autenticidad(true, true, false, false).duda()).contains("persona hecha con IA");
+        assertThat(new RevisorDeMarca.Autenticidad(true, true, true, false).duda()).contains("causa social");
+        assertThat(new RevisorDeMarca.Autenticidad(true, false, false, true).duda()).contains("lugar hecho con IA");
+        // Un diseño o ilustración con IA, sin personas ni lugares: va (con su etiqueta al publicar).
+        assertThat(new RevisorDeMarca.Autenticidad(true, false, false, false).duda()).isNull();
+        // Una foto real de una persona o de una causa: nada que preguntar.
+        assertThat(new RevisorDeMarca.Autenticidad(false, true, true, true).duda()).isNull();
+    }
+
+    @Test
     @DisplayName("lee el diagnóstico completo, y lo que falta se toma como una foto correcta")
     void diagnostico() throws Exception {
         var completo = revisor.interpretar("{\"veredicto\":\"VA\",\"tipo\":\"PROMOCION\",\"calidad\":2,"

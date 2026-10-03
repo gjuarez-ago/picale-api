@@ -413,6 +413,18 @@ Como lo hace un community manager: primero ve todo lo que llegó y después deci
   diseñadas (dos flyers con la misma plantilla son dos mensajes) ni las que la persona dijo
   que van.
 
+**Contenido hecho con IA** (regla nuestra, igual para todas las cuentas; el usuario no configura nada):
+- El revisor califica aparte del veredicto: `pareceIa`, `personaRealista`, `causaSocial`,
+  `lugarDelNegocio` (`RevisorDeMarca.Autenticidad`).
+- Lo que parece hecho con IA y puede pasar por real se pregunta antes, con el porqué: una persona
+  realista, una causa social o un lugar presentado como el negocio. Un diseño o ilustración con IA
+  va normal.
+- Al publicar (`PostPublishStore.hechaConIa`), lo que lleva una imagen creada con IA
+  (`MediaAsset.creadaConIa`, solo diseños de Crear con IA o del agente; no las copias retocadas o
+  con logo de una foto real) o una foto que el revisor vio hecha con IA, sale con
+  `is_ai_generated=true`: Instagram "Información de IA", TikTok `is_aigc`, YouTube contenido
+  sintético, Reels de Facebook. LinkedIn y las fotos de Facebook no tienen campo.
+
 **Fila corta.** Hasta `app.agente.tope-fila` (6) propuestas esperan el sí a la vez. Con la fila
 llena, las fotos se revisan igual pero se quedan en reserva (ANALIZADA) y los videos esperan sin
 tocarse; entran conforme se aprueba, descarta o retira algo. `Estado.enReserva` lo cuenta, y la app

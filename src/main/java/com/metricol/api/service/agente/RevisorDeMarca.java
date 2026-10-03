@@ -46,11 +46,19 @@ public class RevisorDeMarca {
      *                    con esto se agrupan las de una tanda en carruseles
      */
     public record Revision(Veredicto veredicto, String motivo, String descripcion, String idea,
-            DecisorDelAgente.Diagnostico diagnostico, String orientacion, boolean efimero, String tema) {
+            DecisorDelAgente.Diagnostico diagnostico, String orientacion, boolean efimero, String tema,
+            Autenticidad autenticidad) {
 
         public Revision {
             orientacion = orientacion == null || orientacion.isBlank() ? "CUADRADA" : orientacion;
             tema = tema == null ? "" : tema;
+            autenticidad = autenticidad == null ? Autenticidad.NINGUNA : autenticidad;
+        }
+
+        /** Sin las señales de autenticidad: lo de antes y las pruebas. */
+        public Revision(Veredicto veredicto, String motivo, String descripcion, String idea,
+                DecisorDelAgente.Diagnostico diagnostico, String orientacion, boolean efimero, String tema) {
+            this(veredicto, motivo, descripcion, idea, diagnostico, orientacion, efimero, tema, Autenticidad.NINGUNA);
         }
 
         /** Sin lo de organizar (orientación, momento, tema): lo de antes y las pruebas. */
@@ -71,6 +79,45 @@ public class RevisorDeMarca {
 
         public boolean vertical() {
             return "VERTICAL".equals(orientacion);
+        }
+    }
+
+    /**
+     * Lo que importa para la credibilidad de la cuenta, visto en la imagen.
+     *
+     * @param pareceIa        parece hecha con IA (no una foto tomada con una cámara)
+     * @param personaRealista sale una persona que parece real y reconocible
+     * @param causaSocial     es de una causa, donativo, labor social o filantropía
+     * @param lugarDelNegocio muestra un lugar presentado como el del negocio (oficina, local, sucursal)
+     */
+    public record Autenticidad(boolean pareceIa, boolean personaRealista, boolean causaSocial,
+            boolean lugarDelNegocio) {
+
+        public static final Autenticidad NINGUNA = new Autenticidad(false, false, false, false);
+
+        /**
+         * La regla, de nuestro lado y igual para todas las cuentas: lo hecho con
+         * IA que puede pasar por real y restar credibilidad se pregunta antes
+         * de proponerlo. Devuelve el porqué para la persona, o nulo si va.
+         * Lo demás hecho con IA (un diseño, una ilustración) va, con su etiqueta.
+         */
+        public String duda() {
+            if (!pareceIa) {
+                return null;
+            }
+            if (causaSocial) {
+                return "Es de una causa social y parece hecha con IA: en estos temas una foto real da más confianza. "
+                        + "Si va, la publico con la etiqueta de «hecha con IA».";
+            }
+            if (personaRealista) {
+                return "Parece una persona hecha con IA. Si es alguien real que está de acuerdo, dime que va y la "
+                        + "publico con la etiqueta de «hecha con IA».";
+            }
+            if (lugarDelNegocio) {
+                return "Parece un lugar hecho con IA presentado como tu negocio. Si no es tu oficina o local real, "
+                        + "puede confundir a tus clientes.";
+            }
+            return null;
         }
     }
 
@@ -95,7 +142,11 @@ public class RevisorDeMarca {
              "intencion": "VENDER" | "INFORMAR" | "COMUNIDAD" | "CONFIANZA",
              "orientacion": "VERTICAL" | "HORIZONTAL" | "CUADRADA",
              "efimero": true | false,
-             "tema": "de que trata en 2 a 5 palabras, lo mismo para fotos de lo mismo"}
+             "tema": "de que trata en 2 a 5 palabras, lo mismo para fotos de lo mismo",
+             "pareceIa": true | false,
+             "personaRealista": true | false,
+             "causaSocial": true | false,
+             "lugarDelNegocio": true | false}
 
             Como calificar:
             - calidad: luz, nitidez, encuadre y resolucion. 5 = foto profesional,
@@ -117,6 +168,18 @@ public class RevisorDeMarca {
             - tema: el objeto o asunto concreto ("depa Calle 60", "tacos al
               pastor", "evento aniversario"). Dos fotos del mismo producto o del
               mismo lugar llevan el mismo tema.
+            - pareceIa: la imagen parece generada o alterada con IA y no tomada
+              con una camara (piel o rostros demasiado perfectos, luz de
+              estudio irreal, texto o manos raras, fondos imposibles). Un
+              diseno grafico, una ilustracion o un render de producto que no
+              pretenden ser foto tambien cuentan como IA si los hizo una IA.
+            - personaRealista: aparece una persona que parece real y se le
+              reconoce la cara (no una silueta ni una ilustracion).
+            - causaSocial: habla de una causa, un donativo, labor social,
+              filantropia o ayuda a una comunidad.
+            - lugarDelNegocio: muestra una oficina, local, sucursal o espacio
+              de trabajo presentado como el del negocio.
+            Estos cuatro no cambian el veredicto: se califican aparte.
 
             VA: encaja con lo que el negocio vende o con su dia a dia (su
             producto, su local, su equipo, sus clientes, sus eventos), o habla
@@ -256,7 +319,18 @@ public class RevisorDeMarca {
                 diagnostico,
                 orientacion,
                 n.path("efimero").asBoolean(false),
-                recortar(n.path("tema").asText(""), 80));
+                recortar(n.path("tema").asText(""), 80),
+                new Autenticidad(n.path("pareceIa").asBoolean(false), n.path("personaRealista").asBoolean(false),
+                        n.path("causaSocial").asBoolean(false), n.path("lugarDelNegocio").asBoolean(false)));
+    }
+
+    /** Si lo guardado con {@link #aJson} dice que la imagen parece hecha con IA. */
+    public static boolean pareceIa(String json) {
+        try {
+            return json != null && new ObjectMapper().readTree(json).path("pareceIa").asBoolean(false);
+        } catch (Exception ex) {
+            return false;
+        }
     }
 
     // ------------------------------------------------------------ guardarla
@@ -284,6 +358,10 @@ public class RevisorDeMarca {
         n.put("orientacion", r.orientacion());
         n.put("efimero", r.efimero());
         n.put("tema", r.tema());
+        n.put("pareceIa", r.autenticidad().pareceIa());
+        n.put("personaRealista", r.autenticidad().personaRealista());
+        n.put("causaSocial", r.autenticidad().causaSocial());
+        n.put("lugarDelNegocio", r.autenticidad().lugarDelNegocio());
         n.put("forzada", forzada);
         return n.toString();
     }
