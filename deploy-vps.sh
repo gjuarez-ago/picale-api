@@ -50,7 +50,9 @@ elif [ ! -f BUILD_SHA ]; then
   echo "desconocido" > BUILD_SHA
 fi
 
-echo "==> Empaquetando el codigo"
+SHA="$(cat BUILD_SHA)"
+
+echo "==> Empaquetando el codigo ($SHA)"
 # Se excluye target/ porque la imagen compila dentro: mandar 71 MB de jar por
 # la red para luego no usarlo es tiempo tirado. Y .env se queda fuera a
 # proposito: las credenciales del servidor son las de .env.vps, que vive
@@ -65,7 +67,9 @@ tar --exclude=target \
     -czf /tmp/metricol-api.tar.gz .
 
 echo "==> Copiando a $VM"
-gcloud compute scp /tmp/metricol-api.tar.gz "$VM":/tmp/ \
+# Con el commit en el nombre y borrado al usarse: /tmp es compartido y lo que dejo
+# otro usuario (la persona o la cuenta de servicio de GitHub) no se puede pisar.
+gcloud compute scp /tmp/metricol-api.tar.gz "$VM":/tmp/metricol-api-$SHA.tar.gz \
     --zone="$ZONA" --project="$PROYECTO"
 
 echo "==> Construyendo y levantando en la VM"
@@ -84,7 +88,8 @@ sudo mkdir -p $DESTINO
 # quito del repositorio seguia en la VM y se compilaba (asi fallo el 24 sep
 # 2026 con un RootAccountsInitializer que ya no existia).
 sudo rm -rf $DESTINO/src
-sudo tar --no-same-owner -xzf /tmp/metricol-api.tar.gz -C $DESTINO
+sudo tar --no-same-owner -xzf /tmp/metricol-api-$SHA.tar.gz -C $DESTINO
+rm -f /tmp/metricol-api-$SHA.tar.gz
 DUENO=\$(sudo stat -c %U $DESTINO)
 sudo chown -R \"\$DUENO\":\"\$DUENO\" $DESTINO
 
