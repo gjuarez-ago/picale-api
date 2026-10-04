@@ -57,9 +57,15 @@ public class ConexionIa {
     @Column(length = 300)
     private String clienteId;
 
-    /** "read" si la persona conectó en solo lectura; "write" si la IA también puede actuar. */
+    /**
+     * "read" si la persona conectó en solo lectura; "write" si la IA también puede actuar.
+     *
+     * <p>Con default en la base: la tabla ya tenía conexiones cuando llegó la
+     * columna, y un NOT NULL sin default no se puede agregar sobre filas
+     * existentes (Hibernate lo intenta, falla y la columna no se crea).
+     */
     @Builder.Default
-    @Column(nullable = false, length = 10)
+    @Column(nullable = false, length = 10, columnDefinition = "varchar(10) default 'write' not null")
     private String alcance = "write";
 
     @Builder.Default
