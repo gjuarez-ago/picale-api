@@ -48,6 +48,9 @@ public class AvisosPush {
     private static final Logger log = LoggerFactory.getLogger(AvisosPush.class);
     private static final String ALCANCE = "https://www.googleapis.com/auth/firebase.messaging";
 
+    /** {@code app.push.credenciales=adc}: la identidad del propio servidor, sin archivo de llave. */
+    static final String IDENTIDAD_DEL_SERVIDOR = "adc";
+
     private final DispositivoRepository dispositivos;
     private final WorkspaceMemberRepository miembros;
     private final OrganizationMemberRepository orgMiembros;
@@ -187,11 +190,23 @@ public class AvisosPush {
         }
     }
 
-    /** El token OAuth de la cuenta de servicio; se renueva solo cuando está por vencer. */
+    /**
+     * El token OAuth para FCM; se renueva solo cuando está por vencer.
+     *
+     * <p>Con {@value #IDENTIDAD_DEL_SERVIDOR} no hay archivo de llave: se usa
+     * la cuenta de servicio de la VM (Compute Engine la entrega por su
+     * metadata). Es lo que se usa en producción, porque la organización
+     * prohíbe crear llaves de cuentas de servicio, y de paso no hay ningún
+     * secreto que se pueda filtrar. Con una ruta, se lee el JSON de la llave.
+     */
     private synchronized String tokenDeAcceso() throws Exception {
         if (credenciales == null) {
-            try (InputStream in = new FileInputStream(credencialesRuta)) {
-                credenciales = GoogleCredentials.fromStream(in).createScoped(List.of(ALCANCE));
+            if (IDENTIDAD_DEL_SERVIDOR.equalsIgnoreCase(credencialesRuta.strip())) {
+                credenciales = GoogleCredentials.getApplicationDefault().createScoped(List.of(ALCANCE));
+            } else {
+                try (InputStream in = new FileInputStream(credencialesRuta)) {
+                    credenciales = GoogleCredentials.fromStream(in).createScoped(List.of(ALCANCE));
+                }
             }
         }
         credenciales.refreshIfExpired();
