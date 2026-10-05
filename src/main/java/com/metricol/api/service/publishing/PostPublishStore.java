@@ -87,18 +87,21 @@ public class PostPublishStore {
     private final VideoLimitsProperties videoLimits;
     private final PublishQuotaService cuotas;
     private final com.metricol.api.repository.MediaAssetRepository assets;
+    private final com.metricol.api.service.social.ConexionesCaducadas conexiones;
 
     public PostPublishStore(
             PostRepository postRepository,
             WorkspaceRepository workspaceRepository,
             VideoLimitsProperties videoLimits,
             PublishQuotaService cuotas,
-            com.metricol.api.repository.MediaAssetRepository assets) {
+            com.metricol.api.repository.MediaAssetRepository assets,
+            com.metricol.api.service.social.ConexionesCaducadas conexiones) {
         this.postRepository = postRepository;
         this.workspaceRepository = workspaceRepository;
         this.videoLimits = videoLimits;
         this.cuotas = cuotas;
         this.assets = assets;
+        this.conexiones = conexiones;
     }
 
     /**
@@ -197,6 +200,15 @@ public class PostPublishStore {
             }
 
             Platform platform = target.getSocialAccount().getPlatform();
+
+            // Su conexión caducó: no se le manda otra vez para que vuelva a
+            // rechazar. Queda esperando, y al reconectarla sale sola (ver
+            // ConexionesCaducadas). Las demás redes de la publicación sí salen.
+            if (conexiones != null && conexiones.necesitaReconectar(platform)) {
+                marcar(target, PostTargetStatus.FAILED,
+                        com.metricol.api.service.social.ConexionesCaducadas.esperando(platform));
+                continue;
+            }
 
             // Sin página elegida no se manda: upload-post publicaría en la que
             // él decidiera, o en ninguna. Se cubre aquí además de al guardar
@@ -552,6 +564,16 @@ public class PostPublishStore {
         // decidió. Para el proveedor ese intento cuenta, y devolverla dejaria
         // reintentar sin fin contra un limite que ya se estaba tocando.
         marcar(target, PostTargetStatus.FAILED, resultado.error());
+        // Rechazada por la conexión: la red queda por reconectar (y se avisa).
+        if (conexiones != null && com.metricol.api.service.social.ConexionesCaducadas.CADUCO.equals(resultado.error())) {
+            try {
+                String tenant = target.getPost().getTenantId();
+                conexiones.marcarFallo(target.getSocialAccount().getPlatform(),
+                        tenant == null ? null : UUID.fromString(tenant));
+            } catch (RuntimeException ex) {
+                log.warn("No se pudo marcar la red por reconectar: {}", ex.toString());
+            }
+        }
         return false;
     }
 

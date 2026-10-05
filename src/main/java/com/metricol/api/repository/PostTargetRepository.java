@@ -16,6 +16,23 @@ import com.metricol.api.enums.PostTargetStatus;
 public interface PostTargetRepository extends JpaRepository<PostTarget, UUID> {
 
     /**
+     * Lo que no salió en esa red porque su conexión caducó (o porque estaba
+     * esperando a que se reconectara): lo que se reintenta al reconectar.
+     * Tenant explícito, como las demás, porque también lo pide un proceso sin usuario.
+     */
+    @Query("""
+            select t from PostTarget t
+            join fetch t.post p
+            join t.socialAccount a
+            where p.tenantId = :tenant and p.deletedAt is null and p.archivedAt is null
+              and t.status = com.metricol.api.enums.PostTargetStatus.FAILED
+              and a.platform = :platform
+              and (t.errorMessage = :caduco or t.errorMessage like '%necesita reconectarse%')
+            """)
+    List<PostTarget> fallidasPorConexion(@Param("tenant") String tenant, @Param("platform") Platform platform,
+            @Param("caduco") String caduco);
+
+    /**
      * Cuántas salieron de verdad en esa red desde {@code desde}.
      *
      * <p>Es la ventana móvil de Meta: 25 en 24 horas corridas, no por día

@@ -19,7 +19,7 @@ import com.metricol.api.repository.MediaAssetRepository;
 class EtiquetaDeIaTest {
 
     private final MediaAssetRepository assets = mock(MediaAssetRepository.class);
-    private final PostPublishStore store = new PostPublishStore(null, null, null, null, assets);
+    private final PostPublishStore store = new PostPublishStore(null, null, null, null, assets, null);
 
     private static Post post(String url) {
         Post p = new Post();

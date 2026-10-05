@@ -300,6 +300,8 @@ public class EliminacionDefinitiva {
         sql.update("update acciones_ia set user_id = null, user_email = null where user_id = :u", u);
         // Sus IA conectadas se van con ella: sin persona no hay a quién representar.
         sql.update("delete from conexiones_ia where user_id = :u", u);
+        // Sus teléfonos: sin persona, a ese token no hay a quién avisarle.
+        sql.update("delete from dispositivos where user_id = :u", u);
         sql.update("delete from email_verification_codes where lower(email) = lower(:e)",
                 new MapSqlParameterSource("e", correo == null ? "" : correo));
         sql.update("delete from users where id = :u", u);

@@ -54,6 +54,7 @@ public class UploadPostConnectService {
     private final SocialConnectionCheckRepository connectionCheckRepository;
     private final WorkspaceRepository workspaceRepository;
     private final SocialAccountSyncService accountSync;
+    private final ConexionesCaducadas conexiones;
     private final RestClient restClient;
 
     @Value("${app.base-url:http://localhost:5050}")
@@ -67,7 +68,9 @@ public class UploadPostConnectService {
             UploadPostProperties props,
             SocialConnectionCheckRepository connectionCheckRepository,
             WorkspaceRepository workspaceRepository,
-            SocialAccountSyncService accountSync) {
+            SocialAccountSyncService accountSync,
+            ConexionesCaducadas conexiones) {
+        this.conexiones = conexiones;
 
         this.props = props;
         this.connectionCheckRepository = connectionCheckRepository;
@@ -131,6 +134,9 @@ public class UploadPostConnectService {
             body.put("platforms", platforms);
         }
 
+        // Si alguna estaba por reconectar, desde ahora la siguiente verificación sana cuenta como reconectada.
+        conexiones.reconectando(platforms);
+
         Map<?, ?> respuesta = post("/users/generate-jwt", body,
                 "No se pudo generar el enlace de conexión. Intenta de nuevo en un momento.");
 
@@ -162,6 +168,8 @@ public class UploadPostConnectService {
         Map<String, Object> body = Map.of(
                 "profile", username,
                 "redirect_url", redirectUrl());
+
+        conexiones.reconectando(List.of(platform));
 
         Map<?, ?> respuesta = post("/oauth/" + platform + "/start", body,
                 "La red rechazó iniciar la conexión.");
@@ -269,7 +277,7 @@ public class UploadPostConnectService {
                 "facebook_page_id", "facebook_page_name", "/facebook/pages");
         copiarPaginaFija(socialAccounts, perfilConPagina, username, "linkedin",
                 "linkedin_page_id", "linkedin_page_name", "/linkedin/pages");
-        registrarVerificacion(socialAccounts);
+        registrarVerificacion(socialAccounts, workspace);
 
         // Qué contestó upload-post, en una línea legible. Es el registro que
         // de verdad hacía falta: dice el perfil consultado y, red por red, si
@@ -546,7 +554,7 @@ public class UploadPostConnectService {
      * respuesta como {@code last_verified_at}/{@code expired_since}.
      */
     @SuppressWarnings("unchecked")
-    private void registrarVerificacion(Map<String, Object> socialAccounts) {
+    private void registrarVerificacion(Map<String, Object> socialAccounts, Workspace workspace) {
         for (var entry : socialAccounts.entrySet()) {
             if (!(entry.getValue() instanceof Map)) {
                 continue; // Red no conectada: nada que registrar todavía.
@@ -557,6 +565,7 @@ public class UploadPostConnectService {
             SocialConnectionCheck check = connectionCheckRepository.findByPlatform(entry.getKey())
                     .orElseGet(() -> SocialConnectionCheck.builder().platform(entry.getKey()).build());
 
+            boolean porReconectar = conexiones.alVerificar(check, vencida, workspace == null ? null : workspace.getId());
             if (vencida) {
                 if (check.getExpiredSince() == null) {
                     check.setExpiredSince(LocalDateTime.now());
@@ -568,7 +577,12 @@ public class UploadPostConnectService {
             connectionCheckRepository.save(check);
 
             cuenta.put("last_verified_at", check.getLastVerifiedAt());
-            cuenta.put("expired_since", check.getExpiredSince());
+            cuenta.put("expired_since", check.getExpiredSince() != null ? check.getExpiredSince() : check.getFalloPorConexionEn());
+            // Una publicación ya falló por la conexión aunque upload-post la dé
+            // por buena: se enseña por reconectar, con lo que web y app ya pintan.
+            if (porReconectar) {
+                cuenta.put("reauth_required", true);
+            }
             socialAccounts.put(entry.getKey(), cuenta);
         }
     }

@@ -22,6 +22,7 @@ import com.metricol.api.models.response.ApiResponse;
 import com.metricol.api.repository.WorkspaceRepository;
 import com.metricol.api.service.SocialAccountService;
 import com.metricol.api.service.PermissionService;
+import com.metricol.api.service.social.ConexionesCaducadas;
 import com.metricol.api.service.social.UploadPostConnectService;
 
 /**
@@ -41,12 +42,15 @@ public class SocialConnectController {
     private final SocialAccountService accountService;
     private final WorkspaceRepository workspaceRepository;
     private final PermissionService permisos;
+    private final ConexionesCaducadas conexiones;
 
     public SocialConnectController(
             UploadPostConnectService connectService,
             SocialAccountService accountService,
             WorkspaceRepository workspaceRepository,
-            PermissionService permisos) {
+            PermissionService permisos,
+            ConexionesCaducadas conexiones) {
+        this.conexiones = conexiones;
 
         this.connectService = connectService;
         this.accountService = accountService;
@@ -78,6 +82,16 @@ public class SocialConnectController {
 
         return ResponseEntity.ok(ApiResponse.success(
                 connectService.connectionStatus(workspaceOf(currentUser))));
+    }
+
+    /**
+     * Las redes por reconectar y cuánto espera en cada una: la franja de Hoy.
+     * Lectura barata (solo la base): Hoy la pide en cada carga.
+     */
+    @GetMapping("/por-reconectar")
+    public ResponseEntity<ApiResponse<List<ConexionesCaducadas.PorReconectar>>> porReconectar(
+            @AuthenticationPrincipal User currentUser) {
+        return ResponseEntity.ok(ApiResponse.success(conexiones.porReconectar(currentUser.getWorkspace().getId())));
     }
 
     /**

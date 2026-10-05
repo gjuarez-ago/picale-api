@@ -59,4 +59,19 @@ public class SocialConnectionCheck {
     private LocalDateTime lastVerifiedAt;
 
     private LocalDateTime expiredSince;
+
+    /**
+     * Desde cuándo una publicación falló porque la conexión caducó. upload-post
+     * no siempre lo marca como {@code reauth_required} a tiempo, pero la red ya
+     * lo dijo al rechazar: con esto la red queda "por reconectar" aunque el
+     * proveedor la siga dando por buena. Nula = sana.
+     */
+    private LocalDateTime falloPorConexionEn;
+
+    /** Cuándo se pidió el enlace para reconectarla: la siguiente verificación sana después de esto la da por reconectada. */
+    private LocalDateTime reconectandoDesde;
+
+    public boolean necesitaReconectar() {
+        return expiredSince != null || falloPorConexionEn != null;
+    }
 }

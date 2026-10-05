@@ -35,7 +35,7 @@ final class MotivosDelProveedor {
         if (c.contains("token") || c.contains("unauthorized") || c.contains("reauth")
                 || m.contains("token") && (m.contains("expired") || m.contains("invalid"))
                 || m.contains("reauthenticate") || m.contains("re-authenticate")) {
-            return "La conexion con la red caduco. Vuelve a conectarla desde Redes.";
+            return ConexionesCaducadas.CADUCO;
         }
         if (c.contains("rate_limit") || c.contains("quota") || m.contains("rate limit")
                 || m.contains("too many requests") || m.contains("quota")) {

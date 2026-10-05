@@ -162,6 +162,23 @@
   <build>
     <finalName>metricol-api</finalName>
     <plugins>
+      <!--
+        Cada clase de prueba con su propia configuracion levanta un contexto de
+        Spring, y Spring los guarda en cache con su pool de conexiones abierto:
+        con 10 por contexto, la suite completa pasaba el tope del Postgres local
+        ("too many clients") y las ultimas clases fallaban sin tener nada roto.
+        Dos por contexto alcanzan para las pruebas.
+      -->
+      <plugin>
+        <groupId>org.apache.maven.plugins</groupId>
+        <artifactId>maven-surefire-plugin</artifactId>
+        <configuration>
+          <systemPropertyVariables>
+            <spring.datasource.hikari.maximum-pool-size>2</spring.datasource.hikari.maximum-pool-size>
+            <spring.datasource.hikari.minimum-idle>0</spring.datasource.hikari.minimum-idle>
+          </systemPropertyVariables>
+        </configuration>
+      </plugin>
       <plugin>
         <groupId>org.springframework.boot</groupId>
         <artifactId>spring-boot-maven-plugin</artifactId>

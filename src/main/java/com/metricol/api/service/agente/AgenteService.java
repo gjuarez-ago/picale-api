@@ -151,6 +151,9 @@ public class AgenteService {
 
     private final com.metricol.api.service.avisos.AvisosPush avisos;
 
+    /** Las redes cuya conexión caducó: no se les propone nada hasta reconectarlas. */
+    private final com.metricol.api.service.social.ConexionesCaducadas conexiones;
+
     /** Entre un aviso de "tengo publicaciones listas" y el siguiente, en el mismo espacio. */
     static final java.time.Duration ENTRE_AVISOS = java.time.Duration.ofHours(1);
 
@@ -166,8 +169,10 @@ public class AgenteService {
             com.metricol.api.config.VideoLimitsProperties videoLimites, AnalistaDeVideo analista,
             EditorDeVideo editor, CuentaAparte otraCuenta,
             com.metricol.api.service.metricas.LoQueFunciona loQueFunciona, OrganizadorDeContenido organizador,
-            com.metricol.api.service.avisos.AvisosPush avisos) {
+            com.metricol.api.service.avisos.AvisosPush avisos,
+            com.metricol.api.service.social.ConexionesCaducadas conexiones) {
         this.avisos = avisos;
+        this.conexiones = conexiones;
         this.organizador = organizador;
         this.loQueFunciona = loQueFunciona;
         this.otraCuenta = otraCuenta;
@@ -2009,6 +2014,9 @@ public class AgenteService {
                 .filter(c -> !c.apagadaPorLaPersona())
                 .filter(c -> !c.sinPagina())
                 .filter(c -> formatos.admite(formato, c.getPlatform()))
+                // Por reconectar: proponerle sería sumar otra que espera; sale en
+                // las demás redes, y la franja de Hoy pide reconectarla.
+                .filter(c -> !conexiones.necesitaReconectar(c.getPlatform()))
                 .toList();
     }
 
