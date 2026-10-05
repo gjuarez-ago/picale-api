@@ -102,6 +102,28 @@ public final class DecisorDelAgente {
     private DecisorDelAgente() {
     }
 
+    /** El acabado que va, y por qué si cambió. */
+    public record Acabado(String estilo, String paso) {
+    }
+
+    /**
+     * El acabado final de una foto: lo que propuso el director, salvo que la
+     * persona haya pedido otro, o que en su cuenta prefiera las fotos sin
+     * adornos (lo aprendido al descartar o quitar franjas y marcos).
+     *
+     * @param ajuste de 0 a 2: con 1 deja de enmarcar, con 2 tampoco pone franjas
+     */
+    public static Acabado acabado(String propuesto, int ajuste, String pedido) {
+        if (pedido != null) {
+            return new Acabado(pedido, "LIMPIO".equals(pedido) ? "Me pediste sin adornos: va limpia."
+                    : "Me pediste " + ("FRANJA".equals(pedido) ? "la franja" : "el marco") + ": se lo pongo.");
+        }
+        if ("MARCO".equals(propuesto) && ajuste >= 1 || "FRANJA".equals(propuesto) && ajuste >= 2) {
+            return new Acabado("LIMPIO", "En tu cuenta prefieres las fotos sin adornos: va limpia.");
+        }
+        return new Acabado(propuesto, null);
+    }
+
     /**
      * Si el tipo de foto lleva logo. Producto y promoción, siempre. Una obra
      * firma el portafolio de quien trabaja por proyecto: si ya se sabe cómo

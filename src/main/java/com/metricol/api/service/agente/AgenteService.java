@@ -871,7 +871,7 @@ public class AgenteService {
 
             // Mejora, retoque y logo sobre copias: la original no se toca. Lo que
             // no se pueda (la IA, ffmpeg, un logo ilegible) se salta sin perder la propuesta.
-            FotoLista lista = prepararFoto(asset, w, revision, decision, historia, decision.logo());
+            FotoLista lista = prepararFoto(asset, w, revision, decision, historia, decision.logo(), cambio);
             decision = lista.decision();
             List<String> pasos = lista.pasos();
             String publicar = lista.url();
@@ -892,8 +892,12 @@ public class AgenteService {
             String deHistoria = historia ? " Va de historia: es del momento y está en vertical." : "";
             String motivo = porQue + " " + String.join(" ", pasos) + deHistoria + lugar.frase() + " "
                     + cuandoYDonde(redes, hueco);
-            postService.crearPropuesta(pedido, fecha, motivo, asset.getUrl(), decision.tratamiento().name(),
-                    categoria(revision.diagnostico()).name());
+            Post creada = postService.crearPropuesta(pedido, fecha, motivo, asset.getUrl(),
+                    decision.tratamiento().name(), categoria(revision.diagnostico()).name());
+            if (lista.acabado() != null) {
+                creada.setAgenteAcabado(lista.acabado());
+                posts.save(creada);
+            }
 
             marcar(asset, EtapaAgente.PROPUESTA, motivo);
             return true;
@@ -1265,7 +1269,32 @@ public class AgenteService {
     }
 
     /** La foto lista para publicar, lo que se decidió al final y cada paso en palabras. */
-    record FotoLista(String url, DecisorDelAgente.Decision decision, List<String> pasos, boolean conLogo) {
+    record FotoLista(String url, DecisorDelAgente.Decision decision, List<String> pasos, boolean conLogo,
+            String acabado) {
+    }
+
+    /** Cuánto prefiere la cuenta las fotos sin adornos: sube al descartarlos, baja al aprobarlos. */
+    static int ajusteDeAcabado(Workspace w) {
+        return w.getAgenteAjusteAcabado() == null ? 0 : w.getAgenteAjusteAcabado();
+    }
+
+    /** Un acabado con adorno (franja o marco): de lo que se aprende. */
+    private static boolean conAdorno(Post p) {
+        return "FRANJA".equals(p.getAgenteAcabado()) || "MARCO".equals(p.getAgenteAcabado());
+    }
+
+    /** Mueve cuánto adorno quiere la cuenta, entre 0 y 2. */
+    private void aprenderAcabado(UUID workspaceId, int paso) {
+        if (workspaceId == null) {
+            return;
+        }
+        workspaces.findById(workspaceId).ifPresent(w -> {
+            int nuevo = Math.max(0, Math.min(2, ajusteDeAcabado(w) + paso));
+            if (nuevo != ajusteDeAcabado(w)) {
+                w.setAgenteAjusteAcabado(nuevo);
+                workspaces.save(w);
+            }
+        });
     }
 
     /**
@@ -1284,6 +1313,12 @@ public class AgenteService {
      */
     FotoLista prepararFoto(MediaAsset asset, Workspace w, RevisorDeMarca.Revision revision,
             DecisorDelAgente.Decision decision, boolean historia, boolean conLogo) {
+        return prepararFoto(asset, w, revision, decision, historia, conLogo, null);
+    }
+
+    /** @param cambio lo que pidió la persona ("sin franja", "con marco"), o nulo */
+    FotoLista prepararFoto(MediaAsset asset, Workspace w, RevisorDeMarca.Revision revision,
+            DecisorDelAgente.Decision decision, boolean historia, boolean conLogo, Cambio cambio) {
         com.metricol.api.service.agente.foto.DirectorDeFoto.Direccion direccion = null;
         boolean fotoTalCual = decision.tratamiento() == DecisorDelAgente.Tratamiento.TAL_CUAL
                 || decision.tratamiento() == DecisorDelAgente.Tratamiento.RETOQUE;
@@ -1327,10 +1362,20 @@ public class AgenteService {
 
         String url = base.getUrl();
         boolean sellada = false;
-        if (direccion != null && (conLogo || direccion.diseno())) {
+        DecisorDelAgente.Acabado vestido = direccion == null ? null
+                : DecisorDelAgente.acabado(direccion.estilo(), ajusteDeAcabado(w),
+                        cambio == null ? null : cambio.acabado());
+        if (direccion != null && (conLogo || direccion.diseno() || !"LIMPIO".equals(vestido.estilo()))) {
             // El acabado de diseñador: encuadre, estilo (limpio, franja o marco) y logo sin fondo.
+            String estilo = vestido.estilo();
+            if ("FRANJA".equals(estilo) && direccion.rotulo().isBlank()) {
+                estilo = "MARCO";
+            }
+            if (vestido.paso() != null) {
+                pasos.add(vestido.paso());
+            }
             String acabada = logo.acabar(base, w.getLogoUrl(), w.getId(),
-                    new com.metricol.api.service.campaign.LogoSobreFoto.Acabado(direccion.estilo(),
+                    new com.metricol.api.service.campaign.LogoSobreFoto.Acabado(estilo,
                             direccion.logoZona(), direccion.logoTamano().ancho, direccion.encuadre(),
                             direccion.rotulo(), w.getName(), historia),
                     conLogo);
@@ -1341,7 +1386,7 @@ public class AgenteService {
                     pasos.add("La encuadré para que el trabajo luzca.");
                 }
                 if (sellada) {
-                    pasos.add(switch (historia ? "LIMPIO" : direccion.estilo()) {
+                    pasos.add(switch (historia ? "LIMPIO" : estilo) {
                         case "FRANJA" -> "La vestí con una franja de tu marca: «" + direccion.rotulo() + "».";
                         case "MARCO" -> "Le puse un marco con el color de tu marca y tu logo "
                                 + dondeVa(direccion.logoZona()) + ".";
@@ -1349,7 +1394,7 @@ public class AgenteService {
                                 + ", donde no tapa lo importante.";
                     });
                 }
-                return new FotoLista(url, decision, pasos, sellada);
+                return new FotoLista(url, decision, pasos, sellada, historia && "FRANJA".equals(estilo) ? "LIMPIO" : estilo);
             }
         }
         if (conLogo) {
@@ -1366,7 +1411,7 @@ public class AgenteService {
                 pasos.add(w.getLogoUrl() == null ? "No hay un logo guardado en tu marca." : "El logo no se pudo pegar.");
             }
         }
-        return new FotoLista(url, decision, pasos, sellada);
+        return new FotoLista(url, decision, pasos, sellada, null);
     }
 
     private static String dondeVa(String zona) {
@@ -1740,6 +1785,9 @@ public class AgenteService {
         if (DecisorDelAgente.Tratamiento.DISENO.name().equals(post.getAgenteTratamiento())) {
             aprender(workspaceId, -1);
         }
+        if (conAdorno(post)) {
+            aprenderAcabado(workspaceId, -1);
+        }
         return hecho;
     }
 
@@ -1809,6 +1857,9 @@ public class AgenteService {
         UUID workspaceId = post.getTenantId() == null ? null : UUID.fromString(post.getTenantId());
         if (DecisorDelAgente.Tratamiento.DISENO.name().equals(post.getAgenteTratamiento())) {
             aprender(workspaceId, +1);
+        }
+        if (conAdorno(post)) {
+            aprenderAcabado(workspaceId, +1);
         }
         // Quedó un hueco: lo que venía después se adelanta.
         if (workspaceId != null) {
@@ -1923,6 +1974,10 @@ public class AgenteService {
             throw new IllegalArgumentException("Escribe qué le cambiamos.");
         }
         Post post = propuestaPendiente(postId);
+        if ("LIMPIO".equals(cambio.acabado()) && conAdorno(post)) {
+            // Pidió quitar la franja o el marco: la próxima vez, menos adorno.
+            aprenderAcabado(workspaceId, +1);
+        }
         if (post.getAgenteFotosUrls() != null && !post.getAgenteFotosUrls().isBlank()) {
             return cambiarCarrusel(post, texto, workspaceId);
         }

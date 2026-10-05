@@ -327,6 +327,10 @@ public class Post {
     @Column(length = 20)
     private String agenteTratamiento;
 
+    /** Cómo se vistió la foto: LIMPIO, FRANJA o MARCO; nulo si no pasó por el acabado. */
+    @Column(length = 10)
+    private String agenteAcabado;
+
     /**
      * Qué generación de diseño es: las versiones de un mismo diseño (una por
      * proporción) comparten este id. Son UNA publicación para la persona: se

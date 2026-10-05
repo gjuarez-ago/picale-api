@@ -194,6 +194,13 @@ public class Workspace {
      */
     private Integer agenteAjusteDiseno;
 
+    /**
+     * Cuánto prefiere la cuenta las fotos sin adornos (franja, marco), de 0 a
+     * 2: sube al descartar o pedir quitar un acabado, baja al aprobarlo.
+     * Nulo = 0. Ver {@code DecisorDelAgente.acabado}.
+     */
+    private Integer agenteAjusteAcabado;
+
     /** El último aviso al teléfono de "tengo publicaciones listas": entre uno y otro pasa al menos una hora. */
     private java.time.LocalDateTime agenteUltimoAviso;
 

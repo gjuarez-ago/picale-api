@@ -90,4 +90,26 @@ class DecisorConDireccionTest {
         // Sin perfil todavía: la lista de siempre.
         assertThat(DecisorDelAgente.conLogo("OBRA", null)).isTrue();
     }
+
+    @Test
+    @DisplayName("acabado: lo que pida la persona manda; si en su cuenta no gustan los adornos, va limpia")
+    void acabadoAprendido() {
+        assertThat(DecisorDelAgente.acabado("FRANJA", 0, null).estilo()).isEqualTo("FRANJA");
+        assertThat(DecisorDelAgente.acabado("MARCO", 1, null).estilo()).isEqualTo("LIMPIO");
+        assertThat(DecisorDelAgente.acabado("FRANJA", 1, null).estilo()).isEqualTo("FRANJA");
+        assertThat(DecisorDelAgente.acabado("FRANJA", 2, null).estilo()).isEqualTo("LIMPIO");
+        assertThat(DecisorDelAgente.acabado("FRANJA", 2, null).paso()).contains("sin adornos");
+        assertThat(DecisorDelAgente.acabado("LIMPIO", 2, "MARCO").estilo()).isEqualTo("MARCO");
+        assertThat(DecisorDelAgente.acabado("FRANJA", 0, "LIMPIO").paso()).contains("Me pediste sin adornos");
+    }
+
+    @Test
+    @DisplayName("las frases de acabado se reconocen sin importar acentos ni mayúsculas")
+    void frasesDeAcabado() {
+        assertThat(Cambio.de("Quítale la franja por favor").acabado()).isEqualTo("LIMPIO");
+        assertThat(Cambio.de("más sencilla").acabado()).isEqualTo("LIMPIO");
+        assertThat(Cambio.de("ponle un marco").acabado()).isEqualTo("MARCO");
+        assertThat(Cambio.de("Con franja").acabado()).isEqualTo("FRANJA");
+        assertThat(Cambio.de("cambia el texto").acabado()).isNull();
+    }
 }

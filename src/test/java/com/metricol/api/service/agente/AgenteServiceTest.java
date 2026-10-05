@@ -485,6 +485,39 @@ class AgenteServiceTest {
     }
 
     @Test
+    @DisplayName("acabado: si descarta la franja, la cuenta aprende; dos veces y ya no las pone")
+    void aprendeElAcabado() {
+        enElWorkspace(() -> {
+            conInstagram();
+            agente.encender(ws.getId(), true);
+            when(revisor.revisar(anyString(), any(), anyBoolean())).thenReturn(new RevisorDeMarca.Revision(
+                    RevisorDeMarca.Veredicto.VA, "es tu obra", "Una obra", "Presumir la obra", "PRODUCTO"));
+            when(directorDeFoto.dirigir(anyString(), any(), any())).thenReturn(
+                    new com.metricol.api.service.agente.foto.DirectorDeFoto.Direccion(false, List.of(), "", List.of(),
+                            "BOTTOM_LEFT", com.metricol.api.service.agente.foto.DirectorDeFoto.TamanoLogo.MEDIANO, "",
+                            List.of(), null, "FRANJA", "Obra terminada"));
+            when(logo.acabar(any(), any(), any(), any(), anyBoolean()))
+                    .thenAnswer(i -> "https://cdn.test/acabada-" + ((MediaAsset) i.getArgument(0)).getFileName());
+
+            for (int vez = 1; vez <= 2; vez++) {
+                foto("obra-" + vez + ".jpg");
+                agente.vuelta(ws.getId());
+                Post p = posts.propuestasDelAgente().get(0);
+                assertThat(p.getAgenteAcabado()).isEqualTo("FRANJA");
+                agente.descartar(p.getId());
+            }
+            assertThat(workspaces.findById(ws.getId())).get()
+                    .extracting(Workspace::getAgenteAjusteAcabado).isEqualTo(2);
+
+            foto("obra-3.jpg");
+            agente.vuelta(ws.getId());
+            Post tercera = posts.propuestasDelAgente().get(0);
+            assertThat(tercera.getAgenteAcabado()).isEqualTo("LIMPIO");
+            assertThat(tercera.getAgenteMotivo()).contains("prefieres las fotos sin adornos");
+        });
+    }
+
+    @Test
     @DisplayName("si la IA dice que lleva logo, se publica la copia sellada y la original sigue siendo la que cuenta")
     void conLogo() {
         enElWorkspace(() -> {

@@ -14,8 +14,13 @@ import java.util.Locale;
  * @param texto  lo que escribió, tal cual
  * @param logo   {@code true} = con logo, {@code false} = sin, {@code null} = como decida el agente
  * @param diseno {@code true} = con diseño, {@code false} = tal cual, {@code null} = como decida el agente
+ * @param acabado LIMPIO, FRANJA o MARCO si lo pidió; {@code null} = como decida el agente
  */
-public record Cambio(String texto, Boolean logo, Boolean diseno) {
+public record Cambio(String texto, Boolean logo, Boolean diseno, String acabado) {
+
+    public Cambio(String texto, Boolean logo, Boolean diseno) {
+        this(texto, logo, diseno, null);
+    }
 
     public static Cambio de(String texto) {
         String t = texto == null ? "" : texto.strip();
@@ -32,7 +37,16 @@ public record Cambio(String texto, Boolean logo, Boolean diseno) {
         } else if (contiene(n, "disenala", "disenalo", "hazle diseno", "con diseno", "haz un diseno", "disena")) {
             diseno = true;
         }
-        return new Cambio(t, logo, diseno);
+        String acabado = null;
+        if (contiene(n, "sin franja", "quita la franja", "quitale la franja", "sin marco", "quita el marco",
+                "quitale el marco", "sin adornos", "mas sencilla", "mas limpia", "sin nada encima")) {
+            acabado = "LIMPIO";
+        } else if (contiene(n, "con franja", "ponle franja", "ponle una franja", "pon una franja")) {
+            acabado = "FRANJA";
+        } else if (contiene(n, "con marco", "ponle marco", "ponle un marco", "pon un marco", "enmarcala")) {
+            acabado = "MARCO";
+        }
+        return new Cambio(t, logo, diseno, acabado);
     }
 
     public boolean vacio() {
