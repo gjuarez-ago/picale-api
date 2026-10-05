@@ -73,7 +73,8 @@ public class MejoraDeFoto {
             ALLOWED REMOVALS, if any; anything else gone is not faithful.
 
             Answer ONLY a JSON object:
-            {"fiel": true | false, "cambios": "if not faithful, what changed, in Spanish, one short sentence"}
+            {"fiel": true | false, "cambios": "if not faithful, what changed, in Spanish, one short sentence",
+             "mejor": true | false, "porque": "if not better, why, in Spanish, one short sentence"}
 
             fiel is false if image 2:
             - adds, removes, moves, duplicates or replaces any object, person,
@@ -85,6 +86,13 @@ public class MejoraDeFoto {
             - changes a face or a body;
             - looks artificial: CGI, painterly, plastic, over-processed HDR.
             Otherwise fiel is true. Be strict about content, relaxed about light.
+
+            mejor: judge it like an art director. true only if image 2 looks
+            clearly more professional than image 1 AND has no traces of the
+            edit: no smudge, blur patch, ghost or repeated texture where
+            something was removed, no halos, no plastic surfaces, no lost
+            detail, no color that looks off. If the gain is marginal, or it
+            looks worse in any area, mejor is false.
             """;
 
     private final R2StorageService storage;
@@ -121,8 +129,16 @@ public class MejoraDeFoto {
         return (int) Math.max(0, props.getEnhancePerDay() - hechas);
     }
 
-    /** Lo que salió: la copia mejorada, o por qué no. */
-    public record Mejorada(MediaAsset asset, String noSalio) {
+    /**
+     * Lo que salió: la copia mejorada, o por qué no.
+     *
+     * @param noMejoraba la mejora era fiel pero no se veía mejor: la original ya estaba bien
+     */
+    public record Mejorada(MediaAsset asset, String noSalio, boolean noMejoraba) {
+
+        public Mejorada(MediaAsset asset, String noSalio) {
+            this(asset, noSalio, false);
+        }
 
         public boolean salio() {
             return asset != null;
@@ -166,10 +182,15 @@ public class MejoraDeFoto {
             }
             BufferedImage despues = alMismoFormato(generada, antes.getWidth(), antes.getHeight());
 
-            String cambio = cambioInventado(antes, despues, direccion.quitar());
-            if (cambio != null) {
-                log.info("Mejora de {} descartada por no ser fiel: {}", foto.getId(), cambio);
-                return new Mejorada(null, "La mejora cambiaba la foto (" + cambio + "); la dejé real.");
+            Juicio juicio = juzgar(antes, despues, direccion.quitar());
+            if (!juicio.fiel()) {
+                log.info("Mejora de {} descartada por no ser fiel: {}", foto.getId(), juicio.motivo());
+                return new Mejorada(null, "La mejora cambiaba la foto (" + juicio.motivo() + "); la dejé real.");
+            }
+            if (!juicio.mejor()) {
+                log.info("Mejora de {} descartada por no verse mejor: {}", foto.getId(), juicio.motivo());
+                return new Mejorada(null, "Comparé la mejora con tu foto y no ganaba nada ("
+                        + juicio.motivo() + "): va la original.", true);
             }
 
             byte[] jpeg = aJpeg(despues, 0.93f);
@@ -271,34 +292,54 @@ public class MejoraDeFoto {
         return salida;
     }
 
+    /** Lo que dijo la revisión: si es la misma foto, si se ve mejor, y por qué no. */
+    record Juicio(boolean fiel, boolean mejor, String motivo) {
+    }
+
     /**
-     * Qué inventó la mejora, o {@code null} si es fiel. Si no se puede
-     * comparar, se descarta: sin la comparación no hay garantía de realismo.
+     * Compara la mejorada con la original: que sea fiel (nada inventado) y que
+     * se vea mejor, sin rastros. Si no se puede comparar, no pasa: sin la
+     * comparación no hay garantía.
      */
-    String cambioInventado(BufferedImage antes, BufferedImage despues, List<String> permitidoQuitar) {
+    Juicio juzgar(BufferedImage antes, BufferedImage despues, List<String> permitidoQuitar) {
         try {
-            String modelo = props.getDirectorModel();
-            String respuesta = vision.mirar(AiOperacion.AGENTE_VERIFICAR_FOTO, modelo, "low", VERIFICAR,
-                    "Image 1 is the original, image 2 the retouch. Is image 2 faithful?"
+            String respuesta = vision.mirar(AiOperacion.AGENTE_VERIFICAR_FOTO, props.getDirectorModel(), "low",
+                    VERIFICAR,
+                    "Image 1 is the original, image 2 the retouch. Is image 2 faithful, and is it better?"
                             + (permitidoQuitar.isEmpty() ? ""
                                     : "\nALLOWED REMOVALS (these may be gone, nothing else): "
                                             + String.join("; ", permitidoQuitar)),
                     List.of(comoDato(antes), comoDato(despues)), "high", props.getDirectorPricing());
-            int inicio = respuesta.indexOf('{');
-            int fin = respuesta.lastIndexOf('}');
-            if (inicio < 0 || fin <= inicio) {
-                return "no se pudo comparar";
-            }
-            JsonNode n = mapper.readTree(respuesta.substring(inicio, fin + 1));
-            if (n.path("fiel").asBoolean(false)) {
-                return null;
-            }
-            String cambios = n.path("cambios").asText("").strip();
-            return cambios.isBlank() ? "cambió el contenido" : cambios.replaceAll("[.\\s]+$", "");
+            return leerJuicio(respuesta);
         } catch (Exception ex) {
             log.warn("No se pudo comparar la mejora: {}", ex.toString());
-            return "no se pudo comparar";
+            return new Juicio(false, false, "no se pudo comparar");
         }
+    }
+
+    Juicio leerJuicio(String respuesta) throws Exception {
+        int inicio = respuesta == null ? -1 : respuesta.indexOf('{');
+        int fin = respuesta == null ? -1 : respuesta.lastIndexOf('}');
+        if (inicio < 0 || fin <= inicio) {
+            return new Juicio(false, false, "no se pudo comparar");
+        }
+        JsonNode n = mapper.readTree(respuesta.substring(inicio, fin + 1));
+        if (!n.path("fiel").asBoolean(false)) {
+            return new Juicio(false, false, frase(n.path("cambios").asText(""), "cambió el contenido"));
+        }
+        // Si no lo dice, no se presume: una mejora tiene que demostrar que gana.
+        if (!n.path("mejor").asBoolean(false)) {
+            return new Juicio(true, false, frase(n.path("porque").asText(""), "la diferencia era mínima"));
+        }
+        return new Juicio(true, true, "");
+    }
+
+    private static String frase(String texto, String siVacio) {
+        String t = texto == null ? "" : texto.strip().replaceAll("[.\\s]+$", "");
+        if (t.isEmpty()) {
+            return siVacio;
+        }
+        return Character.toLowerCase(t.charAt(0)) + t.substring(1);
     }
 
     private static String comoDato(BufferedImage imagen) {

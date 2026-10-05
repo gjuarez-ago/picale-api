@@ -1307,8 +1307,10 @@ public class AgenteService {
                 }
             } else {
                 pasos.add(mejorada == null || mejorada.noSalio() == null ? "La mejora no salió." : mejorada.noSalio());
-                decision = new DecisorDelAgente.Decision(DecisorDelAgente.Tratamiento.RETOQUE, decision.logo(),
-                        decision.prioridad(), decision.pasos());
+                // Si era fiel pero no ganaba, la original ya está bien: ni el retoque sencillo.
+                boolean yaEstabaBien = mejorada != null && mejorada.noMejoraba();
+                decision = new DecisorDelAgente.Decision(yaEstabaBien ? DecisorDelAgente.Tratamiento.TAL_CUAL
+                        : DecisorDelAgente.Tratamiento.RETOQUE, decision.logo(), decision.prioridad(), decision.pasos());
             }
         }
         if (decision.tratamiento() == DecisorDelAgente.Tratamiento.RETOQUE && base == asset) {

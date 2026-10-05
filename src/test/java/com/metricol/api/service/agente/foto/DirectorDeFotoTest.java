@@ -98,4 +98,26 @@ class DirectorDeFotoTest {
         assertThat(sinRotulo.encuadre()).isNull();
         assertThat(sinRotulo.diseno()).isFalse();
     }
+
+    @Test
+    @DisplayName("la revisión de la mejora: fiel no basta, tiene que verse mejor y sin rastros")
+    void juicio() throws Exception {
+        MejoraDeFoto m = new MejoraDeFoto(null, null, null, null, null, null, null, null);
+        MejoraDeFoto.Juicio bueno = m.leerJuicio("{\"fiel\": true, \"mejor\": true}");
+        assertThat(bueno.fiel()).isTrue();
+        assertThat(bueno.mejor()).isTrue();
+
+        MejoraDeFoto.Juicio conRastro = m.leerJuicio(
+                "{\"fiel\": true, \"mejor\": false, \"porque\": \"Quedó una mancha donde estaba la cinta.\"}");
+        assertThat(conRastro.fiel()).isTrue();
+        assertThat(conRastro.mejor()).isFalse();
+        assertThat(conRastro.motivo()).isEqualTo("quedó una mancha donde estaba la cinta");
+
+        // Si no dice que se ve mejor, no se presume.
+        assertThat(m.leerJuicio("{\"fiel\": true}").mejor()).isFalse();
+        MejoraDeFoto.Juicio inventada = m.leerJuicio("{\"fiel\": false, \"cambios\": \"Agregó una piedra\"}");
+        assertThat(inventada.fiel()).isFalse();
+        assertThat(inventada.motivo()).isEqualTo("agregó una piedra");
+        assertThat(m.leerJuicio("sin json").fiel()).isFalse();
+    }
 }
