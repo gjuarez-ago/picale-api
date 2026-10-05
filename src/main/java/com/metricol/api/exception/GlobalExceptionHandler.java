@@ -29,9 +29,38 @@ public class GlobalExceptionHandler {
     }
 
     @ExceptionHandler(IllegalArgumentException.class)
-    public ResponseEntity<ApiResponse<Void>> handleIllegalArgument(IllegalArgumentException ex) {
+    public ResponseEntity<ApiResponse<Void>> handleIllegalArgument(IllegalArgumentException ex,
+            jakarta.servlet.http.HttpServletRequest request) {
+        if (!esNuestro(ex)) {
+            return interno(HttpStatus.BAD_REQUEST, "VALIDATION_ERROR", ex, request);
+        }
         log.warn(ex.getMessage());
         return ResponseEntity.badRequest().body(ApiResponse.error("VALIDATION_ERROR", ex.getMessage()));
+    }
+
+    /**
+     * ¿La lanzó el código de Pícale, con un mensaje escrito para la persona?
+     *
+     * <p>Las {@code IllegalArgumentException} e {@code IllegalStateException}
+     * se usan en todo el código para decir "eso no se puede" en español, y su
+     * mensaje se muestra tal cual. Pero Java y las librerías lanzan las mismas
+     * clases por fallas internas ("Collection is empty", de un
+     * {@code EnumSet.copyOf} con un conjunto vacío, 5 oct 2026): esas no son
+     * culpa de quien usa la app, su mensaje no se le enseña, y tienen que
+     * quedar en el log como error, con la ruta y la pila, para arreglarlas.
+     */
+    static boolean esNuestro(Throwable ex) {
+        StackTraceElement[] pila = ex.getStackTrace();
+        return pila.length > 0 && pila[0].getClassName().startsWith("com.metricol.");
+    }
+
+    /** Una falla interna: mensaje claro para la persona, y el detalle completo para arreglarla. */
+    private ResponseEntity<ApiResponse<Void>> interno(HttpStatus status, String codigo, Exception ex,
+            jakarta.servlet.http.HttpServletRequest request) {
+        log.error("Falla interna en {} {} ({}): {}", request.getMethod(), request.getRequestURI(),
+                ex.getClass().getSimpleName(), ex.getMessage(), ex);
+        return ResponseEntity.status(status).body(ApiResponse.error(codigo,
+                "No pudimos completar esto por un error de nuestro lado. Intenta de nuevo; si sigue, escríbenos."));
     }
 
     @ExceptionHandler({ MethodArgumentNotValidException.class, ConstraintViolationException.class })
@@ -117,7 +146,11 @@ public class GlobalExceptionHandler {
     }
 
     @ExceptionHandler(IllegalStateException.class)
-    public ResponseEntity<ApiResponse<Void>> handleConflict(IllegalStateException ex) {
+    public ResponseEntity<ApiResponse<Void>> handleConflict(IllegalStateException ex,
+            jakarta.servlet.http.HttpServletRequest request) {
+        if (!esNuestro(ex)) {
+            return interno(HttpStatus.INTERNAL_SERVER_ERROR, "INTERNAL_ERROR", ex, request);
+        }
         log.warn(ex.getMessage());
         return ResponseEntity.status(HttpStatus.CONFLICT).body(ApiResponse.error("CONFLICT", ex.getMessage()));
     }
@@ -130,8 +163,8 @@ public class GlobalExceptionHandler {
     }
 
     @ExceptionHandler(Exception.class)
-    public ResponseEntity<ApiResponse<Void>> handleGeneric(Exception ex) {
-        log.error("Unhandled exception", ex);
+    public ResponseEntity<ApiResponse<Void>> handleGeneric(Exception ex, jakarta.servlet.http.HttpServletRequest request) {
+        log.error("Falla no controlada en {} {}", request.getMethod(), request.getRequestURI(), ex);
         return ResponseEntity.internalServerError()
                 .body(ApiResponse.error("INTERNAL_ERROR", "Ocurrió un error inesperado. Intenta de nuevo."));
     }

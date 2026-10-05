@@ -34,8 +34,17 @@ services:
       # SOLO en la VM, en ./secretos (fuera del repo y del tar). Si falta el
       # archivo, los avisos se apagan solos y todo lo demas sigue igual.
       APP_PUSH_CREDENCIALES: ${APP_PUSH_CREDENCIALES:-}
+      # El log tambien a disco, fuera del contenedor: `docker logs` se pierde
+      # en cada despliegue y asi no habia forma de revisar un error de ayer
+      # (el de la invitacion, 5 oct 2026). Rota por dia, 30 dias, tope 1 GB.
+      LOGGING_FILE_NAME: /app/logs/metricol.log
+      LOGGING_LOGBACK_ROLLINGPOLICY_FILE_NAME_PATTERN: /app/logs/metricol-%d{yyyy-MM-dd}.%i.log.gz
+      LOGGING_LOGBACK_ROLLINGPOLICY_MAX_FILE_SIZE: 50MB
+      LOGGING_LOGBACK_ROLLINGPOLICY_MAX_HISTORY: 30
+      LOGGING_LOGBACK_ROLLINGPOLICY_TOTAL_SIZE_CAP: 1GB
     volumes:
       - ./secretos:/app/secretos:ro
+      - ./logs:/app/logs
     ports:
       - "127.0.0.1:${APP_PORT:-18085}:8080"
     healthcheck:
