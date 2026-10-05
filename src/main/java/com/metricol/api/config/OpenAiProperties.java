@@ -55,6 +55,21 @@ public class OpenAiProperties {
      */
     private String transcriptionModel = "gpt-4o-mini-transcribe";
 
+    /**
+     * El director de foto del agente: mira cada foto en alta resolución y
+     * escribe la mejora a su medida. Vacío = el mismo del director de arte.
+     */
+    private String photoDirectorModel = "";
+
+    /** Cuánto razona el director de foto. Corre en segundo plano: puede pensar más. */
+    private String photoDirectorReasoningEffort = "medium";
+
+    /** Calidad de la mejora de fotos ({@code low}, {@code medium}, {@code high}). */
+    private String imageEnhanceQuality = "high";
+
+    /** Cuántas fotos mejora con IA el agente al día por espacio. 0 = apagado. */
+    private int enhancePerDay = 20;
+
     /** Segundos que se le espera al director antes de seguir sin él. */
     private int directorTimeoutSeconds = 25;
 

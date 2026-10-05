@@ -103,6 +103,13 @@ class AgenteServiceTest {
     @MockitoBean
     private com.metricol.api.service.media.RetoqueDeFoto retoque;
 
+    /** Sin director (nulo) ni mejoras: cada foto sigue el camino de siempre. */
+    @MockitoBean
+    private com.metricol.api.service.agente.foto.DirectorDeFoto directorDeFoto;
+
+    @MockitoBean
+    private com.metricol.api.service.agente.foto.MejoraDeFoto mejoraDeFoto;
+
     @MockitoBean
     private com.metricol.api.service.media.MedidorDeVideo medidor;
 

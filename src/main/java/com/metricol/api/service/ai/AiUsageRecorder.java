@@ -74,6 +74,13 @@ public class AiUsageRecorder {
         guardar(AiOperacion.GENERAR_IMAGEN, modelo, tokensEntrada, tokensSalida, props.getImagePricing());
     }
 
+    /** Una llamada de cualquier operación, con el precio que le toca a su modelo. */
+    @Transactional(propagation = Propagation.REQUIRES_NEW)
+    public void registrar(AiOperacion operacion, String modelo, int tokensEntrada, int tokensSalida,
+            OpenAiProperties.Pricing precio) {
+        guardar(operacion, modelo, tokensEntrada, tokensSalida, precio == null ? props.getPricing() : precio);
+    }
+
     /** El director de arte, con el precio de su modelo (no el del texto). */
     @Transactional(propagation = Propagation.REQUIRES_NEW)
     public void registrarDirector(String modelo, int tokensEntrada, int tokensSalida) {

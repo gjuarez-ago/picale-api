@@ -112,6 +112,8 @@ public class AgenteService {
     private final CampaignImageService generador;
     private final CreditService creditos;
     private final RetoqueDeFoto retoque;
+    private final com.metricol.api.service.agente.foto.DirectorDeFoto director;
+    private final com.metricol.api.service.agente.foto.MejoraDeFoto mejora;
     private final MedidorDeVideo medidor;
     /** Quien mira y escucha los videos. Ver {@code agente/video/}. */
     private final AnalistaDeVideo analista;
@@ -170,7 +172,11 @@ public class AgenteService {
             EditorDeVideo editor, CuentaAparte otraCuenta,
             com.metricol.api.service.metricas.LoQueFunciona loQueFunciona, OrganizadorDeContenido organizador,
             com.metricol.api.service.avisos.AvisosPush avisos,
-            com.metricol.api.service.social.ConexionesCaducadas conexiones) {
+            com.metricol.api.service.social.ConexionesCaducadas conexiones,
+            com.metricol.api.service.agente.foto.DirectorDeFoto director,
+            com.metricol.api.service.agente.foto.MejoraDeFoto mejora) {
+        this.director = director;
+        this.mejora = mejora;
         this.avisos = avisos;
         this.conexiones = conexiones;
         this.organizador = organizador;
@@ -690,6 +696,7 @@ public class AgenteService {
         List<String> urls = new ArrayList<>();
         List<String> pasos = new ArrayList<>();
         int retocadas = 0;
+        int mejoradas = 0;
         boolean conLogo = false;
         for (EnTanda f : fotos) {
             // Cero diseños disponibles: en un carrusel no se diseña, se cuida la foto.
@@ -699,24 +706,15 @@ public class AgenteService {
                 marcar(f.asset(), EtapaAgente.OBSERVACION, d.explicacion());
                 continue;
             }
-            MediaAsset base = f.asset();
-            if (d.tratamiento() == DecisorDelAgente.Tratamiento.RETOQUE) {
-                MediaAsset retocada = retoque.retocar(f.asset(), w.getId());
-                if (retocada != null) {
-                    base = retocada;
-                    retocadas++;
-                }
+            FotoLista lista = prepararFoto(f.asset(), w, f.revision(), d, false, urls.isEmpty() && d.logo());
+            if (lista.decision().tratamiento() == DecisorDelAgente.Tratamiento.MEJORA) {
+                mejoradas++;
+            } else if (lista.decision().tratamiento() == DecisorDelAgente.Tratamiento.RETOQUE) {
+                retocadas++;
             }
-            String url = base.getUrl();
-            if (urls.isEmpty() && d.logo()) {
-                String sellada = logo.sellar(base, w.getLogoUrl(), w.getId());
-                if (sellada != null) {
-                    url = sellada;
-                    conLogo = true;
-                }
-            }
+            conLogo |= lista.conLogo();
             quedan.add(f);
-            urls.add(url);
+            urls.add(lista.url());
         }
         if (quedan.size() < 2) {
             boolean alguna = false;
@@ -724,6 +722,10 @@ public class AgenteService {
                 alguna |= proponerFoto(f.asset(), w, destino, f.revision(), f.forzada(), null, false);
             }
             return alguna;
+        }
+        if (mejoradas > 0) {
+            pasos.add(mejoradas == 1 ? "Mejoré una foto con IA, cuidando que se vea real."
+                    : "Mejoré " + mejoradas + " fotos con IA, cuidando que se vean reales.");
         }
         if (retocadas > 0) {
             pasos.add(retocadas == 1 ? "Retoqué una foto." : "Retoqué " + retocadas + " fotos.");
@@ -863,27 +865,12 @@ public class AgenteService {
             CalendarioDelAgente.Hueco hueco = historia ? huecoDeHistoria(w) : hueco(w, categoria(revision.diagnostico()));
             LocalDateTime fecha = hueco.cuando();
 
-            // Retoque y logo sobre copias: la original no se toca. Lo que no se
-            // pueda (ffmpeg, un logo ilegible) se salta sin perder la propuesta.
-            MediaAsset base = asset;
-            List<String> pasos = new ArrayList<>(decision.pasos());
-            if (decision.tratamiento() == DecisorDelAgente.Tratamiento.RETOQUE) {
-                MediaAsset retocada = retoque.retocar(asset, w.getId());
-                if (retocada != null) {
-                    base = retocada;
-                } else {
-                    pasos.add("El retoque no salió; va como vino.");
-                }
-            }
-            String publicar = base.getUrl();
-            if (decision.logo()) {
-                String sellada = logo.sellar(base, w.getLogoUrl(), w.getId());
-                if (sellada != null) {
-                    publicar = sellada;
-                } else {
-                    pasos.add(w.getLogoUrl() == null ? "No hay un logo guardado en tu marca." : "El logo no se pudo pegar.");
-                }
-            }
+            // Mejora, retoque y logo sobre copias: la original no se toca. Lo que
+            // no se pueda (la IA, ffmpeg, un logo ilegible) se salta sin perder la propuesta.
+            FotoLista lista = prepararFoto(asset, w, revision, decision, historia, decision.logo());
+            decision = lista.decision();
+            List<String> pasos = lista.pasos();
+            String publicar = lista.url();
 
             PostSaveRequest pedido = new PostSaveRequest();
             pedido.setCaption(texto(borrador));
@@ -1253,6 +1240,92 @@ public class AgenteService {
                 case COMUNIDAD, CONFIANZA -> CalendarioDelAgente.Categoria.COMUNIDAD;
                 default -> CalendarioDelAgente.Categoria.DIA_A_DIA;
             };
+        };
+    }
+
+    /** La foto lista para publicar, lo que se decidió al final y cada paso en palabras. */
+    record FotoLista(String url, DecisorDelAgente.Decision decision, List<String> pasos, boolean conLogo) {
+    }
+
+    /**
+     * Del original a lo que se publica, como lo haría un fotógrafo con su
+     * diseñador:
+     * <ol>
+     * <li>El director de foto la mira en alta resolución: si un retoque fiel
+     * la vuelve profesional, escribe la mejora a su medida, y dice dónde y de
+     * qué tamaño va el logo.</li>
+     * <li>La mejora sale con IA y se compara con la original; si inventó
+     * algo, se tira y va el retoque sencillo.</li>
+     * <li>El logo va donde dijo el director, sin placa si se lee directo.</li>
+     * </ol>
+     * Sin director (sin IA, o falló), todo sigue como antes: retoque fijo y
+     * logo abajo a la derecha.
+     */
+    FotoLista prepararFoto(MediaAsset asset, Workspace w, RevisorDeMarca.Revision revision,
+            DecisorDelAgente.Decision decision, boolean historia, boolean conLogo) {
+        com.metricol.api.service.agente.foto.DirectorDeFoto.Direccion direccion = null;
+        boolean fotoTalCual = decision.tratamiento() == DecisorDelAgente.Tratamiento.TAL_CUAL
+                || decision.tratamiento() == DecisorDelAgente.Tratamiento.RETOQUE;
+        if (fotoTalCual && !revision.diagnostico().esArte()) {
+            direccion = director.dirigir(asset.getUrl(), negocio(w), revision.descripcion());
+        }
+        if (direccion != null) {
+            decision = DecisorDelAgente.conDireccion(decision, direccion.mejorar(), direccion.deficienciasEnFrase(),
+                    direccion.mejorar() && mejora.quedanHoy(w.getId()) > 0);
+        }
+        List<String> pasos = new ArrayList<>(decision.pasos());
+
+        MediaAsset base = asset;
+        if (decision.tratamiento() == DecisorDelAgente.Tratamiento.MEJORA) {
+            com.metricol.api.service.agente.foto.MejoraDeFoto.Mejorada mejorada =
+                    mejora.mejorar(asset, w.getId(), direccion);
+            if (mejorada != null && mejorada.salio()) {
+                base = mejorada.asset();
+            } else {
+                pasos.add(mejorada == null || mejorada.noSalio() == null ? "La mejora no salió." : mejorada.noSalio());
+                decision = new DecisorDelAgente.Decision(DecisorDelAgente.Tratamiento.RETOQUE, decision.logo(),
+                        decision.prioridad(), decision.pasos());
+            }
+        }
+        if (decision.tratamiento() == DecisorDelAgente.Tratamiento.RETOQUE && base == asset) {
+            MediaAsset retocada = retoque.retocar(asset, w.getId());
+            if (retocada != null) {
+                base = retocada;
+                if (direccion != null && direccion.mejorar()) {
+                    pasos.add("Le hice un retoque sencillo de luz y color.");
+                }
+            } else {
+                pasos.add("El retoque no salió; va como vino.");
+            }
+        }
+
+        String url = base.getUrl();
+        boolean sellada = false;
+        if (conLogo) {
+            String conSello = direccion == null ? logo.sellar(base, w.getLogoUrl(), w.getId())
+                    : logo.sellar(base, w.getLogoUrl(), w.getId(), direccion.logoZona(),
+                            direccion.logoTamano().ancho, historia);
+            if (conSello != null) {
+                url = conSello;
+                sellada = true;
+                if (direccion != null) {
+                    pasos.add("Puse tu logo " + dondeVa(direccion.logoZona()) + ", donde no tapa lo importante.");
+                }
+            } else {
+                pasos.add(w.getLogoUrl() == null ? "No hay un logo guardado en tu marca." : "El logo no se pudo pegar.");
+            }
+        }
+        return new FotoLista(url, decision, pasos, sellada);
+    }
+
+    private static String dondeVa(String zona) {
+        return switch (zona) {
+            case "TOP_LEFT" -> "arriba a la izquierda";
+            case "TOP_CENTER" -> "arriba al centro";
+            case "TOP_RIGHT" -> "arriba a la derecha";
+            case "BOTTOM_LEFT" -> "abajo a la izquierda";
+            case "BOTTOM_CENTER" -> "abajo al centro";
+            default -> "abajo a la derecha";
         };
     }
 

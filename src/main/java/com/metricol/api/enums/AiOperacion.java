@@ -46,5 +46,14 @@ public enum AiOperacion {
     AGENTE_VIDEO,
 
     /** Organizar una tanda de fotos en carruseles, posts e historias (una llamada de texto por tanda). */
-    AGENTE_ORGANIZAR
+    AGENTE_ORGANIZAR,
+
+    /** El director de foto: mira la foto en detalle y escribe cómo mejorarla y dónde va el logo. */
+    AGENTE_DIRIGIR_FOTO,
+
+    /** La mejora de la foto con el modelo de imágenes (fiel a la original). */
+    AGENTE_MEJORAR,
+
+    /** Comparar la foto mejorada con la original: que no se haya inventado nada. */
+    AGENTE_VERIFICAR_FOTO
 }

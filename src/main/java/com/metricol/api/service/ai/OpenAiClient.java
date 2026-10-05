@@ -71,7 +71,7 @@ public class OpenAiClient {
                 .build();
     }
 
-    /** Para transcribir audio: lo mismo, con más paciencia. */
+    /** Para transcribir audio y para mirar con un modelo que razona: lo mismo, con más paciencia. */
     private final RestClient transcripciones;
 
     public String complete(AiOperacion operacion, String systemPrompt, String userPrompt) {
@@ -145,6 +145,90 @@ public class OpenAiClient {
         anotar(operacion, respuesta);
         Object texto = respuesta == null ? null : respuesta.get("text");
         return texto == null ? "" : String.valueOf(texto).strip();
+    }
+
+    /**
+     * Mirar imágenes con un modelo elegido —uno que razona, en alta
+     * resolución— cuando el detalle importa más que el costo: el director de
+     * foto del agente y la revisión de que la foto mejorada sigue siendo la
+     * misma. Contesta JSON.
+     *
+     * <p>Si el proyecto de OpenAI no tiene ese modelo, se usa el de texto de
+     * siempre: mirar con menos detalle es mejor que no mirar.
+     *
+     * @param detalle  {@code high} o {@code low}
+     * @param esfuerzo cuánto razona; vacío = no se manda
+     * @param precio   lo que cobra ese modelo, para el reporte de gasto
+     */
+    @SuppressWarnings("unchecked")
+    public String mirar(AiOperacion operacion, String modelo, String esfuerzo, String systemPrompt,
+            String userPrompt, List<String> imageUrls, String detalle, OpenAiProperties.Pricing precio) {
+        if (!props.isConfigured()) {
+            throw new IllegalStateException("Falta configurar OPENAI_API_KEY.");
+        }
+        List<Map<String, Object>> partes = new ArrayList<>();
+        partes.add(Map.of("type", "text", "text", userPrompt));
+        for (String url : imageUrls) {
+            partes.add(Map.of("type", "image_url", "image_url", Map.of("url", url, "detail", detalle)));
+        }
+        String pedido = modelo == null || modelo.isBlank() ? props.getModel() : modelo.trim();
+        Map<String, Object> respuesta;
+        try {
+            respuesta = transcripciones.post().uri("/chat/completions")
+                    .header("Authorization", "Bearer " + props.getApiKey())
+                    .contentType(MediaType.APPLICATION_JSON)
+                    .body(cuerpoParaMirar(pedido, esfuerzo, systemPrompt, partes))
+                    .retrieve().body(Map.class);
+        } catch (org.springframework.web.client.RestClientResponseException ex) {
+            String cuerpo = ex.getResponseBodyAsString();
+            boolean sinModelo = (ex.getStatusCode().value() == 403 || ex.getStatusCode().value() == 404)
+                    && (cuerpo.contains("model_not_found") || cuerpo.contains("does not have access"));
+            if (!sinModelo || pedido.equals(props.getModel())) {
+                throw ex;
+            }
+            log.warn("Sin acceso a {}: se mira con {}.", pedido, props.getModel());
+            pedido = props.getModel();
+            precio = props.getPricing();
+            respuesta = transcripciones.post().uri("/chat/completions")
+                    .header("Authorization", "Bearer " + props.getApiKey())
+                    .contentType(MediaType.APPLICATION_JSON)
+                    .body(cuerpoParaMirar(pedido, null, systemPrompt, partes))
+                    .retrieve().body(Map.class);
+        }
+        try {
+            Uso uso = Uso.de(respuesta);
+            Object contesto = respuesta == null ? null : respuesta.get("model");
+            usos.registrar(operacion, contesto instanceof String n && !n.isBlank() ? n : pedido,
+                    uso.entrada(), uso.salida(), precio);
+        } catch (Exception ex) {
+            log.warn("No se pudo anotar el uso de IA ({}): {}", operacion, ex.toString());
+        }
+        List<Map<String, Object>> choices = respuesta == null ? null
+                : (List<Map<String, Object>>) respuesta.get("choices");
+        if (choices == null || choices.isEmpty()) {
+            throw new IllegalStateException("OpenAI no devolvió respuesta.");
+        }
+        Map<String, Object> message = (Map<String, Object>) choices.get(0).get("message");
+        Object contenido = message == null ? null : message.get("content");
+        if (contenido == null) {
+            throw new IllegalStateException("OpenAI devolvió una respuesta vacía.");
+        }
+        return String.valueOf(contenido).trim();
+    }
+
+    /** Sin temperature: los modelos que razonan solo aceptan la de fábrica. */
+    private static Map<String, Object> cuerpoParaMirar(String modelo, String esfuerzo, String sistema,
+            List<Map<String, Object>> partes) {
+        Map<String, Object> cuerpo = new LinkedHashMap<>();
+        cuerpo.put("model", modelo);
+        cuerpo.put("messages", List.of(
+                Map.of("role", "system", "content", sistema),
+                Map.of("role", "user", "content", partes)));
+        cuerpo.put("response_format", Map.of("type", "json_object"));
+        if (esfuerzo != null && !esfuerzo.isBlank()) {
+            cuerpo.put("reasoning_effort", esfuerzo.trim());
+        }
+        return cuerpo;
     }
 
     private static List<Map<String, Object>> contenidoDeTexto(String texto) {

@@ -181,6 +181,175 @@ final class SelloDeLogo {
         return new Colocado(aJpeg(salida), posicion);
     }
 
+    /** Lo más alto que puede ser el logo sobre una foto, respecto a su alto. */
+    private static final double ALTO_MAX_FOTO = 0.16;
+
+    /** Diferencia de luz (0-255) entre logo y fondo para que se lea sin placa. */
+    static final double CONTRASTE_MINIMO = 60;
+
+    /** Más oscuro que esto (0-255), el fondo pide la versión clara del logo. */
+    static final double FONDO_OSCURO = 125;
+
+    /** Un píxel del logo más oscuro que esto se vuelve blanco en su versión para fondo oscuro. */
+    private static final double TINTA_OSCURA = 100;
+
+    /** Por encima de esto la zona elegida está llena de detalle: se busca otra. */
+    static final double MUY_OCUPADO = OCUPADO * 3;
+
+    /**
+     * El logo sobre una foto real, como lo pondría un diseñador: en la zona
+     * y del tamaño que eligió el director de foto, y <b>sin placa</b> cuando
+     * el logo es transparente y se puede leer directo sobre la foto.
+     *
+     * <ul>
+     * <li>Se mide la luz del fondo justo donde va. Si contrasta con el logo,
+     * va directo, con una sombra apenas perceptible.</li>
+     * <li>Si el fondo es oscuro y el logo no se leería, va su versión para
+     * fondo oscuro: lo oscuro del logo (letras, contornos) pasa a blanco y los
+     * colores de marca se quedan.</li>
+     * <li>Un fondo claro con un logo claro, o un logo con fondo propio (JPG),
+     * llevan la placa de siempre.</li>
+     * </ul>
+     *
+     * @param zona       dónde lo quiere el director; si ahí hay mucho detalle, se busca otra
+     * @param anchoFoto  ancho del logo respecto al ancho de la foto
+     */
+    static Colocado colocarSobreFoto(byte[] imagen, byte[] logo, Posicion zona, double anchoFoto, boolean historia) {
+        BufferedImage base = leer(imagen, "La foto no se pudo leer.");
+        BufferedImage original = leer(logo, "El logo no se puede leer: usa un archivo JPG o PNG.");
+        if (!conTransparencia(original)) {
+            return colocar(imagen, logo, zona, historia);
+        }
+        Contenido contenido = recortarVacio(original);
+        int ancho = base.getWidth();
+        int alto = base.getHeight();
+        double escala = Math.min(anchoFoto * ancho / contenido.imagen().getWidth(),
+                ALTO_MAX_FOTO * alto / contenido.imagen().getHeight());
+        int logoAncho = Math.max(1, (int) Math.round(contenido.imagen().getWidth() * escala));
+        int logoAlto = Math.max(1, (int) Math.round(contenido.imagen().getHeight() * escala));
+
+        Posicion posicion = zona;
+        if (ocupacion(base, rectangulo(ancho, alto, logoAncho, logoAlto, zona, historia)) > MUY_OCUPADO) {
+            posicion = sitioLimpio(base, logoAncho, logoAlto, zona, historia);
+        }
+        Rectangle sitio = rectangulo(ancho, alto, logoAncho, logoAlto, posicion, historia);
+        double fondo = luzMedia(base, sitio);
+        BufferedImage chico = escalar(contenido.imagen(), logoAncho, logoAlto);
+        double luzLogo = luzDelDibujo(chico);
+
+        if (Math.abs(fondo - luzLogo) < CONTRASTE_MINIMO) {
+            if (fondo >= FONDO_OSCURO) {
+                // Fondo claro y logo claro: sin placa no se lee.
+                return colocar(imagen, logo, posicion, historia);
+            }
+            chico = paraFondoOscuro(chico);
+        }
+
+        BufferedImage salida = new BufferedImage(ancho, alto, BufferedImage.TYPE_INT_RGB);
+        Graphics2D g = salida.createGraphics();
+        try {
+            g.setRenderingHint(RenderingHints.KEY_ANTIALIASING, RenderingHints.VALUE_ANTIALIAS_ON);
+            g.setRenderingHint(RenderingHints.KEY_INTERPOLATION, RenderingHints.VALUE_INTERPOLATION_BICUBIC);
+            g.drawImage(base, 0, 0, null);
+            sombraDelDibujo(g, chico, sitio.x, sitio.y, Math.max(1, ancho / 600), luzDelDibujo(chico) > FONDO_OSCURO);
+            g.drawImage(chico, sitio.x, sitio.y, null);
+        } finally {
+            g.dispose();
+        }
+        return new Colocado(aJpeg(salida), posicion);
+    }
+
+    static boolean conTransparencia(BufferedImage logo) {
+        if (!logo.getColorModel().hasAlpha()) {
+            return false;
+        }
+        for (int y = 0; y < logo.getHeight(); y++) {
+            for (int x = 0; x < logo.getWidth(); x++) {
+                if (((logo.getRGB(x, y) >>> 24) & 0xFF) < 16) {
+                    return true;
+                }
+            }
+        }
+        return false;
+    }
+
+    /** La luz media de una zona de la foto (0-255), muestreada. */
+    static double luzMedia(BufferedImage imagen, Rectangle zona) {
+        int x0 = Math.max(0, zona.x);
+        int y0 = Math.max(0, zona.y);
+        int x1 = Math.min(imagen.getWidth(), zona.x + zona.width);
+        int y1 = Math.min(imagen.getHeight(), zona.y + zona.height);
+        int paso = Math.max(1, Math.min(zona.width, zona.height) / 30);
+        double suma = 0;
+        long n = 0;
+        for (int y = y0; y < y1; y += paso) {
+            for (int x = x0; x < x1; x += paso) {
+                suma += luz(imagen.getRGB(x, y));
+                n++;
+            }
+        }
+        return n == 0 ? 128 : suma / n;
+    }
+
+    /** La luz media de lo que dibuja el logo (sin lo transparente), pesada por su opacidad. */
+    static double luzDelDibujo(BufferedImage logo) {
+        double suma = 0;
+        double peso = 0;
+        for (int y = 0; y < logo.getHeight(); y++) {
+            for (int x = 0; x < logo.getWidth(); x++) {
+                int argb = logo.getRGB(x, y);
+                double a = ((argb >>> 24) & 0xFF) / 255.0;
+                if (a > 0.06) {
+                    suma += luz(argb) * a;
+                    peso += a;
+                }
+            }
+        }
+        return peso == 0 ? 128 : suma / peso;
+    }
+
+    /**
+     * La versión del logo para fondo oscuro: lo oscuro (letras, contornos,
+     * iconos en azul marino o negro) pasa a blanco con su misma opacidad; los
+     * colores de marca claros se quedan como están.
+     */
+    static BufferedImage paraFondoOscuro(BufferedImage logo) {
+        BufferedImage salida = new BufferedImage(logo.getWidth(), logo.getHeight(), BufferedImage.TYPE_INT_ARGB);
+        for (int y = 0; y < logo.getHeight(); y++) {
+            for (int x = 0; x < logo.getWidth(); x++) {
+                int argb = logo.getRGB(x, y);
+                int a = (argb >>> 24) & 0xFF;
+                salida.setRGB(x, y, a > 0 && luz(argb) < TINTA_OSCURA ? (a << 24) | 0xFFFFFF : argb);
+            }
+        }
+        return salida;
+    }
+
+    /**
+     * Una sombra suave con la forma del logo: lo despega de la foto sin que se
+     * note como sombra. Oscura bajo un logo claro; bajo uno oscuro, apenas.
+     */
+    private static void sombraDelDibujo(Graphics2D g, BufferedImage logo, int x, int y, int radio, boolean logoClaro) {
+        BufferedImage sombra = new BufferedImage(logo.getWidth(), logo.getHeight(), BufferedImage.TYPE_INT_ARGB);
+        // Muchas copias corridas apiladas: cada una aporta poco, para que en el
+        // centro sumen la opacidad buscada (1 - (1 - p)^n) y en el borde se esfume.
+        int copias = (2 * radio + 2) * (2 * radio + 1);
+        double total = logoClaro ? 0.32 : 0.12;
+        double porCopia = 1 - Math.pow(1 - total, 1.0 / copias);
+        for (int j = 0; j < logo.getHeight(); j++) {
+            for (int i = 0; i < logo.getWidth(); i++) {
+                int a = (logo.getRGB(i, j) >>> 24) & 0xFF;
+                int alfa = (int) Math.round(a * porCopia);
+                sombra.setRGB(i, j, Math.max(0, Math.min(255, alfa)) << 24);
+            }
+        }
+        for (int dy = -radio; dy <= radio + 1; dy++) {
+            for (int dx = -radio; dx <= radio; dx++) {
+                g.drawImage(sombra, x + dx, y + dy + radio, null);
+            }
+        }
+    }
+
     /**
      * Una sombra corta y tenue, como la de una tarjeta sobre una mesa: separa
      * el sello de la foto sin que la sombra se note por sí misma.

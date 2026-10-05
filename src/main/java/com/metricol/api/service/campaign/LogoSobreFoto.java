@@ -48,6 +48,19 @@ public class LogoSobreFoto {
      * foto sin logo sigue siendo una propuesta válida.
      */
     public String sellar(MediaAsset foto, String logoUrl, UUID workspaceId) {
+        return sellar(foto, logoUrl, workspaceId, null, 0, false);
+    }
+
+    /**
+     * Con la zona y el tamaño que eligió el director de foto: sin placa si el
+     * logo se lee directo sobre la foto (ver {@link SelloDeLogo#colocarSobreFoto}).
+     *
+     * @param zona     TOP_LEFT… o {@code null} para el sello de siempre (abajo a la derecha, con placa)
+     * @param ancho    ancho del logo respecto al de la foto
+     * @param historia la foto va de historia: más margen arriba y abajo
+     */
+    public String sellar(MediaAsset foto, String logoUrl, UUID workspaceId, String zona, double ancho,
+            boolean historia) {
         if (logoUrl == null || logoUrl.isBlank() || foto.getStorageKey() == null) {
             return null;
         }
@@ -63,7 +76,10 @@ public class LogoSobreFoto {
             if (imagen == null || sello == null) {
                 return null;
             }
-            byte[] conLogo = SelloDeLogo.poner(imagen, sello, SelloDeLogo.Posicion.BOTTOM_RIGHT, false);
+            SelloDeLogo.Posicion pedida = SelloDeLogo.Posicion.de(zona);
+            byte[] conLogo = pedida == null
+                    ? SelloDeLogo.poner(imagen, sello, SelloDeLogo.Posicion.BOTTOM_RIGHT, historia)
+                    : SelloDeLogo.colocarSobreFoto(imagen, sello, pedida, ancho, historia).imagen();
 
             String nombre = "con-logo-" + foto.getFileName();
             String clave = storage.claveNueva(workspaceId, nombre.endsWith(".jpg") ? nombre : nombre + ".jpg",

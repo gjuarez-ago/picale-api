@@ -120,12 +120,21 @@ public class OpenAiImageClient {
 
     /** Una imagen que parte de las fotos de referencia. */
     public Resultado editar(String prompt, List<Referencia> referencias, String tamano) {
+        return editar(prompt, referencias, tamano, "medium");
+    }
+
+    /**
+     * Igual, con la calidad pedida: la mejora de fotos va en {@code high},
+     * porque ahí lo que se paga es justo el detalle.
+     */
+    public Resultado editar(String prompt, List<Referencia> referencias, String tamano, String calidad) {
         exigirConfiguracion();
+        String conCalidad = calidad == null || calidad.isBlank() ? "medium" : calidad.trim();
         String fidelidad = props.getImageInputFidelity();
         boolean conFidelidad = fidelidadSoportada && fidelidad != null && !fidelidad.isBlank();
 
         try {
-            return enviarEdicion(prompt, referencias, tamano, conFidelidad ? fidelidad.trim() : null);
+            return enviarEdicion(prompt, referencias, tamano, conCalidad, conFidelidad ? fidelidad.trim() : null);
         } catch (RestClientResponseException ex) {
             if (conFidelidad && ex.getStatusCode().value() == 400
                     && ex.getResponseBodyAsString().contains("input_fidelity")) {
@@ -133,7 +142,7 @@ public class OpenAiImageClient {
                         recortar(ex.getResponseBodyAsString()));
                 fidelidadSoportada = false;
                 try {
-                    return enviarEdicion(prompt, referencias, tamano, null);
+                    return enviarEdicion(prompt, referencias, tamano, conCalidad, null);
                 } catch (RestClientResponseException segundo) {
                     throw traducir(segundo);
                 } catch (ResourceAccessException segundo) {
@@ -146,12 +155,13 @@ public class OpenAiImageClient {
         }
     }
 
-    private Resultado enviarEdicion(String prompt, List<Referencia> referencias, String tamano, String fidelidad) {
+    private Resultado enviarEdicion(String prompt, List<Referencia> referencias, String tamano, String calidad,
+            String fidelidad) {
         MultipartBodyBuilder cuerpo = new MultipartBodyBuilder();
         cuerpo.part("model", props.getImageModel());
         cuerpo.part("prompt", prompt);
         cuerpo.part("size", tamanoValido(tamano));
-        cuerpo.part("quality", "medium");
+        cuerpo.part("quality", calidad);
         cuerpo.part("n", "1");
         if (fidelidad != null) {
             cuerpo.part("input_fidelity", fidelidad);

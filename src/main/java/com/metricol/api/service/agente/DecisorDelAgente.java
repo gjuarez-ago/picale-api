@@ -26,16 +26,21 @@ import java.util.Set;
  * (media). Baja, candidata (baja).</li>
  * <li>Presupuesto: una candidata se diseña si alcanza el ritmo de créditos de
  * la semana; las de prioridad media y baja dejan uno libre para una alta.</li>
- * <li>Logo: en lo que se comparte fuera de la cuenta (producto, promoción);
- * nunca en un arte terminado.</li>
+ * <li>Logo: en lo que se comparte fuera de la cuenta (producto, promoción,
+ * un trabajo terminado del negocio); nunca en un arte terminado.</li>
  * </ol>
+ *
+ * <p>Después, el director de foto mira la foto en alta resolución
+ * ({@link #conDireccion}): si un retoque fiel la vuelve profesional, el
+ * tratamiento pasa a {@link Tratamiento#MEJORA} —con IA, cuidando el
+ * realismo—; si ya se ve profesional, sale tal cual.
  *
  * <p>El {@code ajuste} de la cuenta mueve el umbral del paso 4: sube cuando la
  * persona descarta diseños (diseñar menos) y baja cuando los aprueba.
  */
 public final class DecisorDelAgente {
 
-    public enum Tratamiento { TAL_CUAL, RETOQUE, DISENO, OBSERVACION }
+    public enum Tratamiento { TAL_CUAL, RETOQUE, MEJORA, DISENO, OBSERVACION }
 
     public enum Prioridad { ALTA, MEDIA, BAJA }
 
@@ -50,7 +55,7 @@ public final class DecisorDelAgente {
      * @param fuerza        si la foto sola detiene el scroll
      * @param esArte        ya trae diseño, texto o logo encima
      * @param necesitaTexto el mensaje necesita leerse en la imagen
-     * @param tipo          PRODUCTO, LUGAR, EQUIPO, EVENTO, PROMOCION, TESTIMONIO u OTRO
+     * @param tipo          PRODUCTO, OBRA, LUGAR, EQUIPO, EVENTO, PROMOCION, TESTIMONIO u OTRO
      */
     public record Diagnostico(int calidad, String queFalla, boolean arreglable, int fuerza, boolean esArte,
             boolean necesitaTexto, Intencion intencion, String tipo) {
@@ -86,7 +91,8 @@ public final class DecisorDelAgente {
         }
     }
 
-    private static final Set<String> CON_LOGO = Set.of("PRODUCTO", "PROMOCION");
+    /** OBRA: lo que hizo el negocio (una construcción, una instalación, un servicio terminado) es su portafolio. */
+    private static final Set<String> CON_LOGO = Set.of("PRODUCTO", "PROMOCION", "OBRA");
 
     private DecisorDelAgente() {
     }
@@ -159,9 +165,47 @@ public final class DecisorDelAgente {
 
         // 6. Logo.
         boolean logo = CON_LOGO.contains(d.tipo());
-        pasos.add(logo ? "Lleva tu logo: es " + (d.tipo().equals("PROMOCION") ? "una promoción" : "producto") + "."
-                : "Sin logo: no es producto ni promoción.");
+        pasos.add(logo ? "Lleva tu logo: es " + switch (d.tipo()) {
+                    case "PROMOCION" -> "una promoción";
+                    case "OBRA" -> "un trabajo tuyo";
+                    default -> "producto";
+                } + "."
+                : "Sin logo: no es producto, promoción ni un trabajo tuyo.");
 
         return new Decision(tratamiento, logo, candidata, pasos);
+    }
+
+    /**
+     * Lo que vio el director de foto, sobre lo ya decidido. Un diseño o una
+     * observación no cambian: la foto no se publica como está.
+     *
+     * @param mejorar      el director dice que un retoque fiel la vuelve profesional
+     * @param deficiencias lo que le falta, en una frase ("líneas chuecas y sombras oscuras")
+     * @param hayCupo      quedan mejoras con IA hoy en el espacio
+     */
+    public static Decision conDireccion(Decision d, boolean mejorar, String deficiencias, boolean hayCupo) {
+        if (d.tratamiento() == Tratamiento.DISENO || d.tratamiento() == Tratamiento.OBSERVACION) {
+            return d;
+        }
+        List<String> pasos = new ArrayList<>();
+        for (String paso : d.pasos()) {
+            // El retoque sencillo se anuncia aquí solo si se queda.
+            pasos.add(mejorar && hayCupo ? paso.replace(": le hago un retoque.", ".") : paso);
+        }
+        int antesDelLogo = Math.max(0, pasos.size() - 1);
+        if (mejorar && hayCupo) {
+            pasos.add(antesDelLogo, "Le falta " + deficiencias
+                    + ": la mejoro con IA para que se vea profesional, sin cambiar nada de lo que se ve.");
+            return new Decision(Tratamiento.MEJORA, d.logo(), d.prioridad(), pasos);
+        }
+        if (mejorar) {
+            pasos.add(antesDelLogo, "Le vendría bien una mejora (" + deficiencias
+                    + "), pero hoy ya no me quedan: va " + (d.tratamiento() == Tratamiento.RETOQUE ? "con un retoque sencillo." : "tal cual."));
+            return new Decision(d.tratamiento(), d.logo(), d.prioridad(), pasos);
+        }
+        if (d.tratamiento() == Tratamiento.TAL_CUAL) {
+            pasos.add(antesDelLogo, "La miré en detalle: ya se ve profesional, no le cambio nada.");
+        }
+        return new Decision(d.tratamiento(), d.logo(), d.prioridad(), pasos);
     }
 }
