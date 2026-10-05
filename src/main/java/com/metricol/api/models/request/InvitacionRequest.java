@@ -56,11 +56,11 @@ public class InvitacionRequest {
         }
 
         public Set<Permission> extras() {
-            return extraPermissions == null ? EnumSet.noneOf(Permission.class) : EnumSet.copyOf(extraPermissions);
+            return extraPermissions == null || extraPermissions.isEmpty() ? EnumSet.noneOf(Permission.class) : EnumSet.copyOf(extraPermissions);
         }
 
         public Set<Permission> negados() {
-            return deniedPermissions == null ? EnumSet.noneOf(Permission.class) : EnumSet.copyOf(deniedPermissions);
+            return deniedPermissions == null || deniedPermissions.isEmpty() ? EnumSet.noneOf(Permission.class) : EnumSet.copyOf(deniedPermissions);
         }
     }
 }

@@ -175,7 +175,7 @@ public class TeamService {
             throw new IllegalStateException("Quien administra la organización ya puede todo esto por su papel.");
         }
 
-        miembro.setPermissions(permisos == null ? EnumSet.noneOf(OrgPermission.class) : EnumSet.copyOf(permisos));
+        miembro.setPermissions(permisos == null || permisos.isEmpty() ? EnumSet.noneOf(OrgPermission.class) : EnumSet.copyOf(permisos));
         orgMiembros.save(miembro);
 
         return respuestaDe(miembro, workspaces.findDeLaOrganizacion(organizacion.getId()), actual);
