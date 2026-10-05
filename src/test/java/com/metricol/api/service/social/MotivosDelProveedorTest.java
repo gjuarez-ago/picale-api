@@ -33,6 +33,34 @@ class MotivosDelProveedorTest {
                 .isEqualTo("La conexion con la red caduco. Vuelve a conectarla desde Redes.");
     }
 
+    @org.junit.jupiter.params.ParameterizedTest
+    @org.junit.jupiter.params.provider.ValueSource(strings = {
+            "Error validating access token: The session has been invalidated because the user changed their password.",
+            "Error validating access token: The user has not authorized application 123456.",
+            "(#190) Invalid OAuth 2.0 Access Token",
+            "OAuthException: Session has expired on Monday.",
+            "(#10) Application does not have permission for this action",
+            "(#200) Missing permission instagram_content_publish",
+            "The token used in the request has been revoked by the user",
+            "Please log in to Instagram and complete the security checkpoint",
+            "access_token_invalid: The access token is invalid or not found",
+            "User must reauthorize the application",
+            "Please reconnect your account" })
+    void cadaRedLoDiceDistintoYSeReconoceIgual(String mensaje) {
+        assertThat(MotivosDelProveedor.traducir(null, mensaje, null))
+                .isEqualTo("La conexion con la red caduco. Vuelve a conectarla desde Redes.");
+    }
+
+    @org.junit.jupiter.params.ParameterizedTest
+    @org.junit.jupiter.params.provider.ValueSource(strings = {
+            "Caption exceeds 2200 characters.",
+            "Video duration is too long for this platform.",
+            "Too many requests, rate limit reached." })
+    void loQueNoEsDeConexionNoMandaAReconectar(String mensaje) {
+        assertThat(MotivosDelProveedor.traducir(null, mensaje, null))
+                .isNotEqualTo("La conexion con la red caduco. Vuelve a conectarla desde Redes.");
+    }
+
     @Test
     void unMotivoDesconocidoSeDejaPeroSinLaPublicidad() {
         String motivo = MotivosDelProveedor.traducir(null,

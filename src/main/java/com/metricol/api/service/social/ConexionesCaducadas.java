@@ -123,7 +123,7 @@ public class ConexionesCaducadas {
                 reconecto = true;
             }
             if (check.getFalloPorConexionEn() != null && check.getReconectandoDesde() != null
-                    && check.getReconectandoDesde().isAfter(check.getFalloPorConexionEn())) {
+                    && !check.getReconectandoDesde().isBefore(check.getFalloPorConexionEn())) {
                 check.setFalloPorConexionEn(null);
                 check.setReconectandoDesde(null);
                 reconecto = true;

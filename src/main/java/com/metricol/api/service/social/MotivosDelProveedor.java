@@ -32,9 +32,7 @@ final class MotivosDelProveedor {
                 || m.contains("invalid video file")) {
             return "La red no pudo leer el video: el archivo esta danado o incompleto.";
         }
-        if (c.contains("token") || c.contains("unauthorized") || c.contains("reauth")
-                || m.contains("token") && (m.contains("expired") || m.contains("invalid"))
-                || m.contains("reauthenticate") || m.contains("re-authenticate")) {
+        if (esDeConexion(c, m)) {
             return ConexionesCaducadas.CADUCO;
         }
         if (c.contains("rate_limit") || c.contains("quota") || m.contains("rate limit")
@@ -50,6 +48,36 @@ final class MotivosDelProveedor {
             return "La red rechazo la publicacion (" + etapa + ").";
         }
         return "La red rechazo la publicacion.";
+    }
+
+    /**
+     * ¿La red rechazó porque la conexión ya no sirve? Es lo que se arregla
+     * reconectando, y lo que marca la red como "por reconectar".
+     *
+     * <p>Cada red lo dice a su manera y no siempre con "token": Meta con el
+     * código 190 ("session has been invalidated", "the user has not authorized
+     * application"), con permisos que se quitaron (códigos 10 y 200, "missing
+     * permission instagram_content_publish") o pidiendo revisar la cuenta
+     * ("checkpoint"); LinkedIn con "revoked"; TikTok con "access_token_invalid".
+     */
+    static boolean esDeConexion(String c, String m) {
+        if (c.contains("token") || c.contains("unauthorized") || c.contains("reauth") || c.contains("oauth")
+                || c.contains("revoked") || c.contains("invalid_grant") || c.equals("190") || c.contains("code 190")) {
+            return true;
+        }
+        boolean token = m.contains("token") || m.contains("session") || m.contains("credential");
+        if (token && (m.contains("expired") || m.contains("invalid") || m.contains("revoked") || m.contains("validating"))) {
+            return true;
+        }
+        return m.contains("reauthenticate") || m.contains("re-authenticate") || m.contains("reauthorize")
+                || m.contains("re-authorize") || m.contains("reconnect") || m.contains("re-connect")
+                || m.contains("not authorized application") || m.contains("has not authorized")
+                || m.contains("changed their password") || m.contains("changed the password")
+                || m.contains("checkpoint") || m.contains("oauthexception") || m.contains("(#190)")
+                || m.contains("code 190") || m.contains("error 190")
+                || (m.contains("permission") && (m.contains("missing") || m.contains("(#10)") || m.contains("(#200)")
+                        || m.contains("instagram_") || m.contains("pages_") || m.contains("publish_")
+                        || m.contains("w_member_social") || m.contains("video.publish")));
     }
 
     /**

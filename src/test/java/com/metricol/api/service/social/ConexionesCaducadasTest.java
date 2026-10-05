@@ -122,6 +122,31 @@ class ConexionesCaducadasTest {
         });
     }
 
+    @Autowired private RecordatorioDeReconexion recordatorio;
+
+    @Test
+    @DisplayName("mientras siga por reconectar: un recordatorio al día, no antes de un día de detectado")
+    void recordatorioDiario() {
+        enElWorkspace(() -> {
+            fallida(LocalDateTime.now().minusHours(2), ConexionesCaducadas.CADUCO);
+            conexiones.marcarFallo(Platform.INSTAGRAM, ws.getId());
+            org.mockito.Mockito.when(avisos.avisarAlEquipo(any(), anyString(), anyString(), any())).thenReturn(true);
+            LocalDateTime ahora = LocalDateTime.now();
+
+            // Recién detectada: ya salió el primer aviso; el recordatorio espera.
+            recordatorio.recordar(ws.getId(), ahora);
+            verify(avisos, times(1)).avisarAlEquipo(any(), anyString(), anyString(), any());
+
+            SocialConnectionCheck check = checks.findByPlatform("instagram").orElseThrow();
+            check.setFalloPorConexionEn(ahora.minusHours(25));
+            checks.save(check);
+            recordatorio.recordar(ws.getId(), ahora);
+            recordatorio.recordar(ws.getId(), ahora.plusHours(1));
+            verify(avisos, times(1)).avisarAlEquipo(any(), org.mockito.ArgumentMatchers.eq("Instagram sigue por reconectar"),
+                    org.mockito.ArgumentMatchers.contains("1 publicación espera"), any());
+        });
+    }
+
     @Test
     @DisplayName("al reconectar: lo reciente vuelve a la cola solo; lo de hace más de 7 días pregunta")
     void reconectar() {

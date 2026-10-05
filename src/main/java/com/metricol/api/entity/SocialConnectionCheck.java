@@ -71,6 +71,9 @@ public class SocialConnectionCheck {
     /** Cuándo se pidió el enlace para reconectarla: la siguiente verificación sana después de esto la da por reconectada. */
     private LocalDateTime reconectandoDesde;
 
+    /** El último recordatorio al teléfono de que sigue por reconectar (uno al día como mucho). */
+    private LocalDateTime ultimoRecordatorio;
+
     public boolean necesitaReconectar() {
         return expiredSince != null || falloPorConexionEn != null;
     }
