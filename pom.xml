@@ -78,6 +78,18 @@
     </dependency>
 
     <!--
+      Avisos push por Firebase Cloud Messaging (API HTTP v1). Solo la libreria
+      de credenciales de Google, para sacar el token de la cuenta de servicio;
+      el envio es un POST con el RestClient de siempre. El SDK firebase-admin
+      completo traeria Firestore, Storage y gRPC que aqui no se usan.
+    -->
+    <dependency>
+      <groupId>com.google.auth</groupId>
+      <artifactId>google-auth-library-oauth2-http</artifactId>
+      <version>1.30.1</version>
+    </dependency>
+
+    <!--
       H2 se queda como respaldo: es el default de desarrollo cuando no hay
       variables DB_* en el .env, y sirve para arrancar sin depender de nada.
     -->

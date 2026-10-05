@@ -109,6 +109,10 @@ class AgenteServiceTest {
     @MockitoBean
     private com.metricol.api.service.agente.video.AnalistaDeVideo analista;
 
+    /** Apagados (activo = false): las pruebas que no son de avisos no mandan nada. */
+    @MockitoBean
+    private com.metricol.api.service.avisos.AvisosPush avisos;
+
     /** Sin propuesta de la IA (nulo): cada foto sale con la regla de una sola. */
     @MockitoBean
     private OrganizadorDeContenido organizador;
@@ -880,6 +884,53 @@ class AgenteServiceTest {
         } finally {
             org.springframework.test.util.ReflectionTestUtils.setField(real, "topeFila", 6);
         }
+    }
+
+    @Test
+    @DisplayName("avisos: lo nuevo en un solo aviso y no más de uno por hora; lo que vence, una vez; de noche, nada")
+    void avisos() {
+        enElWorkspace(() -> {
+            conInstagram();
+            agente.encender(ws.getId(), true);
+            foto("sala.jpg");
+            pausa();
+            foto("fachada.jpg");
+            revisaComoTema("CUADRADA", false, "depa");
+            agente.vuelta(ws.getId());
+            assertThat(posts.propuestasDelAgente()).hasSize(2);
+
+            when(avisos.activo()).thenReturn(true);
+            when(avisos.avisarAlEquipo(any(), anyString(), anyString(), any())).thenReturn(true);
+            LocalDateTime hoy10 = LocalDateTime.now().withHour(10).withMinute(0).withSecond(0).withNano(0);
+
+            // De noche no se avisa lo nuevo.
+            agente.avisar(workspaces.findById(ws.getId()).orElseThrow(), hoy10.withHour(23));
+            org.mockito.Mockito.verify(avisos, org.mockito.Mockito.never())
+                    .avisarAlEquipo(any(), anyString(), anyString(), any());
+
+            agente.avisar(workspaces.findById(ws.getId()).orElseThrow(), hoy10);
+            org.mockito.Mockito.verify(avisos).avisarAlEquipo(org.mockito.ArgumentMatchers.eq(ws.getId()), anyString(),
+                    org.mockito.ArgumentMatchers.eq("Tu asistente te preparó 2 publicaciones. ¿Las revisas?"), any());
+            assertThat(posts.propuestasDelAgente()).allMatch(p -> p.getAgenteAvisadaEn() != null);
+
+            // Una nueva a la media hora: espera a que pase la hora.
+            Post nueva = posts.propuestasDelAgente().get(0);
+            nueva.setAgenteAvisadaEn(null);
+            posts.save(nueva);
+            agente.avisar(workspaces.findById(ws.getId()).orElseThrow(), hoy10.plusMinutes(30));
+            org.mockito.Mockito.verify(avisos, org.mockito.Mockito.times(1))
+                    .avisarAlEquipo(any(), anyString(), anyString(), any());
+
+            // Se le acaba el tiempo: aviso urgente, una sola vez.
+            Post urgente = posts.findById(nueva.getId()).orElseThrow();
+            urgente.setFechaPropuesta(hoy10.plusMinutes(90));
+            urgente.setAgenteAvisadaEn(hoy10);
+            posts.save(urgente);
+            agente.avisar(workspaces.findById(ws.getId()).orElseThrow(), hoy10.plusMinutes(31));
+            agente.avisar(workspaces.findById(ws.getId()).orElseThrow(), hoy10.plusMinutes(32));
+            org.mockito.Mockito.verify(avisos, org.mockito.Mockito.times(1)).avisarAlEquipo(any(), anyString(),
+                    org.mockito.ArgumentMatchers.eq("Una publicación necesita tu sí antes de las 11:30 am."), any());
+        });
     }
 
     @Test

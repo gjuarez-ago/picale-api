@@ -301,6 +301,12 @@ public class Post {
     /** Cuántas veces la cambió de hora por no llegar el sí a tiempo. Nula = ninguna. */
     private Integer agenteMovidaVeces;
 
+    /** Cuándo se avisó al teléfono que estaba lista. Nula = todavía no: entra en el siguiente aviso. */
+    private LocalDateTime agenteAvisadaEn;
+
+    /** Ya se avisó que se le acaba el tiempo: ese aviso va una sola vez. */
+    private Boolean agenteAvisoUrgente;
+
     /** Qué hizo el agente y por qué, para enseñarlo en la propuesta. */
     @Column(length = 1000)
     private String agenteMotivo;

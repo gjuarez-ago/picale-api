@@ -194,6 +194,9 @@ public class Workspace {
      */
     private Integer agenteAjusteDiseno;
 
+    /** El último aviso al teléfono de "tengo publicaciones listas": entre uno y otro pasa al menos una hora. */
+    private java.time.LocalDateTime agenteUltimoAviso;
+
     public boolean conAgente() {
         return Boolean.TRUE.equals(agenteActivo);
     }

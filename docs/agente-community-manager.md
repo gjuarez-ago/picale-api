@@ -425,6 +425,18 @@ Como lo hace un community manager: primero ve todo lo que llegó y después deci
   `is_ai_generated=true`: Instagram "Información de IA", TikTok `is_aigc`, YouTube contenido
   sintético, Reels de Facebook. LinkedIn y las fotos de Facebook no tienen campo.
 
+**Avisos al teléfono** (`AvisosPush`, FCM HTTP v1; `AgenteService.avisar` al final de cada vuelta):
+- La app registra el teléfono (`POST /api/v1/dispositivos`) solo si la persona dio permiso; lo pide
+  con su porqué desde Hoy ("¿Te aviso cuando tenga algo listo?"). Al cerrar sesión lo quita.
+- Reciben quienes pueden aprobar en ese espacio (programar), incluidos los administradores de la
+  organización. El título es el nombre del espacio.
+- Lo nuevo: un solo aviso con todo lo que no se ha avisado ("Tu asistente te preparó 3
+  publicaciones"), como mucho uno por hora y de 8 a 21 h. Lo de la noche sale junto en la mañana.
+- Lo que vence (menos de 3 h para su hora o para retirarse): un aviso por propuesta, una sola vez,
+  de 7 a 22 h.
+- Sin `app.push.credenciales` (ruta al JSON de la cuenta de servicio de Firebase) no se manda
+  nada. Un token que FCM ya no reconoce se borra solo.
+
 **Fila corta.** Hasta `app.agente.tope-fila` (6) propuestas esperan el sí a la vez. Con la fila
 llena, las fotos se revisan igual pero se quedan en reserva (ANALIZADA) y los videos esperan sin
 tocarse; entran conforme se aprueba, descarta o retira algo. `Estado.enReserva` lo cuenta, y la app

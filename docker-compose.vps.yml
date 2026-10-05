@@ -30,6 +30,12 @@ services:
       # pagada y dimensionada; levantar un Postgres aparte en el VPS seria un
       # segundo sitio que respaldar y que se llena sin avisar.
       SPRING_DATASOURCE_URL: jdbc:postgresql://cloud-sql-proxy:5432/${DB_NAME:-metricol}
+      # La cuenta de servicio de Firebase, para los avisos al telefono. Vive
+      # SOLO en la VM, en ./secretos (fuera del repo y del tar). Si falta el
+      # archivo, los avisos se apagan solos y todo lo demas sigue igual.
+      APP_PUSH_CREDENCIALES: ${APP_PUSH_CREDENCIALES:-}
+    volumes:
+      - ./secretos:/app/secretos:ro
     ports:
       - "127.0.0.1:${APP_PORT:-18085}:8080"
     healthcheck:

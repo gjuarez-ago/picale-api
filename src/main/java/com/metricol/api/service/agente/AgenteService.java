@@ -149,6 +149,15 @@ public class AgenteService {
     /** Dos fotos subidas con más de esto entre una y otra son de tandas distintas. */
     static final int SESION_MINUTOS = 15;
 
+    private final com.metricol.api.service.avisos.AvisosPush avisos;
+
+    /** Entre un aviso de "tengo publicaciones listas" y el siguiente, en el mismo espacio. */
+    static final java.time.Duration ENTRE_AVISOS = java.time.Duration.ofHours(1);
+
+    /** Ni de madrugada ni de noche: los avisos de lo listo salen entre estas horas. */
+    static final int AVISOS_DESDE = 8;
+    static final int AVISOS_HASTA = 21;
+
     public AgenteService(WorkspaceRepository workspaces, MediaAssetRepository assets, PostRepository posts,
             SocialAccountRepository cuentas, RevisorDeMarca revisor, Redactor redactor, PostService postService,
             MediaService mediaService, FormatRulesService formatos, LimitesConfigurables limites,
@@ -156,7 +165,9 @@ public class AgenteService {
             CreditService creditos, RetoqueDeFoto retoque, MedidorDeVideo medidor,
             com.metricol.api.config.VideoLimitsProperties videoLimites, AnalistaDeVideo analista,
             EditorDeVideo editor, CuentaAparte otraCuenta,
-            com.metricol.api.service.metricas.LoQueFunciona loQueFunciona, OrganizadorDeContenido organizador) {
+            com.metricol.api.service.metricas.LoQueFunciona loQueFunciona, OrganizadorDeContenido organizador,
+            com.metricol.api.service.avisos.AvisosPush avisos) {
+        this.avisos = avisos;
         this.organizador = organizador;
         this.loQueFunciona = loQueFunciona;
         this.otraCuenta = otraCuenta;
@@ -394,6 +405,11 @@ public class AgenteService {
             if (p.getAgenteCaducaEn() == null && p.getFechaPropuesta() != null) {
                 caducidad(p);
             }
+        }
+        try {
+            avisar(w, LocalDateTime.now());
+        } catch (RuntimeException ex) {
+            log.warn("No se pudieron mandar los avisos de {}: {}", workspaceId, ex.toString());
         }
         return hechas;
     }
@@ -1310,6 +1326,93 @@ public class AgenteService {
         if (caducaron) {
             replanear(w);
         }
+    }
+
+    // ------------------------------------------------------------ avisos al teléfono
+
+    /**
+     * Avisa al equipo, sin molestar:
+     * <ol>
+     * <li>Lo que se le acaba el tiempo (menos de 3 h para su hora o para
+     * retirarse): un aviso por propuesta, una sola vez.</li>
+     * <li>Lo nuevo: todo lo que no se ha avisado, en un solo aviso; como mucho
+     * uno por hora y solo de {@value #AVISOS_DESDE} a {@value #AVISOS_HASTA} h.
+     * Lo de la noche se avisa a la mañana siguiente, junto.</li>
+     * </ol>
+     */
+    void avisar(Workspace w, LocalDateTime ahora) {
+        if (!avisos.activo()) {
+            return;
+        }
+        List<Post> pendientes = posts.propuestasDelAgente();
+        boolean deDia = ahora.getHour() >= AVISOS_DESDE && ahora.getHour() < AVISOS_HASTA;
+
+        List<Post> urgentes = pendientes.stream()
+                .filter(p -> !Boolean.TRUE.equals(p.getAgenteAvisoUrgente()) && porVencer(p, ahora))
+                .sorted(java.util.Comparator.comparing(AgenteService::limiteDelSi))
+                .toList();
+        if (!urgentes.isEmpty() && ahora.getHour() >= 7 && ahora.getHour() < 22) {
+            int n = publicacionesEn(urgentes);
+            String antes = horaEnPalabras(limiteDelSi(urgentes.get(0)));
+            String cuerpo = n == 1
+                    ? "Una publicación necesita tu sí antes de las " + antes + "."
+                    : n + " publicaciones necesitan tu sí pronto. La primera, antes de las " + antes + ".";
+            if (avisos.avisarAlEquipo(w.getId(), w.getName(), cuerpo, Map.of("tipo", "urgente"))) {
+                for (Post p : urgentes) {
+                    p.setAgenteAvisoUrgente(true);
+                    if (p.getAgenteAvisadaEn() == null) {
+                        p.setAgenteAvisadaEn(ahora);
+                    }
+                    posts.save(p);
+                }
+            }
+        }
+
+        boolean toca = w.getAgenteUltimoAviso() == null
+                || !w.getAgenteUltimoAviso().plus(ENTRE_AVISOS).isAfter(ahora);
+        List<Post> nuevas = posts.propuestasDelAgente().stream().filter(p -> p.getAgenteAvisadaEn() == null).toList();
+        if (deDia && toca && !nuevas.isEmpty()) {
+            int n = publicacionesEn(nuevas);
+            String cuerpo = n == 1
+                    ? "Tu asistente te preparó una publicación. ¿La revisas?"
+                    : "Tu asistente te preparó " + n + " publicaciones. ¿Las revisas?";
+            if (avisos.avisarAlEquipo(w.getId(), w.getName(), cuerpo, Map.of("tipo", "nuevas"))) {
+                for (Post p : nuevas) {
+                    p.setAgenteAvisadaEn(ahora);
+                    posts.save(p);
+                }
+                w.setAgenteUltimoAviso(ahora);
+                workspaces.save(w);
+            }
+        }
+    }
+
+    /** Lo que llegue primero: su hora de salir o su caducidad. */
+    static LocalDateTime limiteDelSi(Post p) {
+        LocalDateTime fecha = p.getFechaPropuesta();
+        LocalDateTime caduca = p.getAgenteCaducaEn();
+        if (fecha == null) {
+            return caduca == null ? LocalDateTime.MAX : caduca;
+        }
+        return caduca == null || fecha.isBefore(caduca) ? fecha : caduca;
+    }
+
+    static boolean porVencer(Post p, LocalDateTime ahora) {
+        LocalDateTime limite = limiteDelSi(p);
+        return limite.isAfter(ahora) && limite.isBefore(ahora.plusHours(3));
+    }
+
+    /** Las versiones de un diseño son una sola publicación para quien lee el aviso. */
+    private static int publicacionesEn(List<Post> propuestas) {
+        return (int) propuestas.stream()
+                .map(p -> p.getAgenteDisenoId() != null ? (Object) p.getAgenteDisenoId() : p.getId())
+                .distinct().count();
+    }
+
+    /** "4:00 pm", como lo dice la gente. */
+    static String horaEnPalabras(LocalDateTime t) {
+        int h = t.getHour() % 12 == 0 ? 12 : t.getHour() % 12;
+        return h + ":" + String.format("%02d", t.getMinute()) + (t.getHour() < 12 ? " am" : " pm");
     }
 
     /** Cuánto puede esperar el sí lo del momento (una historia, la promoción de hoy). */
