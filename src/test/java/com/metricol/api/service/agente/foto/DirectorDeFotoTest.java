@@ -76,4 +76,26 @@ class DirectorDeFotoTest {
         // Recorte al centro: el centro sigue en el centro.
         assertThat(ajustada.getRGB(1365 / 2, 512)).isEqualTo(Color.WHITE.getRGB());
     }
+
+    @Test
+    @DisplayName("si hay algo que quitar, se mejora aunque la luz esté bien; y sabe cuándo no vestirla")
+    void disenador() throws Exception {
+        DirectorDeFoto.Direccion d = director.interpretar("""
+                {"mejorar": false, "encargo": "", "quitar": ["the red tape measure on the ground"],
+                 "encuadre": {"x": 0.05, "y": 0.1, "ancho": 0.9, "alto": 0.85},
+                 "acabado": {"estilo": "FRANJA", "rotulo": "Señalización industrial"}}""");
+        assertThat(d.mejorar()).isTrue();
+        assertThat(d.encargo()).isNotBlank();
+        assertThat(d.quitar()).containsExactly("the red tape measure on the ground");
+        assertThat(d.encuadre()).containsExactly(0.05, 0.1, 0.9, 0.85);
+        assertThat(d.estilo()).isEqualTo("FRANJA");
+        assertThat(MejoraDeFoto.prompt(d)).contains("REMOVE").contains("the red tape measure");
+
+        DirectorDeFoto.Direccion sinRotulo = director.interpretar("""
+                {"mejorar": false, "encuadre": {"x": 0.3, "y": 0.3, "ancho": 0.3, "alto": 0.3},
+                 "acabado": {"estilo": "FRANJA", "rotulo": ""}}""");
+        assertThat(sinRotulo.estilo()).isEqualTo("LIMPIO");
+        assertThat(sinRotulo.encuadre()).isNull();
+        assertThat(sinRotulo.diseno()).isFalse();
+    }
 }

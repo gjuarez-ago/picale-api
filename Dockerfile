@@ -30,7 +30,7 @@ WORKDIR /app
 # app.media.adapt.ffmpeg usa el del PATH salvo que se le diga otra cosa.
 # tzdata para que TZ signifique algo dentro del contenedor: sin el, Alpine
 # no conoce America/Mexico_City y la JVM se queda en UTC aunque se lo pidan.
-RUN apk add --no-cache ffmpeg tzdata
+RUN apk add --no-cache ffmpeg tzdata fontconfig ttf-dejavu
 
 # El commit de git que se construyó, para que /api/v1/ops/version diga qué corre
 # sin tener que adivinarlo. Lo escribe deploy-vps.sh antes de empaquetar; sin

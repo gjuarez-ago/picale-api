@@ -69,7 +69,8 @@ public class MejoraDeFoto {
             Image 2 is the same photo after a professional retouch. A retouch may
             ONLY change light, exposure, contrast, white balance, color
             intensity, sharpness, noise, perspective straightening and a slight
-            crop.
+            crop. It may also remove exactly the elements listed as
+            ALLOWED REMOVALS, if any; anything else gone is not faithful.
 
             Answer ONLY a JSON object:
             {"fiel": true | false, "cambios": "if not faithful, what changed, in Spanish, one short sentence"}
@@ -165,7 +166,7 @@ public class MejoraDeFoto {
             }
             BufferedImage despues = alMismoFormato(generada, antes.getWidth(), antes.getHeight());
 
-            String cambio = cambioInventado(antes, despues);
+            String cambio = cambioInventado(antes, despues, direccion.quitar());
             if (cambio != null) {
                 log.info("Mejora de {} descartada por no ser fiel: {}", foto.getId(), cambio);
                 return new Mejorada(null, "La mejora cambiaba la foto (" + cambio + "); la dejé real.");
@@ -207,6 +208,11 @@ public class MejoraDeFoto {
         t.append("Retouch this REAL photograph so it looks professionally shot, while keeping it 100% real ")
                 .append("and faithful to the scene.\n\n");
         t.append("EDITS FOR THIS PHOTO:\n").append(d.encargo().strip()).append("\n\n");
+        if (!d.quitar().isEmpty()) {
+            t.append("REMOVE (only these; rebuild the surface behind them so it looks untouched):\n");
+            d.quitar().forEach(q -> t.append("- ").append(q).append('\n'));
+            t.append('\n');
+        }
         if (!d.conservar().isEmpty()) {
             t.append("MUST STAY IDENTICAL:\n");
             d.conservar().forEach(c -> t.append("- ").append(c).append('\n'));
@@ -215,7 +221,7 @@ public class MejoraDeFoto {
         t.append("""
                 ABSOLUTE RULES:
                 - Same scene, same composition and camera position. Only perspective straightening and a slight crop are allowed.
-                - Do not add, remove, move, duplicate or replace any object, person, plant, stone, tile, tool or structure.
+                - Do not add, remove, move, duplicate or replace any object, person, plant, stone, tile, tool or structure, except removing exactly what is listed under REMOVE.
                 - Keep the real colors and textures of every material; only correct color casts.
                 - Keep every text, number and sign exactly as it is. Faces and bodies stay untouched.
                 - Do not add text, logos, watermarks, borders or frames.
@@ -269,11 +275,14 @@ public class MejoraDeFoto {
      * Qué inventó la mejora, o {@code null} si es fiel. Si no se puede
      * comparar, se descarta: sin la comparación no hay garantía de realismo.
      */
-    String cambioInventado(BufferedImage antes, BufferedImage despues) {
+    String cambioInventado(BufferedImage antes, BufferedImage despues, List<String> permitidoQuitar) {
         try {
             String modelo = props.getDirectorModel();
             String respuesta = vision.mirar(AiOperacion.AGENTE_VERIFICAR_FOTO, modelo, "low", VERIFICAR,
-                    "Image 1 is the original, image 2 the retouch. Is image 2 faithful?",
+                    "Image 1 is the original, image 2 the retouch. Is image 2 faithful?"
+                            + (permitidoQuitar.isEmpty() ? ""
+                                    : "\nALLOWED REMOVALS (these may be gone, nothing else): "
+                                            + String.join("; ", permitidoQuitar)),
                     List.of(comoDato(antes), comoDato(despues)), "high", props.getDirectorPricing());
             int inicio = respuesta.indexOf('{');
             int fin = respuesta.lastIndexOf('}');

@@ -1302,6 +1302,9 @@ public class AgenteService {
                     mejora.mejorar(asset, w.getId(), direccion);
             if (mejorada != null && mejorada.salio()) {
                 base = mejorada.asset();
+                if (!direccion.quitar().isEmpty()) {
+                    pasos.add("Le quité lo que distraía de la foto, sin tocar tu trabajo.");
+                }
             } else {
                 pasos.add(mejorada == null || mejorada.noSalio() == null ? "La mejora no salió." : mejorada.noSalio());
                 decision = new DecisorDelAgente.Decision(DecisorDelAgente.Tratamiento.RETOQUE, decision.logo(),
@@ -1322,6 +1325,31 @@ public class AgenteService {
 
         String url = base.getUrl();
         boolean sellada = false;
+        if (direccion != null && (conLogo || direccion.diseno())) {
+            // El acabado de diseñador: encuadre, estilo (limpio, franja o marco) y logo sin fondo.
+            String acabada = logo.acabar(base, w.getLogoUrl(), w.getId(),
+                    new com.metricol.api.service.campaign.LogoSobreFoto.Acabado(direccion.estilo(),
+                            direccion.logoZona(), direccion.logoTamano().ancho, direccion.encuadre(),
+                            direccion.rotulo(), w.getName(), historia),
+                    conLogo);
+            if (acabada != null) {
+                url = acabada;
+                sellada = conLogo && w.getLogoUrl() != null;
+                if (direccion.encuadre() != null) {
+                    pasos.add("La encuadré para que el trabajo luzca.");
+                }
+                if (sellada) {
+                    pasos.add(switch (historia ? "LIMPIO" : direccion.estilo()) {
+                        case "FRANJA" -> "La vestí con una franja de tu marca: «" + direccion.rotulo() + "».";
+                        case "MARCO" -> "Le puse un marco con el color de tu marca y tu logo "
+                                + dondeVa(direccion.logoZona()) + ".";
+                        default -> "Puse tu logo sin fondo " + dondeVa(direccion.logoZona())
+                                + ", donde no tapa lo importante.";
+                    });
+                }
+                return new FotoLista(url, decision, pasos, sellada);
+            }
+        }
         if (conLogo) {
             String conSello = direccion == null ? logo.sellar(base, w.getLogoUrl(), w.getId())
                     : logo.sellar(base, w.getLogoUrl(), w.getId(), direccion.logoZona(),

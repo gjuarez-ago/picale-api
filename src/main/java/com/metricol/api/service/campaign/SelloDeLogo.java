@@ -436,7 +436,7 @@ final class SelloDeLogo {
         return pares == 0 ? 0 : suma / pares;
     }
 
-    private static double luz(int rgb) {
+    static double luz(int rgb) {
         return 0.2126 * ((rgb >> 16) & 0xFF) + 0.7152 * ((rgb >> 8) & 0xFF) + 0.0722 * (rgb & 0xFF);
     }
 
@@ -549,7 +549,7 @@ final class SelloDeLogo {
     }
 
     /** Achica de a mitades y termina con el tamaño exacto: de un salto sale dentado. */
-    private static BufferedImage escalar(BufferedImage origen, int ancho, int alto) {
+    static BufferedImage escalar(BufferedImage origen, int ancho, int alto) {
         BufferedImage actual = origen;
         int w = origen.getWidth();
         int h = origen.getHeight();
@@ -575,7 +575,7 @@ final class SelloDeLogo {
         return destino;
     }
 
-    private static BufferedImage leer(byte[] bytes, String mensaje) {
+    static BufferedImage leer(byte[] bytes, String mensaje) {
         try {
             BufferedImage imagen = ImageIO.read(new ByteArrayInputStream(bytes));
             if (imagen == null) {
@@ -587,7 +587,7 @@ final class SelloDeLogo {
         }
     }
 
-    private static byte[] aJpeg(BufferedImage imagen) {
+    static byte[] aJpeg(BufferedImage imagen) {
         ImageWriter escritor = ImageIO.getImageWritersByFormatName("jpeg").next();
         try (ByteArrayOutputStream bytes = new ByteArrayOutputStream();
                 MemoryCacheImageOutputStream flujo = new MemoryCacheImageOutputStream(bytes)) {

@@ -102,6 +102,72 @@ public class LogoSobreFoto {
         }
     }
 
+    /**
+     * Lo que dirigió el director de foto para el acabado.
+     *
+     * @param estilo    LIMPIO, FRANJA o MARCO
+     * @param zona      dónde va el logo (TOP_LEFT…)
+     * @param anchoLogo ancho del logo respecto a la foto
+     * @param encuadre  {x, y, ancho, alto} en proporciones de la foto, o nulo
+     * @param rotulo    el texto corto de la franja, o nulo
+     * @param negocio   el nombre del negocio, para la franja
+     * @param historia  va de historia
+     */
+    public record Acabado(String estilo, String zona, double anchoLogo, double[] encuadre, String rotulo,
+            String negocio, boolean historia) {
+    }
+
+    /**
+     * La foto con su acabado de marca (ver {@link AcabadoDeMarca}): encuadre,
+     * estilo y logo sin fondo. Sin logo (o sin {@code conLogo}) se encuadra y
+     * se viste igual. Devuelve la URL de la copia, o {@code null} si no se
+     * pudo; nunca lanza.
+     */
+    public String acabar(MediaAsset foto, String logoUrl, UUID workspaceId, Acabado a, boolean conLogo) {
+        if (foto.getStorageKey() == null || a == null) {
+            return null;
+        }
+        try {
+            byte[] imagen = bajar(foto);
+            if (imagen == null) {
+                return null;
+            }
+            byte[] sello = null;
+            if (conLogo && logoUrl != null && !logoUrl.isBlank()) {
+                MediaAsset logo = assets.findByUrlIn(List.of(logoUrl)).stream()
+                        .filter(l -> l.getType() == MediaType.IMAGE && l.getStorageKey() != null)
+                        .findFirst().orElse(null);
+                sello = logo == null ? null : bajar(logo);
+            }
+            AcabadoDeMarca.Encuadre encuadre = a.encuadre() == null || a.encuadre().length != 4 ? null
+                    : new AcabadoDeMarca.Encuadre(a.encuadre()[0], a.encuadre()[1], a.encuadre()[2], a.encuadre()[3]);
+            SelloDeLogo.Posicion zona = SelloDeLogo.Posicion.de(a.zona());
+            byte[] final_ = AcabadoDeMarca.acabar(imagen, sello, new AcabadoDeMarca.Opciones(
+                    AcabadoDeMarca.Estilo.de(a.estilo()), zona == null ? SelloDeLogo.Posicion.BOTTOM_RIGHT : zona,
+                    a.anchoLogo() <= 0 ? 0.30 : a.anchoLogo(), encuadre, conLogo ? a.rotulo() : null,
+                    conLogo ? a.negocio() : null, a.historia()));
+
+            String nombre = "acabada-" + foto.getFileName();
+            String clave = storage.claveNueva(workspaceId, nombre.endsWith(".jpg") ? nombre : nombre + ".jpg",
+                    "image/jpeg");
+            String url = storage.subirBytes(clave, final_, "image/jpeg");
+            assets.save(MediaAsset.builder()
+                    .fileName(nombre)
+                    .storageKey(clave)
+                    .url(url)
+                    .type(MediaType.IMAGE)
+                    .contentType("image/jpeg")
+                    .sizeBytes((long) final_.length)
+                    .status(MediaAssetStatus.READY)
+                    .generadaPorIa(true)
+                    .build());
+            return url;
+        } catch (RuntimeException ex) {
+            log.warn("No se pudo dar el acabado a {}: {}", foto.getId(), ex.getMessage());
+            return null;
+        }
+    }
+
     private byte[] bajar(MediaAsset asset) {
         if (asset.getSizeBytes() != null && asset.getSizeBytes() > MAX_BYTES) {
             return null;

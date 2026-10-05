@@ -30,6 +30,9 @@ import com.metricol.api.service.ai.Redactor;
  * <li><b>Dónde va el logo y de qué tamaño</b>: en la zona de menos peso
  * visual (suelo, cielo, pared lisa), nunca sobre el trabajo, una cara o un
  * letrero.</li>
+ * <li><b>El diseño</b>: qué quitar porque distrae (un rayón, una cinta
+ * métrica, basura), cómo encuadrarla, y si la foto se viste con una franja
+ * de marca o un marco, o va limpia. Sabe cuándo no meter nada.</li>
  * </ol>
  *
  * <p>Corre en segundo plano con un modelo que razona: aquí se paga detalle,
@@ -67,7 +70,13 @@ public class DirectorDeFoto {
      * @param porque       por qué el logo va ahí, para el registro
      */
     public record Direccion(boolean mejorar, List<String> deficiencias, String encargo, List<String> conservar,
-            String logoZona, TamanoLogo logoTamano, String porque) {
+            String logoZona, TamanoLogo logoTamano, String porque, List<String> quitar, double[] encuadre,
+            String estilo, String rotulo) {
+
+        /** Hay algo que hacerle además del logo: limpiarla, encuadrarla o vestirla. */
+        public boolean diseno() {
+            return !quitar.isEmpty() || encuadre != null || !"LIMPIO".equals(estilo);
+        }
 
         public String deficienciasEnFrase() {
             if (deficiencias.isEmpty()) {
@@ -94,7 +103,11 @@ public class DirectorDeFoto {
              "conservar": ["IN ENGLISH: the concrete things that must stay identical in THIS photo"],
              "logo": {"zona": "TOP_LEFT" | "TOP_CENTER" | "TOP_RIGHT" | "BOTTOM_LEFT" | "BOTTOM_CENTER" | "BOTTOM_RIGHT",
                       "tamano": "CHICO" | "MEDIANO" | "GRANDE",
-                      "porque": "one short sentence in Spanish"}}
+                      "porque": "one short sentence in Spanish"},
+             "quitar": ["IN ENGLISH: small distracting elements to remove, e.g. a loose tape measure in the foreground"],
+             "encuadre": {"x": 0-1, "y": 0-1, "ancho": 0-1, "alto": 0-1} | null,
+             "acabado": {"estilo": "LIMPIO" | "FRANJA" | "MARCO",
+                         "rotulo": "IN SPANISH, 2 to 4 words naming the work or service shown, e.g. Senalizacion industrial"}}
 
             1. mejorar
             Evaluate like a professional: perspective (converging or leaning
@@ -142,6 +155,35 @@ public class DirectorDeFoto {
             when the top is sky or a plain wall. Size: CHICO for busy or elegant
             photos, MEDIANO by default, GRANDE only when a large calm area
             exists and the photo is a portfolio shot of the business's work.
+
+            5. quitar (you are also the designer: clean the shot)
+            List small elements that distract and are NOT part of what the
+            photo shows: litter, a loose tape measure or tool left on the
+            ground, stray cables, a bucket in the foreground, scribbles or
+            spray marks that are not finished work, a person cut off at the
+            edge, a trash bag, a passing car at the border. NEVER list the work
+            itself, safety signage or markings that are part of the job,
+            people who are the subject, or anything whose absence would
+            misrepresent what was done. Empty when nothing distracts. When
+            you list something, mejorar must be true and the encargo must say
+            to remove it.
+
+            6. encuadre
+            A crop that focuses the subject and drops distracting edges, as
+            fractions of the photo (x, y = top-left corner). Keep the whole
+            work visible and keep at least 60% of the photo. null when the
+            framing already works.
+
+            7. acabado (know when NOT to add anything)
+            - LIMPIO: the photo and the logo only. Default for busy or already
+              strong photos, people, food, interiors that speak by themselves.
+            - FRANJA: a soft brand band at the bottom with logo and rotulo.
+              For portfolio shots of the business's work (a finished job, an
+              installation) where the bottom of the photo is ground or floor.
+            - MARCO: a thin brand-colored frame. For elegant product or
+              detail shots.
+            The rotulo names the work or service shown (no prices, no
+            promises, no emojis). Required for FRANJA.
             """;
 
     private final OpenAiClient client;
@@ -215,6 +257,9 @@ public class DirectorDeFoto {
         String encargo = recortar(n.path("encargo").asText(""), 2500);
         // Sin encargo no hay qué mandar al modelo de imágenes: no se mejora.
         boolean mejorar = n.path("mejorar").asBoolean(false) && encargo.length() >= 40;
+        if (!mejorar && encargo.length() < 40) {
+            encargo = "";
+        }
 
         JsonNode logo = n.path("logo");
         String zona = logo.path("zona").asText("BOTTOM_RIGHT").strip().toUpperCase(Locale.ROOT);
@@ -227,8 +272,36 @@ public class DirectorDeFoto {
         } catch (IllegalArgumentException ex) {
             tamano = TamanoLogo.MEDIANO;
         }
+        List<String> quitar = lista(n.path("quitar"), 6, 160);
+        if (!quitar.isEmpty() && encargo.length() < 40) {
+            encargo = "Keep the photo as it is, with a subtle professional balance of light and color.";
+        }
+        // Quitar algo solo lo hace el modelo de imágenes: si hay qué quitar, se mejora.
+        mejorar = mejorar || !quitar.isEmpty();
+
+        JsonNode e = n.path("encuadre");
+        double[] encuadre = null;
+        if (e.isObject() && e.has("ancho") && e.has("alto")) {
+            double x = e.path("x").asDouble(0);
+            double y = e.path("y").asDouble(0);
+            double ancho = Math.min(1 - x, e.path("ancho").asDouble(1));
+            double alto = Math.min(1 - y, e.path("alto").asDouble(1));
+            if (x >= 0 && y >= 0 && ancho * alto >= 0.55 && ancho * alto < 0.985) {
+                encuadre = new double[] {x, y, ancho, alto};
+            }
+        }
+        JsonNode a = n.path("acabado");
+        String estilo = a.path("estilo").asText("LIMPIO").strip().toUpperCase(Locale.ROOT);
+        if (!Set.of("LIMPIO", "FRANJA", "MARCO").contains(estilo)) {
+            estilo = "LIMPIO";
+        }
+        String rotulo = recortar(a.path("rotulo").asText(""), 40);
+        if ("FRANJA".equals(estilo) && rotulo.isBlank()) {
+            estilo = "LIMPIO";
+        }
         return new Direccion(mejorar, lista(n.path("deficiencias"), 4, 60), mejorar ? encargo : "",
-                lista(n.path("conservar"), 10, 160), zona, tamano, recortar(logo.path("porque").asText(""), 200));
+                lista(n.path("conservar"), 10, 160), zona, tamano, recortar(logo.path("porque").asText(""), 200),
+                quitar, encuadre, estilo, rotulo);
     }
 
     private static List<String> lista(JsonNode nodo, int maximo, int largo) {
