@@ -191,6 +191,9 @@ public class DirectorDeFoto {
             if (hay(n.descripcion())) {
                 t.append("About it: ").append(n.descripcion().strip()).append('\n');
             }
+            if (n.marca() != null && n.marca().tiene(com.metricol.api.enums.RasgoDelNegocio.POR_PROYECTO)) {
+                t.append("It works by project: the photo shows its work, the logo signs it like a portfolio.\n");
+            }
         }
         if (hay(descripcion)) {
             t.append("What a first reviewer saw (Spanish): ").append(descripcion.strip()).append('\n');

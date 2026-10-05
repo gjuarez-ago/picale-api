@@ -17,7 +17,11 @@ public record BrandResponse(
         String whatsapp,
         String web,
         String direccion,
-        Completitud completitud) {
+        Completitud completitud,
+        /** Cómo trabaja; nulo = todavía no se deduce. */
+        List<String> rasgos,
+        /** Los eligió el dueño (no la IA). */
+        boolean rasgosDelDueno) {
 
     /**
      * @param percent 0 a 100

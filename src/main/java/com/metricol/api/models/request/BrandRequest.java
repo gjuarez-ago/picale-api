@@ -50,4 +50,11 @@ public class BrandRequest {
 
     @Size(max = 200)
     private String direccion;
+
+    /**
+     * Cómo trabaja (códigos de RasgoDelNegocio). Nulo = no los toques; una
+     * lista, aunque sea vacía, es lo que el dueño eligió y ya no se deducen.
+     */
+    @Size(max = 20)
+    private List<@Size(max = 30) String> rasgos;
 }

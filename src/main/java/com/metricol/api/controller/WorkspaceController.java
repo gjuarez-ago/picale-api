@@ -54,6 +54,13 @@ public class WorkspaceController {
         return ResponseEntity.ok(ApiResponse.success(marca.guardar(currentUser, request)));
     }
 
+    /** Que la IA deduzca otra vez cómo trabaja el negocio. Quien puede editar el espacio. */
+    @org.springframework.web.bind.annotation.PostMapping("/brand/rasgos/deducir")
+    public ResponseEntity<ApiResponse<BrandResponse>> deducirRasgos(@AuthenticationPrincipal User currentUser) {
+        permisos.exigir(currentUser, Permission.WORKSPACE_EDIT);
+        return ResponseEntity.ok(ApiResponse.success(marca.deducirRasgos(currentUser)));
+    }
+
     @PutMapping
     public ResponseEntity<ApiResponse<WorkspaceResponse>> update(
             @AuthenticationPrincipal User currentUser, @Valid @RequestBody WorkspaceUpdateRequest request) {

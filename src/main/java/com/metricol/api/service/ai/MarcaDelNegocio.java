@@ -1,9 +1,12 @@
 package com.metricol.api.service.ai;
 
 import java.util.List;
+import java.util.Set;
 import java.util.stream.Collectors;
 
 import com.metricol.api.entity.BrandProfile;
+import com.metricol.api.entity.Workspace;
+import com.metricol.api.enums.RasgoDelNegocio;
 import com.metricol.api.enums.TonoDeMarca;
 
 /**
@@ -24,9 +27,36 @@ public record MarcaDelNegocio(
         String evitar,
         String whatsapp,
         String web,
-        String direccion) {
+        String direccion,
+        /** Cómo trabaja ({@link RasgoDelNegocio}); nulo = no se sabe todavía. */
+        Set<RasgoDelNegocio> rasgos) {
 
     public static final MarcaDelNegocio VACIA = new MarcaDelNegocio(null, null, List.of(), null, null, null, null);
+
+    /** Sin rasgos: lo de antes del perfil del negocio. */
+    public MarcaDelNegocio(String queVende, String publico, List<TonoDeMarca> tono, String evitar, String whatsapp,
+            String web, String direccion) {
+        this(queVende, publico, tono, evitar, whatsapp, web, direccion, null);
+    }
+
+    /** La marca de un espacio con sus rasgos: lo que deben recibir todos los prompts. */
+    public static MarcaDelNegocio delEspacio(Workspace w) {
+        MarcaDelNegocio m = de(w.getBrandProfile());
+        return new MarcaDelNegocio(m.queVende, m.publico, m.tono, m.evitar, m.whatsapp, m.web, m.direccion,
+                w.rasgos());
+    }
+
+    public boolean tiene(RasgoDelNegocio rasgo) {
+        return rasgos != null && rasgos.contains(rasgo);
+    }
+
+    /** Una línea por rasgo con lo que cambia al escribir o revisar. Vacío si no hay. */
+    public String comoTrabajaEs() {
+        if (rasgos == null || rasgos.isEmpty()) {
+            return "";
+        }
+        return rasgos.stream().map(r -> r.instruccion).collect(Collectors.joining(" "));
+    }
 
     public static MarcaDelNegocio de(BrandProfile perfil) {
         if (perfil == null) {

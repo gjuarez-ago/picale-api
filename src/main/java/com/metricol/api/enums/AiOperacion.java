@@ -55,5 +55,8 @@ public enum AiOperacion {
     AGENTE_MEJORAR,
 
     /** Comparar la foto mejorada con la original: que no se haya inventado nada. */
-    AGENTE_VERIFICAR_FOTO
+    AGENTE_VERIFICAR_FOTO,
+
+    /** Deducir cómo trabaja el negocio (sus rasgos), una vez por espacio. */
+    AGENTE_PERFILAR
 }

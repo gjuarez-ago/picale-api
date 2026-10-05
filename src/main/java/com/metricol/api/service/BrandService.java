@@ -12,6 +12,8 @@ import org.springframework.transaction.annotation.Transactional;
 import com.metricol.api.entity.BrandProfile;
 import com.metricol.api.entity.User;
 import com.metricol.api.entity.Workspace;
+import com.metricol.api.enums.RasgoDelNegocio;
+import com.metricol.api.service.ai.PerfiladorDelNegocio;
 import com.metricol.api.enums.TonoDeMarca;
 import com.metricol.api.exception.ResourceNotFoundException;
 import com.metricol.api.models.request.BrandRequest;
@@ -40,8 +42,32 @@ public class BrandService {
 
     private final WorkspaceRepository repository;
 
+    private final PerfiladorDelNegocio perfilador;
+
     public BrandService(WorkspaceRepository repository) {
+        this(repository, null);
+    }
+
+    @org.springframework.beans.factory.annotation.Autowired
+    public BrandService(WorkspaceRepository repository, PerfiladorDelNegocio perfilador) {
         this.repository = repository;
+        this.perfilador = perfilador;
+    }
+
+    /**
+     * Deduce otra vez cómo trabaja el negocio (botón "Que lo deduzca la IA"):
+     * lo deducido reemplaza lo que hubiera y vuelve a ser de la IA.
+     */
+    @Transactional
+    public BrandResponse deducirRasgos(User usuario) {
+        Workspace w = buscar(usuario);
+        java.util.Set<RasgoDelNegocio> rasgos = perfilador == null ? null : perfilador.deducir(w);
+        if (rasgos == null) {
+            throw new IllegalStateException("No pude deducir cómo trabaja tu negocio. Intenta de nuevo en un momento.");
+        }
+        w.setPerfilRasgos(RasgoDelNegocio.guardar(rasgos));
+        w.setPerfilRasgosDelDueno(false);
+        return respuesta(repository.save(w));
     }
 
     @Transactional(readOnly = true)
@@ -55,6 +81,8 @@ public class BrandService {
 
         // Los del negocio, con la regla de siempre: nulo = no lo toques; vacío = bórralo. Salvo el
         // giro y la descripción, que son parte del perfil obligatorio: no se pueden dejar vacíos.
+        String giroAntes = w.getGiro();
+        String descripcionAntes = w.getDescripcion();
         if (pedido.getGiro() != null) {
             w.setGiro(obligatorio(pedido.getGiro(), 120, "El giro"));
         }
@@ -77,6 +105,16 @@ public class BrandService {
                 web(pedido.getWeb()),
                 texto(pedido.getDireccion(), 200));
         w.setBrandProfile(perfil.vacio() ? null : perfil);
+
+        if (pedido.getRasgos() != null) {
+            w.setPerfilRasgos(RasgoDelNegocio.guardar(RasgoDelNegocio.de(pedido.getRasgos())));
+            w.setPerfilRasgosDelDueno(true);
+        } else if (!Boolean.TRUE.equals(w.getPerfilRasgosDelDueno())
+                && (!java.util.Objects.equals(giroAntes, w.getGiro())
+                        || !java.util.Objects.equals(descripcionAntes, w.getDescripcion()))) {
+            // Cambió a qué se dedica: lo deducido ya no vale y se deduce otra vez.
+            w.setPerfilRasgos(null);
+        }
 
         return respuesta(repository.save(w));
     }
@@ -104,7 +142,9 @@ public class BrandService {
         BrandProfile p = w.getBrandProfile() == null ? BrandProfile.VACIO : w.getBrandProfile();
         return new BrandResponse(w.getGiro(), w.getCiudad(), w.getDescripcion(), w.getObjetivo(), p.queVende(),
                 p.publico(), p.tono() == null ? List.of() : p.tono(), p.evitar(), p.whatsapp(), p.web(), p.direccion(),
-                completitud(w));
+                completitud(w),
+                w.rasgos() == null ? null : w.rasgos().stream().map(Enum::name).toList(),
+                Boolean.TRUE.equals(w.getPerfilRasgosDelDueno()));
     }
 
     // ------------------------------------------------------------------ limpieza

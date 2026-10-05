@@ -411,6 +411,7 @@ public class Redactor {
         agregar(sb, "A quien le habla", marca.publico());
         agregar(sb, "Como suena su marca (escribe asi)", marca.personalidadEs());
         agregar(sb, "Nunca digas ni hagas esto", marca.evitar());
+        agregar(sb, "Como trabaja (respetalo al escribir)", marca.comoTrabajaEs());
         if (marca.hayContacto()) {
             // Los datos van con su limite pegado: se usan cuando la publicacion invita a escribir o visitar, y
             // no se inventan otros.

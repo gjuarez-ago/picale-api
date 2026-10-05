@@ -80,7 +80,12 @@ public final class DecisorDelAgente {
      *                           el ritmo de créditos ({@link RitmoDeCreditos})
      * @param ajuste             de -1 a 2: cuánto más difícil es que diseñe
      */
-    public record Contexto(int disenosDisponibles, int ajuste) {
+    public record Contexto(int disenosDisponibles, int ajuste, Set<com.metricol.api.enums.RasgoDelNegocio> rasgos) {
+
+        /** Sin saber cómo trabaja el negocio: las reglas de siempre. */
+        public Contexto(int disenosDisponibles, int ajuste) {
+            this(disenosDisponibles, ajuste, null);
+        }
     }
 
     /** Qué hacer, y cada paso que llevó ahí, en palabras para la persona. */
@@ -95,6 +100,19 @@ public final class DecisorDelAgente {
     private static final Set<String> CON_LOGO = Set.of("PRODUCTO", "PROMOCION", "OBRA");
 
     private DecisorDelAgente() {
+    }
+
+    /**
+     * Si el tipo de foto lleva logo. Producto y promoción, siempre. Una obra
+     * firma el portafolio de quien trabaja por proyecto: si ya se sabe cómo
+     * trabaja el negocio y no es por proyecto, no lleva.
+     */
+    static boolean conLogo(String tipo, Set<com.metricol.api.enums.RasgoDelNegocio> rasgos) {
+        if (!CON_LOGO.contains(tipo)) {
+            return false;
+        }
+        return !"OBRA".equals(tipo) || rasgos == null || rasgos.isEmpty()
+                || rasgos.contains(com.metricol.api.enums.RasgoDelNegocio.POR_PROYECTO);
     }
 
     public static Decision decidir(Diagnostico d, Contexto c) {
@@ -164,7 +182,7 @@ public final class DecisorDelAgente {
         }
 
         // 6. Logo.
-        boolean logo = CON_LOGO.contains(d.tipo());
+        boolean logo = conLogo(d.tipo(), c.rasgos());
         pasos.add(logo ? "Lleva tu logo: es " + switch (d.tipo()) {
                     case "PROMOCION" -> "una promoción";
                     case "OBRA" -> "un trabajo tuyo";

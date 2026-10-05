@@ -114,6 +114,7 @@ public class AgenteService {
     private final RetoqueDeFoto retoque;
     private final com.metricol.api.service.agente.foto.DirectorDeFoto director;
     private final com.metricol.api.service.agente.foto.MejoraDeFoto mejora;
+    private final com.metricol.api.service.ai.PerfiladorDelNegocio perfilador;
     private final MedidorDeVideo medidor;
     /** Quien mira y escucha los videos. Ver {@code agente/video/}. */
     private final AnalistaDeVideo analista;
@@ -174,7 +175,9 @@ public class AgenteService {
             com.metricol.api.service.avisos.AvisosPush avisos,
             com.metricol.api.service.social.ConexionesCaducadas conexiones,
             com.metricol.api.service.agente.foto.DirectorDeFoto director,
-            com.metricol.api.service.agente.foto.MejoraDeFoto mejora) {
+            com.metricol.api.service.agente.foto.MejoraDeFoto mejora,
+            com.metricol.api.service.ai.PerfiladorDelNegocio perfilador) {
+        this.perfilador = perfilador;
         this.director = director;
         this.mejora = mejora;
         this.avisos = avisos;
@@ -381,6 +384,7 @@ public class AgenteService {
             // Sin redes no hay a dónde proponer: ni se gasta en revisar.
             return 0;
         }
+        asegurarPerfil(w);
 
         int hechas = 0;
         LocalDateTime ahora = LocalDateTime.now();
@@ -701,7 +705,7 @@ public class AgenteService {
         for (EnTanda f : fotos) {
             // Cero diseños disponibles: en un carrusel no se diseña, se cuida la foto.
             DecisorDelAgente.Decision d = DecisorDelAgente.decidir(f.revision().diagnostico(),
-                    new DecisorDelAgente.Contexto(0, ajusteDeDiseno(w)));
+                    new DecisorDelAgente.Contexto(0, ajusteDeDiseno(w), w.rasgos()));
             if (d.tratamiento() == DecisorDelAgente.Tratamiento.OBSERVACION) {
                 marcar(f.asset(), EtapaAgente.OBSERVACION, d.explicacion());
                 continue;
@@ -829,7 +833,7 @@ public class AgenteService {
 
         // La IA ya calificó la foto; el decisor resuelve qué necesita.
         DecisorDelAgente.Decision decision = DecisorDelAgente.decidir(revision.diagnostico(),
-                new DecisorDelAgente.Contexto(disenosDisponibles(w), ajusteDeDiseno(w)));
+                new DecisorDelAgente.Contexto(disenosDisponibles(w), ajusteDeDiseno(w), w.rasgos()));
         decision = conCambio(decision, cambio, disenosDisponibles(w));
         // Una historia es del momento: se cuida la foto, no se diseña.
         if (historia && decision.tratamiento() == DecisorDelAgente.Tratamiento.DISENO) {
@@ -1241,6 +1245,23 @@ public class AgenteService {
                 default -> CalendarioDelAgente.Categoria.DIA_A_DIA;
             };
         };
+    }
+
+    /**
+     * Antes de la primera foto, cómo trabaja el negocio: de ahí sale qué
+     * aplica (logo en obras, cotizar en vez de precios, cuidado en lo
+     * regulado). Una vez; si falla, la siguiente vuelta lo intenta.
+     */
+    void asegurarPerfil(Workspace w) {
+        if (w.getPerfilRasgos() != null) {
+            return;
+        }
+        Set<com.metricol.api.enums.RasgoDelNegocio> rasgos = perfilador.deducir(w);
+        if (rasgos != null) {
+            w.setPerfilRasgos(com.metricol.api.enums.RasgoDelNegocio.guardar(rasgos));
+            workspaces.save(w);
+            log.info("Perfil de {}: {}", w.getId(), w.getPerfilRasgos());
+        }
     }
 
     /** La foto lista para publicar, lo que se decidió al final y cada paso en palabras. */
@@ -2099,7 +2120,7 @@ public class AgenteService {
 
     private Redactor.Negocio negocio(Workspace w) {
         return new Redactor.Negocio(w.getName(), w.getGiro(), w.getCiudad(), w.getDescripcion(), w.getObjetivo(),
-                MarcaDelNegocio.de(w.getBrandProfile()),
+                MarcaDelNegocio.delEspacio(w),
                 com.metricol.api.service.metricas.LoQueFunciona.paraElRedactor(loQueFunciona.de(w.getId())));
     }
 

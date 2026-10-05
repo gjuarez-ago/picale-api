@@ -251,6 +251,7 @@ public class RevisorDeMarca {
         linea(t, "Que vende o destaca", m.queVende());
         linea(t, "A quien le habla", m.publico());
         linea(t, "Lo que pide evitar", m.evitar());
+        linea(t, "Como trabaja", m.comoTrabajaEs());
         if (MarcaDelNegocio.hay(n.loQueSiVa())) {
             t.append("Lo que el dueno ya te dijo que SI va (lo habias mandado a observacion y lo rescato).")
                     .append(" Lo de estos temas es VA, no vuelvas a dudar:\n").append(n.loQueSiVa().strip()).append('\n');

@@ -110,6 +110,10 @@ class AgenteServiceTest {
     @MockitoBean
     private com.metricol.api.service.agente.foto.MejoraDeFoto mejoraDeFoto;
 
+    /** Sin perfil deducido (nulo): las reglas de siempre. */
+    @MockitoBean
+    private com.metricol.api.service.ai.PerfiladorDelNegocio perfilador;
+
     @MockitoBean
     private com.metricol.api.service.media.MedidorDeVideo medidor;
 

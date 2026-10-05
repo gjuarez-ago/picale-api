@@ -197,6 +197,21 @@ public class Workspace {
     /** El último aviso al teléfono de "tengo publicaciones listas": entre uno y otro pasa al menos una hora. */
     private java.time.LocalDateTime agenteUltimoAviso;
 
+    /**
+     * Cómo trabaja el negocio: códigos de {@link com.metricol.api.enums.RasgoDelNegocio}
+     * separados por coma. Nulo = todavía no se deducen; vacío = ninguno.
+     */
+    @Column(length = 300)
+    private String perfilRasgos;
+
+    /** Los rasgos los puso el dueño: ya no se vuelven a deducir solos. */
+    private Boolean perfilRasgosDelDueno;
+
+    /** Los rasgos, o {@code null} si todavía no se saben. */
+    public java.util.Set<com.metricol.api.enums.RasgoDelNegocio> rasgos() {
+        return com.metricol.api.enums.RasgoDelNegocio.de(perfilRasgos);
+    }
+
     public boolean conAgente() {
         return Boolean.TRUE.equals(agenteActivo);
     }

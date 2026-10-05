@@ -74,4 +74,20 @@ class DecisorConDireccionTest {
         assertThat(diseno.tratamiento()).isEqualTo(Tratamiento.DISENO);
         assertThat(DecisorDelAgente.conDireccion(diseno, true, "x", true)).isSameAs(diseno);
     }
+
+    @Test
+    @DisplayName("el logo según cómo trabaja: la obra firma el portafolio solo de quien trabaja por proyecto")
+    void logoPorRasgo() {
+        var proyecto = java.util.EnumSet.of(com.metricol.api.enums.RasgoDelNegocio.POR_PROYECTO);
+        var tienda = java.util.EnumSet.of(com.metricol.api.enums.RasgoDelNegocio.PRODUCTO,
+                com.metricol.api.enums.RasgoDelNegocio.LOCAL);
+        assertThat(DecisorDelAgente.conLogo("OBRA", proyecto)).isTrue();
+        assertThat(DecisorDelAgente.conLogo("OBRA", tienda)).isFalse();
+        assertThat(DecisorDelAgente.conLogo("PRODUCTO", tienda)).isTrue();
+        assertThat(DecisorDelAgente.conLogo("PRODUCTO", proyecto)).isTrue();
+        assertThat(DecisorDelAgente.conLogo("PROMOCION", tienda)).isTrue();
+        assertThat(DecisorDelAgente.conLogo("LUGAR", tienda)).isFalse();
+        // Sin perfil todavía: la lista de siempre.
+        assertThat(DecisorDelAgente.conLogo("OBRA", null)).isTrue();
+    }
 }

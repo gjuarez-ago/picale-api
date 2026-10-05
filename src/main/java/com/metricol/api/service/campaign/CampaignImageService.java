@@ -185,7 +185,7 @@ public class CampaignImageService {
         static Negocio de(Workspace w) {
             return new Negocio(w.getId(), w.getName(), w.getGiro(), w.getCiudad(), w.getDescripcion(),
                     w.getObjetivo() == null ? null : w.getObjetivo().name(),
-                    MarcaDelNegocio.de(w.getBrandProfile()));
+                    MarcaDelNegocio.delEspacio(w));
         }
     }
 
