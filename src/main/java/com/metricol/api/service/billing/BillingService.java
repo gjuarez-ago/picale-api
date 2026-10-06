@@ -190,6 +190,37 @@ public class BillingService {
         return iniciarCompra(organizacion, usuario, tarifaDeLicencia(adicional), compra);
     }
 
+    /**
+     * Lo que enseña la barra de créditos, ligero para pedirlo seguido (no
+     * consulta precios en Stripe como {@link #resumen}).
+     *
+     * @param cobros       con los cobros apagados no hay créditos que contar
+     * @param ilimitado    cobros apagados o cuenta maestra: no se gasta
+     * @param creditos     los que le quedan al espacio activo
+     * @param porAccion    lo que cuesta una mejora o un diseño
+     * @param alcanzanPara cuántas mejoras o diseños caben
+     * @param vencen       cuándo vencen los del mes (los de paquete no vencen)
+     * @param puedeRecargar administra la cuenta dueña: puede comprar paquetes
+     */
+    public record SaldoRapido(boolean cobros, boolean ilimitado, int creditos, int porAccion, int alcanzanPara,
+            LocalDateTime vencen, boolean puedeRecargar) {
+    }
+
+    @Transactional(readOnly = true)
+    public SaldoRapido saldoRapido(User usuario) {
+        UUID ws = usuario.getWorkspace().getId();
+        boolean cobros = creditos.cobrosActivos();
+        boolean ilimitado = !cobros || creditos.esMaestra(ws);
+        CreditService.Saldo saldo = creditos.saldo(ws);
+        int porAccion = Math.max(1, creditos.porGeneracion());
+        Workspace espacio = workspaces.findById(ws).orElse(null);
+        boolean administra = espacio != null && espacio.getOrganization() != null
+                && organizaciones.rolDe(usuario.getId(), espacio.getOrganization().getId()) != null
+                && organizaciones.rolDe(usuario.getId(), espacio.getOrganization().getId()).administraLaOrganizacion();
+        return new SaldoRapido(cobros, ilimitado, saldo.total(), porAccion, saldo.total() / porAccion,
+                saldo.vencenLosMensuales(), cobros && !ilimitado && administra);
+    }
+
     /** Un paquete suelto de créditos para un espacio. */
     @Transactional
     public String comprarPaquete(User usuario, String codigo, UUID workspaceId) {

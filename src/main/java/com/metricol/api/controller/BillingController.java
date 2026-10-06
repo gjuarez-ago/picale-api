@@ -52,6 +52,13 @@ public class BillingController {
         return ResponseEntity.ok(ApiResponse.success(billing.planes()));
     }
 
+    /** La barra de créditos de arriba: cuántos quedan y si puede recargar. Ligero: se pide seguido. */
+    @GetMapping("/saldo")
+    public ResponseEntity<ApiResponse<com.metricol.api.service.billing.BillingService.SaldoRapido>> saldo(
+            @AuthenticationPrincipal User usuario) {
+        return ResponseEntity.ok(ApiResponse.success(billing.saldoRapido(usuario)));
+    }
+
     @GetMapping("/summary")
     public ResponseEntity<ApiResponse<BillingSummaryResponse>> resumen(@AuthenticationPrincipal User usuario) {
         return ResponseEntity.ok(ApiResponse.success(billing.resumen(usuario)));
