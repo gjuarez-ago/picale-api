@@ -92,13 +92,35 @@ public class WorkspaceMembershipService {
                 .map(Workspace::getOrganization)
                 .orElse(null);
 
-        if (organizacion != null && esAdministradorDe(actual, organizacion)) {
-            return workspaces.findDeLaOrganizacion(organizacion.getId()).stream()
-                    .map(w -> respuesta(w, Role.ADMIN, Role.ADMIN.permisosPorDefecto(), w.getId().equals(activo)))
-                    .toList();
+        // Todas las organizaciones que administra, la del espacio activo primero.
+        // Antes solo se miraba esa: quien además administra la organización de
+        // otro (una invitación como ADMIN, sin espacios asignados) no veía sus
+        // espacios aunque tenía acceso (5 oct 2026).
+        List<UUID> administradas = new java.util.ArrayList<>(organizaciones.administradas(actual.getId()));
+        if (organizacion != null && administradas.remove(organizacion.getId())) {
+            administradas.add(0, organizacion.getId());
+        }
+        java.util.Map<UUID, MiWorkspaceResponse> lista = new java.util.LinkedHashMap<>();
+        for (UUID org : administradas) {
+            for (Workspace w : workspaces.findDeLaOrganizacion(org)) {
+                lista.putIfAbsent(w.getId(),
+                        respuesta(w, Role.ADMIN, Role.ADMIN.permisosPorDefecto(), w.getId().equals(activo)));
+            }
         }
 
         List<WorkspaceMember> propias = miembros.findDelUsuario(actual.getId());
+        for (WorkspaceMember m : propias) {
+            // Un espacio archivado no se ofrece: no publica, y enseñarlo
+            // en el selector solo lleva a entrar y no entender por qué
+            // nada sale. Quien lo administra sí lo ve (arriba), para restaurarlo.
+            if (!m.getWorkspace().archivado()) {
+                lista.putIfAbsent(m.getWorkspace().getId(), respuesta(m.getWorkspace(), m.getRole(),
+                        m.permisosEfectivos(), m.getWorkspace().getId().equals(activo)));
+            }
+        }
+        if (!lista.isEmpty()) {
+            return new java.util.ArrayList<>(lista.values());
+        }
 
         if (propias.isEmpty()) {
             // Solo pasa si el arranque todavía no completó las membresías de
@@ -108,14 +130,8 @@ public class WorkspaceMembershipService {
             return List.of(respuesta(suyo, rolDe(actual), rolDe(actual).permisosPorDefecto(), true));
         }
 
-        return propias.stream()
-                // Un espacio archivado no se ofrece: no publica, y enseñarlo
-                // en el selector solo lleva a entrar y no entender por qué
-                // nada sale. Quien lo administra sí lo ve, para restaurarlo.
-                .filter(m -> !m.getWorkspace().archivado())
-                .map(m -> respuesta(m.getWorkspace(), m.getRole(), m.permisosEfectivos(),
-                        m.getWorkspace().getId().equals(activo)))
-                .toList();
+        // Todas sus membresías son de espacios archivados: no hay qué ofrecer.
+        return List.of();
     }
 
     private boolean esAdministradorDe(User user, Organization organizacion) {

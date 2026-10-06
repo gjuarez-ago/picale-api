@@ -148,6 +148,33 @@ class WorkspaceMembershipServiceTest {
     }
 
     @Test
+    @DisplayName("quien además administra la organización de otro (invitado como ADMIN, sin espacios) ve también sus espacios")
+    void administraOtraOrganizacion() {
+        // Su propia agencia, con su espacio activo.
+        com.metricol.api.entity.Organization suya = organizaciones.save(
+                com.metricol.api.entity.Organization.builder().name("Rodtech").build());
+        Workspace hub = workspaces.save(Workspace.builder().name("Pícale HUB").organization(suya).build());
+        workspacesCreados.add(hub.getId());
+        User yo = usuario(hub);
+        orgMiembros.save(com.metricol.api.entity.OrganizationMember.de(yo, suya, com.metricol.api.enums.OrgRole.OWNER));
+
+        // La de Juan, donde lo invitaron como ADMIN sin asignarle espacios (5 oct 2026).
+        com.metricol.api.entity.Organization deJuan = organizaciones.save(
+                com.metricol.api.entity.Organization.builder().name("Juan Rodriguez").build());
+        Workspace juan = workspaces.save(Workspace.builder().name("Juan Rodriguez").organization(deJuan).build());
+        Workspace cmrg = workspaces.save(Workspace.builder().name("CMRG").organization(deJuan).build());
+        workspacesCreados.add(juan.getId());
+        workspacesCreados.add(cmrg.getId());
+        orgMiembros.save(com.metricol.api.entity.OrganizationMember.de(yo, deJuan, com.metricol.api.enums.OrgRole.ADMIN));
+
+        List<MiWorkspaceResponse> mios = membresias.misWorkspaces(yo);
+
+        assertThat(mios).extracting(MiWorkspaceResponse::name).containsExactly("Pícale HUB", "Juan Rodriguez", "CMRG");
+        assertThat(mios).filteredOn(MiWorkspaceResponse::activo).extracting(MiWorkspaceResponse::id)
+                .containsExactly(hub.getId());
+    }
+
+    @Test
     @DisplayName("lista todos sus workspaces y marca el activo")
     void listaSusWorkspaces() {
         Workspace tacos = workspace("Tacos Don Pepe");

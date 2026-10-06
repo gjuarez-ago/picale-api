@@ -121,6 +121,15 @@ public class OrganizationService {
         return organizacion;
     }
 
+    /** Las organizaciones que administra (dueño o administrador), en el orden en que se unió. */
+    public java.util.List<UUID> administradas(UUID userId) {
+        return miembros.findDelUsuario(userId).stream()
+                .filter(m -> m.getRole() != null && m.getRole().administraLaOrganizacion())
+                .map(m -> m.getOrganization().getId())
+                .distinct()
+                .toList();
+    }
+
     /** El papel de alguien en una organización, o vacío si no pertenece. */
     public OrgRole rolDe(UUID userId, UUID organizationId) {
         return miembros.findByUserIdAndOrganizationId(userId, organizationId)
