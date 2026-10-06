@@ -89,8 +89,8 @@ public interface PostTargetRepository extends JpaRepository<PostTarget, UUID> {
      * Lo publicado a lo que le toca leer cómo le fue, de TODOS los workspaces:
      * [id del destino, red, id en la red, perfil de upload-post].
      *
-     * <p>Las primeras 48 horas cada 12 (es cuando más se mueve); después cada
-     * dos días, hasta los 14 días, cuando ya casi no cambia. Primero lo que
+     * <p>El primer día cada 3 horas y hasta las 48 cada 12 (es cuando más se
+     * mueve); después cada dos días, hasta los 14 días, cuando ya casi no cambia. Primero lo que
      * nunca se leyó. En SQL nativo por lo de siempre: el worker no tiene tenant.
      */
     @Query(value = """
@@ -105,6 +105,7 @@ public interface PostTargetRepository extends JpaRepository<PostTarget, UUID> {
               and pt.external_post_id is not null and pt.external_post_id <> ''
               and pt.published_at between :desde and :hasta
               and (pt.metricas_en is null
+                   or (pt.published_at > :hace1d and pt.metricas_en < :hace3h)
                    or (pt.published_at > :recientes and pt.metricas_en < :hace12h)
                    or pt.metricas_en < :hace2d)
             order by pt.metricas_en asc nulls first, pt.published_at desc
@@ -112,7 +113,8 @@ public interface PostTargetRepository extends JpaRepository<PostTarget, UUID> {
             """, nativeQuery = true)
     List<Object[]> porMedir(@Param("desde") LocalDateTime desde, @Param("hasta") LocalDateTime hasta,
             @Param("recientes") LocalDateTime recientes, @Param("hace12h") LocalDateTime hace12h,
-            @Param("hace2d") LocalDateTime hace2d, @Param("tope") int tope);
+            @Param("hace2d") LocalDateTime hace2d, @Param("hace1d") LocalDateTime hace1d,
+            @Param("hace3h") LocalDateTime hace3h, @Param("tope") int tope);
 
     /**
      * Lo medido de un workspace desde {@code desde}, para aprender de ello:
@@ -157,4 +159,11 @@ public interface PostTargetRepository extends JpaRepository<PostTarget, UUID> {
     @org.springframework.transaction.annotation.Transactional
     @Query(value = "update post_targets set metricas_en = :en where id = :id", nativeQuery = true)
     int marcarMedido(@Param("id") UUID id, @Param("en") LocalDateTime en);
+
+    /** Apunta el intento y por qué la red no da números. */
+    @org.springframework.data.jpa.repository.Modifying
+    @org.springframework.transaction.annotation.Transactional
+    @Query(value = "update post_targets set metricas_en = :en, metricas_aviso = :aviso where id = :id",
+            nativeQuery = true)
+    int marcarMedidoConAviso(@Param("id") UUID id, @Param("en") LocalDateTime en, @Param("aviso") String aviso);
 }

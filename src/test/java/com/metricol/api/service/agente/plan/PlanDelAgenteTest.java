@@ -98,6 +98,9 @@ class PlanDelAgenteTest {
         verify(agente).proponerSinFoto(eq(cmrg.getId()), contains(proxima.nombre()), anyString(), any(), any());
         verify(avisos).avisarAlEquipo(eq(cmrg.getId()), contains("Lista"), anyString(), any());
         assertThat(cmrg.getAgenteFechasPreparadas()).contains(proxima.clave());
+        // Se ve en qué va: lo último que pidió, ya listo.
+        assertThat(plan.plan(cmrg, LocalDate.now()).pedido()).isNotNull()
+                .extracting(PlanDelAgente.Pedido::estado).isEqualTo("LISTA");
         assertThatThrownBy(() -> plan.prepararFecha(cmrg.getId(), proxima.clave()))
                 .hasMessageContaining("ya la preparé");
     }
@@ -139,5 +142,18 @@ class PlanDelAgenteTest {
         when(agente.conMaterialPendiente(any())).thenReturn(true);
         plan.trabajar(cmrg.getId(), LocalDateTime.of(2026, 4, 28, 23, 0));
         verify(avisos, never()).avisarAlEquipo(any(), anyString(), anyString(), any());
+    }
+
+    @Test
+    @DisplayName("un pedido que se quedó preparando más de diez minutos se enseña como que no salió")
+    void pedidoAtorado() {
+        cmrg.setAgentePiezaQue("una pieza de tu oficio");
+        cmrg.setAgentePiezaEstado("PREPARANDO");
+        cmrg.setAgentePiezaEn(LocalDateTime.now().minusMinutes(3));
+        assertThat(PlanDelAgente.pedido(cmrg, LocalDateTime.now()).estado()).isEqualTo("PREPARANDO");
+        cmrg.setAgentePiezaEn(LocalDateTime.now().minusMinutes(30));
+        assertThat(PlanDelAgente.pedido(cmrg, LocalDateTime.now()).estado()).isEqualTo("NO_SALIO");
+        cmrg.setAgentePiezaEn(LocalDateTime.now().minusDays(2));
+        assertThat(PlanDelAgente.pedido(cmrg, LocalDateTime.now())).isNull();
     }
 }

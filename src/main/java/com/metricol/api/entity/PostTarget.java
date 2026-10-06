@@ -112,6 +112,13 @@ public class PostTarget {
     private LocalDateTime metricasEn;
 
     /**
+     * Por qué esta red no da números, dicho para la persona ("LinkedIn solo da
+     * resultados de Páginas…"). Nulo = no hubo aviso.
+     */
+    @jakarta.persistence.Column(length = 200)
+    private String metricasAviso;
+
+    /**
      * Cuánto rindió, en un solo número para comparar publicaciones de la misma
      * cuenta: lo que cuesta más (comentar, compartir, guardar) pesa más que un
      * me gusta, y las vistas suman poco. Nulo si no hay nada medido.

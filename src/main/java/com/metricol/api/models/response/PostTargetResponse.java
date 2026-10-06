@@ -65,4 +65,6 @@ public class PostTargetResponse {
     private Long compartidos;
     private Long guardados;
     private LocalDateTime metricasEn;
+    /** Por qué esta red no da números; nulo si no hubo aviso. */
+    private String metricasAviso;
 }

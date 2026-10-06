@@ -69,7 +69,8 @@ public class MetricasWorker {
         hilo.shutdownNow();
     }
 
-    @Scheduled(fixedDelayString = "${app.metricas.delay-ms:10800000}",
+    // Cada hora: lo del primer día se mide cada 3 h (la consulta decide a quién le toca).
+    @Scheduled(fixedDelayString = "${app.metricas.delay-ms:3600000}",
             initialDelayString = "${app.metricas.initial-delay-ms:300000}")
     public void trabajar() {
         if (!habilitado || !props.isConfigured() || !enCurso.compareAndSet(false, true)) {
@@ -90,7 +91,7 @@ public class MetricasWorker {
     int vuelta() {
         LocalDateTime ahora = LocalDateTime.now();
         List<Object[]> pendientes = destinos.porMedir(ahora.minusDays(14), ahora.minusHours(2), ahora.minusDays(2),
-                ahora.minusHours(12), ahora.minusDays(2), porVuelta);
+                ahora.minusHours(12), ahora.minusDays(2), ahora.minusDays(1), ahora.minusHours(3), porVuelta);
         int leidas = 0;
         for (Object[] fila : pendientes) {
             UUID id = UUID.fromString(String.valueOf(fila[0]));
@@ -98,8 +99,11 @@ public class MetricasWorker {
             String idEnLaRed = String.valueOf(fila[2]);
             String perfil = String.valueOf(fila[3]);
             LecturaDeMetricas.Metricas m;
+            String aviso = null;
             try {
-                m = LecturaDeMetricas.leer(client.metricasDePublicacion(perfil, red, idEnLaRed), red);
+                java.util.Map<String, Object> respuesta = client.metricasDePublicacion(perfil, red, idEnLaRed);
+                m = LecturaDeMetricas.leer(respuesta, red);
+                aviso = LecturaDeMetricas.aviso(respuesta, red);
             } catch (HttpClientErrorException.TooManyRequests ex) {
                 log.warn("upload-post pidió bajar el ritmo de métricas; sigue en la próxima vuelta");
                 break;
@@ -109,7 +113,9 @@ public class MetricasWorker {
                 log.debug("Sin métricas para {} en {}: {}", idEnLaRed, red, ex.toString());
                 m = null;
             }
-            if (guardar(id, m)) {
+            if (aviso != null && (m == null || m.vacias())) {
+                destinos.marcarMedidoConAviso(id, LocalDateTime.now(), aviso);
+            } else if (guardar(id, m)) {
                 leidas++;
             }
             dormir();

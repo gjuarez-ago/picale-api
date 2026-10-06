@@ -815,6 +815,7 @@ public class PostService {
                         .compartidos(target.getCompartidos())
                         .guardados(target.getGuardados())
                         .metricasEn(target.getMetricasEn())
+                        .metricasAviso(target.getMetricasAviso())
                         .build())
                 .toList();
 

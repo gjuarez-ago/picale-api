@@ -84,8 +84,20 @@ public class PlanDelAgente {
      * @param presupuesto cuánto le queda al asistente este mes
      */
     public record Plan(List<FechaVista> fechas, List<ListaDeTomas.Toma> tomas, LocalDateTime tomasEn,
-            boolean relleno, com.metricol.api.service.agente.PresupuestoDelAsistente.Estado presupuesto) {
+            boolean relleno, com.metricol.api.service.agente.PresupuestoDelAsistente.Estado presupuesto,
+            Pedido pedido) {
     }
+
+    /**
+     * Lo último que la persona pidió preparar y cómo va, para que se vea:
+     * PREPARANDO (tarda uno o dos minutos), LISTA (está en sus propuestas),
+     * SIN_CREDITOS o NO_SALIO. Nulo si no pidió nada en el último día.
+     */
+    public record Pedido(String que, String estado, LocalDateTime en) {
+    }
+
+    /** Si se quedó "preparando" más de esto, algo se cayó: se dice que no salió. */
+    static final int MINUTOS_PARA_RENDIRSE = 10;
 
     /**
      * @param clave  para pedir que la prepare ("MADRES-2026")
@@ -111,7 +123,8 @@ public class PlanDelAgente {
         boolean relleno = w.conAgente() && w.getAgenteUltimoRelleno() != null
                 && w.getAgenteUltimoRelleno().isAfter(LocalDateTime.now().minusDays(7))
                 && agente.callada(DIAS_DE_SILENCIO);
-        return new Plan(fechas, leerTomas(w), w.getAgenteTomasEn(), relleno, presupuesto.estado(w.getId()));
+        return new Plan(fechas, leerTomas(w), w.getAgenteTomasEn(), relleno, presupuesto.estado(w.getId()),
+                pedido(w, LocalDateTime.now()));
     }
 
     /** Una vuelta del plan para un espacio. Nunca lanza. */
@@ -176,6 +189,7 @@ public class PlanDelAgente {
             cuando = null;
         }
         LocalDateTime para = cuando;
+        anotarPedido(workspaceId, "la publicación de " + p.fecha().nombre(), "PREPARANDO");
         fondo.enEspacio(workspaceId, () -> {
             AgenteService.SinFoto r = agente.proponerSinFoto(workspaceId,
                     "Publicacion para " + p.fecha().nombre() + " (" + dia(p.dia()) + "): " + p.fecha().idea(),
@@ -194,10 +208,34 @@ public class PlanDelAgente {
                 .orElseThrow(() -> new IllegalStateException("Espacio no encontrado."));
         exigirPresupuesto(workspaceId);
         String tema = tema(w.rasgos());
+        anotarPedido(workspaceId, "una pieza de tu oficio", "PREPARANDO");
         fondo.enEspacio(workspaceId, () -> avisarResultado(workspaceId, agente.proponerSinFoto(workspaceId,
                 "Publicacion para que la cuenta no se quede callada: " + tema + ".",
                 "Me pediste una pieza de tu oficio para que tu cuenta no se quede sin publicaciones.",
                 CalendarioDelAgente.Categoria.COMUNIDAD, null), "tu pieza de la semana"));
+    }
+
+    static Pedido pedido(Workspace w, LocalDateTime ahora) {
+        if (w.getAgentePiezaEstado() == null || w.getAgentePiezaEn() == null
+                || w.getAgentePiezaEn().isBefore(ahora.minusDays(1))) {
+            return null;
+        }
+        String estado = w.getAgentePiezaEstado();
+        if ("PREPARANDO".equals(estado) && w.getAgentePiezaEn().isBefore(ahora.minusMinutes(MINUTOS_PARA_RENDIRSE))) {
+            estado = "NO_SALIO";
+        }
+        return new Pedido(w.getAgentePiezaQue(), estado, w.getAgentePiezaEn());
+    }
+
+    private void anotarPedido(UUID workspaceId, String que, String estado) {
+        workspaces.findById(workspaceId).ifPresent(w -> {
+            if (que != null) {
+                w.setAgentePiezaQue(que.length() <= 120 ? que : que.substring(0, 120));
+            }
+            w.setAgentePiezaEstado(estado);
+            w.setAgentePiezaEn(LocalDateTime.now());
+            workspaces.save(w);
+        });
     }
 
     private void exigirPresupuesto(UUID workspaceId) {
@@ -208,7 +246,13 @@ public class PlanDelAgente {
     }
 
     private void avisarResultado(UUID workspaceId, AgenteService.SinFoto r, String que) {
-        switch (r == null ? AgenteService.SinFoto.NO_SALIO : r) {
+        AgenteService.SinFoto resultado = r == null ? AgenteService.SinFoto.NO_SALIO : r;
+        anotarPedido(workspaceId, null, switch (resultado) {
+            case PROPUESTA -> "LISTA";
+            case SIN_CREDITOS -> "SIN_CREDITOS";
+            default -> "NO_SALIO";
+        });
+        switch (resultado) {
             case PROPUESTA -> avisos.avisarAlEquipo(workspaceId, "Lista: " + que,
                     "Ya está en tus propuestas. Revísala y apruébala cuando quieras.", Map.of("tipo", "nuevas"));
             case SIN_CREDITOS -> avisos.avisarAlEquipo(workspaceId, "No alcanzaron los créditos",

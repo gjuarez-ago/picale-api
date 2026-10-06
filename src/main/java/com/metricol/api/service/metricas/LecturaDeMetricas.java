@@ -26,6 +26,33 @@ public final class LecturaDeMetricas {
         }
     }
 
+    /**
+     * Por qué la red no dio números, en palabras para la persona, o nulo. El
+     * proveedor lo dice en {@code post_metrics_error}; los casos conocidos se
+     * explican, y lo demás se resume.
+     */
+    public static String aviso(Map<String, Object> respuesta, String red) {
+        if (respuesta == null || !(respuesta.get("platforms") instanceof Map<?, ?> redes)) {
+            return null;
+        }
+        Object deLaRed = redes.get(red == null ? "" : red.toLowerCase());
+        if (deLaRed == null && redes.size() == 1) {
+            deLaRed = redes.values().iterator().next();
+        }
+        if (!(deLaRed instanceof Map<?, ?> r) || !(r.get("post_metrics_error") instanceof String error)
+                || error.isBlank()) {
+            return null;
+        }
+        String e = error.toLowerCase();
+        if (e.contains("linkedin") && e.contains("page")) {
+            return "LinkedIn solo da resultados de publicaciones en una Página, no de perfiles personales.";
+        }
+        if (e.contains("personal") || e.contains("not available")) {
+            return "Esta red no comparte resultados de esta cuenta.";
+        }
+        return "La red no dio resultados de esta publicación.";
+    }
+
     private LecturaDeMetricas() {
     }
 

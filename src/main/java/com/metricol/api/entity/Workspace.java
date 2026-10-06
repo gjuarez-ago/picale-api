@@ -219,6 +219,16 @@ public class Workspace {
     @Column(length = 1000)
     private String agenteFechasPreparadas;
 
+    /** Lo último que se le pidió preparar ("Día de Muertos", "tu pieza de la semana") y cómo va. */
+    @Column(length = 120)
+    private String agentePiezaQue;
+
+    /** PREPARANDO, LISTA, SIN_CREDITOS o NO_SALIO. */
+    @Column(length = 20)
+    private String agentePiezaEstado;
+
+    private java.time.LocalDateTime agentePiezaEn;
+
     /** Créditos al mes que el asistente puede usar en mejoras y diseños. Nulo = el de siempre. */
     private Integer agentePresupuesto;
 
