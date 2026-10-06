@@ -50,11 +50,15 @@ public class PresupuestoDelAsistente {
      */
     public record Estado(int mensual, int usados, int porAccion) {
 
+        // Sin la anotación Jackson solo manda los componentes del record: la
+        // pantalla decía "me alcanza para  mejoras" sin el número.
+        @com.fasterxml.jackson.annotation.JsonProperty
         public int restantes() {
             return Math.max(0, mensual - usados);
         }
 
         /** Cuántas mejoras o diseños caben todavía este mes. */
+        @com.fasterxml.jackson.annotation.JsonProperty
         public int acciones() {
             return porAccion <= 0 ? 0 : restantes() / porAccion;
         }
