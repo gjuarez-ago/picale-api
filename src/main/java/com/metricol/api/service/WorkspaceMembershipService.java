@@ -263,18 +263,55 @@ public class WorkspaceMembershipService {
             throw new IllegalStateException("Estás trabajando en este espacio. Cámbiate a otro y luego archívalo.");
         }
 
-        // Siempre tiene que quedar uno activo. Con cero, quien entre mañana no
+        // Tiene que quedarle a dónde entrar. Con cero, quien entre mañana no
         // tendría dónde caer: no hay pantalla que abrir, ni redes, ni sitio
-        // donde crear nada. Es el equivalente a quedarse sin la cuenta.
+        // donde crear nada. Pero quien trabaja como colaborador en los negocios
+        // de otros sí puede quedarse sin propios (6 oct 2026).
         if (archivar && !espacio.archivado()
-                && workspaces.countByOrganizationIdAndArchivedAtIsNull(organizacion.getId()) <= 1) {
-            throw new IllegalStateException("Es tu último espacio activo. Crea otro antes de archivar este.");
+                && workspaces.countByOrganizationIdAndArchivedAtIsNull(organizacion.getId()) <= 1
+                && !tieneOtroActivoFuera(actual, organizacion.getId())) {
+            throw new IllegalStateException(
+                    "Es tu único negocio. Necesitas tener acceso a otro antes de archivar este.");
         }
 
         espacio.setArchivedAt(archivar ? LocalDateTime.now() : null);
         workspaces.save(espacio);
 
         return respuesta(espacio, Role.ADMIN, Role.ADMIN.permisosPorDefecto(), false);
+    }
+
+    /** Si puede entrar a algún negocio activo de otra cuenta: a donde ir si se queda sin propios. */
+    private boolean tieneOtroActivoFuera(User actual, UUID organizacionId) {
+        boolean porMembresia = miembros.findDelUsuario(actual.getId()).stream()
+                .map(WorkspaceMember::getWorkspace)
+                .anyMatch(w -> !w.archivado() && w.getOrganization() != null
+                        && !w.getOrganization().getId().equals(organizacionId));
+        if (porMembresia) {
+            return true;
+        }
+        return organizaciones.administradas(actual.getId()).stream()
+                .filter(org -> !org.equals(organizacionId))
+                .anyMatch(org -> workspaces.countByOrganizationIdAndArchivedAtIsNull(org) > 0);
+    }
+
+    /**
+     * Elimina para siempre un negocio archivado: sus publicaciones, fotos y
+     * redes conectadas. Solo quien administra a su dueño, solo si ya está
+     * archivado (dos pasos: nadie lo borra de un clic) y escribiendo su nombre.
+     */
+    @Transactional(propagation = org.springframework.transaction.annotation.Propagation.NOT_SUPPORTED)
+    public com.metricol.api.service.root.EliminacionDefinitiva.Resultado eliminar(User actual, UUID workspaceId,
+            String confirmacion, com.metricol.api.service.root.EliminacionDefinitiva eliminacion) {
+        Workspace espacio = workspaces.findById(workspaceId)
+                .orElseThrow(() -> new ResourceNotFoundException("Espacio de trabajo no encontrado."));
+        if (espacio.getOrganization() == null) {
+            throw new ResourceNotFoundException("Espacio de trabajo no encontrado.");
+        }
+        organizaciones.exigirAdministrador(actual, espacio.getOrganization().getId());
+        if (!espacio.archivado()) {
+            throw new IllegalStateException("Primero archívalo. Después, en Archivados, lo puedes eliminar.");
+        }
+        return eliminacion.eliminarEspacio(actual, workspaceId, confirmacion, true);
     }
 
     /**

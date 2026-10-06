@@ -38,9 +38,27 @@ import jakarta.validation.Valid;
 public class WorkspacesController {
 
     private final WorkspaceMembershipService membresias;
+    private final com.metricol.api.service.root.EliminacionDefinitiva eliminacion;
 
-    public WorkspacesController(WorkspaceMembershipService membresias) {
+    public WorkspacesController(WorkspaceMembershipService membresias,
+            com.metricol.api.service.root.EliminacionDefinitiva eliminacion) {
         this.membresias = membresias;
+        this.eliminacion = eliminacion;
+    }
+
+    public record EliminarPedido(String confirmacion) {
+    }
+
+    /**
+     * Elimina para siempre un negocio ya archivado, escribiendo su nombre.
+     * Quien administra a su dueño. No se puede deshacer.
+     */
+    @org.springframework.web.bind.annotation.DeleteMapping("/{id}")
+    public ResponseEntity<ApiResponse<com.metricol.api.service.root.EliminacionDefinitiva.Resultado>> eliminar(
+            @AuthenticationPrincipal User currentUser, @PathVariable UUID id,
+            @org.springframework.web.bind.annotation.RequestBody EliminarPedido pedido) {
+        return ResponseEntity.ok(ApiResponse.success(
+                membresias.eliminar(currentUser, id, pedido == null ? null : pedido.confirmacion(), eliminacion)));
     }
 
     @GetMapping

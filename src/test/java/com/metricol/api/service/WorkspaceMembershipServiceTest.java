@@ -178,6 +178,37 @@ class WorkspaceMembershipServiceTest {
     }
 
     @Test
+    @DisplayName("quien colabora en negocios de otro puede archivar y eliminar el último propio; sin otro, no")
+    void quedarseSinPropios() {
+        com.metricol.api.entity.Organization suya = organizaciones.save(
+                com.metricol.api.entity.Organization.builder().name("Rodtech").build());
+        Workspace propio = workspaces.save(Workspace.builder().name("Pícale HUB").organization(suya).build());
+        workspacesCreados.add(propio.getId());
+        com.metricol.api.entity.Organization deJuan = organizaciones.save(
+                com.metricol.api.entity.Organization.builder().name("Juan Rodriguez").build());
+        Workspace cmrg = workspaces.save(Workspace.builder().name("CMRG").organization(deJuan).build());
+        workspacesCreados.add(cmrg.getId());
+
+        User yo = usuario(cmrg);
+        orgMiembros.save(com.metricol.api.entity.OrganizationMember.de(yo, suya, com.metricol.api.enums.OrgRole.OWNER));
+
+        // Sin acceso a otro negocio, su único propio no se archiva.
+        assertThatThrownBy(() -> membresias.archivar(yo, propio.getId(), true))
+                .hasMessageContaining("único negocio");
+
+        // Ya colabora en los de Juan: sí.
+        orgMiembros.save(com.metricol.api.entity.OrganizationMember.de(yo, deJuan, com.metricol.api.enums.OrgRole.ADMIN));
+        assertThat(membresias.archivar(yo, propio.getId(), true).archivado()).isTrue();
+
+        // Eliminar: solo archivado (dos pasos) y con su nombre; lo hace la eliminación definitiva.
+        var eliminacion = org.mockito.Mockito.mock(com.metricol.api.service.root.EliminacionDefinitiva.class);
+        assertThatThrownBy(() -> membresias.eliminar(yo, cmrg.getId(), "CMRG", eliminacion))
+                .hasMessageContaining("Primero archívalo");
+        membresias.eliminar(yo, propio.getId(), "Pícale HUB", eliminacion);
+        org.mockito.Mockito.verify(eliminacion).eliminarEspacio(yo, propio.getId(), "Pícale HUB", true);
+    }
+
+    @Test
     @DisplayName("lista todos sus workspaces y marca el activo")
     void listaSusWorkspaces() {
         Workspace tacos = workspace("Tacos Don Pepe");

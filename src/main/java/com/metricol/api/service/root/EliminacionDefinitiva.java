@@ -89,11 +89,20 @@ public class EliminacionDefinitiva {
     // ------------------------------------------------------------------ un espacio
 
     public Resultado eliminarEspacio(User quien, UUID workspaceId, String confirmacion) {
+        return eliminarEspacio(quien, workspaceId, confirmacion, false);
+    }
+
+    /**
+     * @param puedeSerElUltimo el dueño borra el suyo desde su panel: puede quedarse
+     *                         sin espacios propios si trabaja en los de otros (quien
+     *                         no tenga a dónde ir lo frena igual, abajo)
+     */
+    public Resultado eliminarEspacio(User quien, UUID workspaceId, String confirmacion, boolean puedeSerElUltimo) {
         Workspace espacio = workspaces.findById(workspaceId)
                 .orElseThrow(() -> new ResourceNotFoundException("Ese espacio no existe."));
-        exigirConfirmacion(confirmacion, espacio.getName(), "el nombre del espacio");
+        exigirConfirmacion(confirmacion, espacio.getName(), "el nombre del negocio");
         UUID orgId = espacio.getOrganization() == null ? null : espacio.getOrganization().getId();
-        if (orgId != null && contar("select count(*) from workspaces where organization_id = :org",
+        if (!puedeSerElUltimo && orgId != null && contar("select count(*) from workspaces where organization_id = :org",
                 Map.of("org", orgId)) <= 1) {
             throw new ConflictoException("ULTIMO_ESPACIO",
                     "Es el único espacio de su organización. Elimina la organización completa.");
@@ -114,8 +123,8 @@ public class EliminacionDefinitiva {
             }
         }
         if (!sinDestino.isEmpty()) {
-            throw new ConflictoException("SIN_OTRO_ESPACIO", "Estas personas solo tienen este espacio: "
-                    + String.join(", ", sinDestino) + ". Elimínalas o dales otro espacio primero.");
+            throw new ConflictoException("SIN_OTRO_ESPACIO", "Estas personas solo tienen este negocio: "
+                    + String.join(", ", sinDestino) + ". Dales acceso a otro negocio antes de eliminarlo.");
         }
 
         cancelarSuscripciones("select stripe_subscription_id from licenses where workspace_id = :id "
