@@ -138,6 +138,14 @@ public class CampaignImageService {
     }
 
     /** Lo que se crea y en qué redes puede publicarse. */
+    /**
+     * Si el diseño en formato post sale para esa red. TikTok no: pedírselo
+     * hacía fallar el diseño entero ("TikTok no admite publicaciones").
+     */
+    public static boolean disenaPostPara(Platform red) {
+        return Formato.POST.redes.contains(red);
+    }
+
     enum Formato {
         POST(false, "publicaciones", EnumSet.of(Platform.INSTAGRAM, Platform.FACEBOOK, Platform.LINKEDIN)),
         CAROUSEL(true, "carruseles", EnumSet.of(Platform.INSTAGRAM, Platform.FACEBOOK, Platform.LINKEDIN)),

@@ -1077,6 +1077,10 @@ public class AgenteService {
     private boolean proponerDiseno(MediaAsset asset, Workspace w, List<SocialAccount> destino, Set<Platform> redes,
             String encargo, DecisorDelAgente.Decision decision, String porQue, CalendarioDelAgente.Categoria categoria,
             String tipo) {
+        if (redes.stream().noneMatch(CampaignImageService::disenaPostPara)) {
+            // Ninguna red admite el diseño (solo TikTok): ni se gasta, va tal cual.
+            return false;
+        }
         CampaignImageService.Diseno diseno;
         try {
             diseno = generador.disenarParaElAgente(w, new CampaignImageRequest(1,
@@ -1085,7 +1089,7 @@ public class AgenteService {
                     // El logo también lo decide el decisor: sin él, se pide que no lo ponga.
                     new CampaignImageRequest.Brand(w.getLogoUrl(), decision.logo() ? null : "NONE"),
                     encargo, null, List.of(), null, "", false,
-                    redes.stream().map(Platform::name).toList()));
+                    redes.stream().filter(CampaignImageService::disenaPostPara).map(Platform::name).toList()));
         } catch (RuntimeException ex) {
             log.info("El agente no pudo diseñar {}; va tal cual: {}", asset.getId(), ex.getMessage());
             return false;
@@ -1185,8 +1189,13 @@ public class AgenteService {
         } catch (RuntimeException topeDelDia) {
             return SinFoto.NO_SALIO;
         }
+        // Solo las redes a las que sale un diseño en formato post (TikTok no).
         Set<Platform> redes = destino.stream().map(SocialAccount::getPlatform)
+                .filter(CampaignImageService::disenaPostPara)
                 .collect(Collectors.toCollection(LinkedHashSet::new));
+        if (redes.isEmpty()) {
+            return SinFoto.NO_SALIO;
+        }
         String pedido = encargo + " Sin foto del negocio: haz un diseno grafico (tipografia, ilustracion, "
                 + "texturas u objetos), nunca personas, obras ni lugares que parezcan fotos reales.";
         CampaignImageService.Diseno diseno;

@@ -489,6 +489,9 @@ class AgenteServiceTest {
     void piezaSinFoto() {
         enElWorkspace(() -> {
             conInstagram();
+            // Con TikTok conectado también: el diseño no se le pide (no admite posts de diseño).
+            cuentasCreadas.add(cuentas.save(SocialAccount.builder().platform(Platform.TIKTOK).accountName("vivento_tt")
+                    .status(SocialAccountStatus.CONNECTED).build()).getId());
             agente.encender(ws.getId(), true);
             when(generador.disenarParaElAgente(any(), any())).thenReturn(new com.metricol.api.service.campaign.CampaignImageService.Diseno(
                     List.of(new com.metricol.api.service.campaign.CampaignImageService.Diseno.Version(List.of(Platform.INSTAGRAM),
@@ -505,7 +508,9 @@ class AgenteServiceTest {
             assertThat(p.getFechaPropuesta()).isEqualTo(cuando);
             assertThat(p.getMediaUrls()).containsExactly("https://cdn.test/diseno-madres.jpg");
             org.mockito.Mockito.verify(generador).disenarParaElAgente(any(), org.mockito.ArgumentMatchers.argThat(
-                    c -> c.brief().contains("nunca personas") && c.resourceUrls().isEmpty()));
+                    c -> c.brief().contains("nunca personas") && c.resourceUrls().isEmpty()
+                            // TikTok no admite diseños en formato post: pedírselo tumbaba el diseño entero.
+                            && !c.networks().contains("TIKTOK")));
         });
     }
 
