@@ -215,6 +215,13 @@ public class Workspace {
     /** La última vez que llenó un hueco por su cuenta (sin material): una por semana como mucho. */
     private java.time.LocalDateTime agenteUltimoRelleno;
 
+    /** Las fechas que el dueño pidió preparar ("MADRES-2026"); las de {@link #agenteFechasHechas} solo se ofrecieron. */
+    @Column(length = 1000)
+    private String agenteFechasPreparadas;
+
+    /** Créditos al mes que el asistente puede usar en mejoras y diseños. Nulo = el de siempre. */
+    private Integer agentePresupuesto;
+
     /** El último aviso al teléfono de "tengo publicaciones listas": entre uno y otro pasa al menos una hora. */
     private java.time.LocalDateTime agenteUltimoAviso;
 

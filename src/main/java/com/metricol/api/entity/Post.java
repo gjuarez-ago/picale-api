@@ -332,6 +332,21 @@ public class Post {
     private String agenteAcabado;
 
     /**
+     * Lo que ganaría la foto si se mejora con IA ("sombras muy oscuras y la
+     * cinta métrica"): la mejora cuesta créditos y se hace solo si la piden.
+     * Nulo = no se ofrece.
+     */
+    @Column(length = 300)
+    private String agenteMejoraSugerida;
+
+    /** Lo que dirigió el director de foto, en JSON: con esto se mejora sin volver a mirarla. */
+    @Column(length = 6000)
+    private String agenteDireccion;
+
+    /** La mejora pedida está en curso (tarda un minuto o dos). */
+    private Boolean agenteMejorando;
+
+    /**
      * Qué generación de diseño es: las versiones de un mismo diseño (una por
      * proporción) comparten este id. Son UNA publicación para la persona: se
      * aprueban, se descartan y se mueven juntas, y cuentan como un crédito.

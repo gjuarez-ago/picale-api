@@ -840,6 +840,8 @@ public class PostService {
                 .propuestaAgente(post.delAgente())
                 .fechaPropuesta(post.getFechaPropuesta())
                 .agenteMotivo(post.getAgenteMotivo())
+                .agenteMejoraSugerida(post.getAgenteMejoraSugerida())
+                .agenteMejorando(Boolean.TRUE.equals(post.getAgenteMejorando()))
                 .agenteMovida(post.getAgenteMovidaVeces() != null && post.getAgenteMovidaVeces() > 0)
                 .agenteCaducaEn(post.getAgenteCaducaEn())
                 .targets(targets)

@@ -113,7 +113,7 @@ public class AgenteService {
     private final CreditService creditos;
     private final RetoqueDeFoto retoque;
     private final com.metricol.api.service.agente.foto.DirectorDeFoto director;
-    private final com.metricol.api.service.agente.foto.MejoraDeFoto mejora;
+    private final PresupuestoDelAsistente presupuesto;
     private final com.metricol.api.service.ai.PerfiladorDelNegocio perfilador;
     private final MedidorDeVideo medidor;
     /** Quien mira y escucha los videos. Ver {@code agente/video/}. */
@@ -175,11 +175,11 @@ public class AgenteService {
             com.metricol.api.service.avisos.AvisosPush avisos,
             com.metricol.api.service.social.ConexionesCaducadas conexiones,
             com.metricol.api.service.agente.foto.DirectorDeFoto director,
-            com.metricol.api.service.agente.foto.MejoraDeFoto mejora,
+            PresupuestoDelAsistente presupuesto,
             com.metricol.api.service.ai.PerfiladorDelNegocio perfilador) {
+        this.presupuesto = presupuesto;
         this.perfilador = perfilador;
         this.director = director;
-        this.mejora = mejora;
         this.avisos = avisos;
         this.conexiones = conexiones;
         this.organizador = organizador;
@@ -894,8 +894,10 @@ public class AgenteService {
                     + cuandoYDonde(redes, hueco);
             Post creada = postService.crearPropuesta(pedido, fecha, motivo, asset.getUrl(),
                     decision.tratamiento().name(), categoria(revision.diagnostico()).name());
-            if (lista.acabado() != null) {
+            if (lista.acabado() != null || lista.mejoraSugerida() != null) {
                 creada.setAgenteAcabado(lista.acabado());
+                creada.setAgenteMejoraSugerida(lista.mejoraSugerida());
+                creada.setAgenteDireccion(lista.direccion());
                 posts.save(creada);
             }
 
@@ -1352,7 +1354,14 @@ public class AgenteService {
 
     /** La foto lista para publicar, lo que se decidió al final y cada paso en palabras. */
     record FotoLista(String url, DecisorDelAgente.Decision decision, List<String> pasos, boolean conLogo,
-            String acabado) {
+            String acabado, String mejoraSugerida, String direccion) {
+    }
+
+    /** La dirección, para mejorar después sin volver a mirar la foto. Nulo si no hay qué mejorar. */
+    private static String guardarDireccion(com.metricol.api.service.agente.foto.DirectorDeFoto.Direccion d,
+            boolean conLogo, boolean historia) {
+        return d == null || !d.mejorar() ? null
+                : com.metricol.api.service.agente.foto.MejoraBajoDemanda.guardar(d, conLogo, historia);
     }
 
     /** Cuánto prefiere la cuenta las fotos sin adornos: sube al descartarlos, baja al aprobarlos. */
@@ -1407,36 +1416,26 @@ public class AgenteService {
         if (fotoTalCual && !revision.diagnostico().esArte()) {
             direccion = director.dirigir(asset.getUrl(), negocio(w), revision.descripcion());
         }
+        // Mejorar con IA cuesta créditos: se ofrece en la propuesta, no se hace solo.
+        String sugerencia = null;
         if (direccion != null) {
-            decision = DecisorDelAgente.conDireccion(decision, direccion.mejorar(), direccion.deficienciasEnFrase(),
-                    direccion.mejorar() && mejora.quedanHoy(w.getId()) > 0);
-        }
-        List<String> pasos = new ArrayList<>(decision.pasos());
-
-        MediaAsset base = asset;
-        if (decision.tratamiento() == DecisorDelAgente.Tratamiento.MEJORA) {
-            com.metricol.api.service.agente.foto.MejoraDeFoto.Mejorada mejorada =
-                    mejora.mejorar(asset, w.getId(), direccion);
-            if (mejorada != null && mejorada.salio()) {
-                base = mejorada.asset();
-                if (!direccion.quitar().isEmpty()) {
-                    pasos.add("Le quité lo que distraía de la foto, sin tocar tu trabajo.");
-                }
+            if (direccion.mejorar()) {
+                sugerencia = direccion.deficienciasEnFrase();
             } else {
-                pasos.add(mejorada == null || mejorada.noSalio() == null ? "La mejora no salió." : mejorada.noSalio());
-                // Si era fiel pero no ganaba, la original ya está bien: ni el retoque sencillo.
-                boolean yaEstabaBien = mejorada != null && mejorada.noMejoraba();
-                decision = new DecisorDelAgente.Decision(yaEstabaBien ? DecisorDelAgente.Tratamiento.TAL_CUAL
-                        : DecisorDelAgente.Tratamiento.RETOQUE, decision.logo(), decision.prioridad(), decision.pasos());
+                decision = DecisorDelAgente.conDireccion(decision, false, "", false);
             }
         }
-        if (decision.tratamiento() == DecisorDelAgente.Tratamiento.RETOQUE && base == asset) {
+        List<String> pasos = new ArrayList<>(decision.pasos());
+        if (sugerencia != null) {
+            pasos.add("Si la quieres más profesional, la mejoro con IA (" + sugerencia
+                    + "): toca «Mejorarla con IA».");
+        }
+
+        MediaAsset base = asset;
+        if (decision.tratamiento() == DecisorDelAgente.Tratamiento.RETOQUE) {
             MediaAsset retocada = retoque.retocar(asset, w.getId());
             if (retocada != null) {
                 base = retocada;
-                if (direccion != null && direccion.mejorar()) {
-                    pasos.add("Le hice un retoque sencillo de luz y color.");
-                }
             } else {
                 pasos.add("El retoque no salió; va como vino.");
             }
@@ -1476,7 +1475,9 @@ public class AgenteService {
                                 + ", donde no tapa lo importante.";
                     });
                 }
-                return new FotoLista(url, decision, pasos, sellada, historia && "FRANJA".equals(estilo) ? "LIMPIO" : estilo);
+                return new FotoLista(url, decision, pasos, sellada,
+                        historia && "FRANJA".equals(estilo) ? "LIMPIO" : estilo, sugerencia,
+                        guardarDireccion(direccion, conLogo, historia));
             }
         }
         if (conLogo) {
@@ -1493,7 +1494,8 @@ public class AgenteService {
                 pasos.add(w.getLogoUrl() == null ? "No hay un logo guardado en tu marca." : "El logo no se pudo pegar.");
             }
         }
-        return new FotoLista(url, decision, pasos, sellada, null);
+        return new FotoLista(url, decision, pasos, sellada, null, sugerencia,
+                guardarDireccion(direccion, conLogo, historia));
     }
 
     private static String dondeVa(String zona) {
@@ -1518,6 +1520,11 @@ public class AgenteService {
      * cuenta menos los que el agente ya hizo desde el lunes.
      */
     int disenosDisponibles(Workspace w) {
+        return Math.min(disenosPorCreditos(w), presupuesto.estado(w.getId()).acciones());
+    }
+
+    /** Los diseños que caben esta semana según el ritmo de créditos. */
+    private int disenosPorCreditos(Workspace w) {
         // Las cuentas maestras (exentas de pago) no tienen límite.
         if (creditos.esMaestra(w.getId())) {
             return Integer.MAX_VALUE;

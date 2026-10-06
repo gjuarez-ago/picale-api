@@ -33,13 +33,14 @@ import com.metricol.api.service.avisos.AvisosPush;
  *
  * <ol>
  * <li><b>Fechas</b>: de 2 a 7 días antes de una fecha que le toca al
- * negocio ({@link FechasDelAnio}), diseña la pieza para ese día. Sin
- * créditos, le pide al dueño una foto para la fecha.</li>
+ * negocio ({@link FechasDelAnio}), le pregunta al dueño si le prepara la
+ * pieza. Diseñar cuesta créditos: se hace solo si dice que sí
+ * ({@link #prepararFecha}).</li>
  * <li><b>Fotos de la semana</b>: cada siete días le manda al teléfono tres
  * fotos concretas que necesita ({@link ListaDeTomas}).</li>
  * <li><b>Sin silencio</b>: si no hay nada propuesto ni programado en los
- * próximos días y no hay fotos por revisar, diseña una pieza de su oficio
- * (un consejo, un dato). Una por semana como mucho.</li>
+ * próximos días y no hay fotos por revisar, ofrece una pieza de su oficio
+ * (un consejo, un dato) y la hace si se la piden. Una oferta por semana.</li>
  * </ol>
  *
  * <p>Solo en horas de oficina (los avisos no despiertan a nadie) y una acción
@@ -61,23 +62,36 @@ public class PlanDelAgente {
     private final ListaDeTomas tomas;
     private final AvisosPush avisos;
     private final WorkspaceRepository workspaces;
+    private final com.metricol.api.service.agente.PresupuestoDelAsistente presupuesto;
+    private final com.metricol.api.service.agente.TrabajoDeFondo fondo;
     private final ObjectMapper mapper = new ObjectMapper();
 
-    public PlanDelAgente(AgenteService agente, ListaDeTomas tomas, AvisosPush avisos, WorkspaceRepository workspaces) {
+    public PlanDelAgente(AgenteService agente, ListaDeTomas tomas, AvisosPush avisos, WorkspaceRepository workspaces,
+            com.metricol.api.service.agente.PresupuestoDelAsistente presupuesto,
+            com.metricol.api.service.agente.TrabajoDeFondo fondo) {
         this.agente = agente;
         this.tomas = tomas;
         this.avisos = avisos;
         this.workspaces = workspaces;
-    }
-
-    /** Lo que se ve del plan: las fechas que vienen y las fotos que pidió. */
-    public record Plan(List<FechaVista> fechas, List<ListaDeTomas.Toma> tomas, LocalDateTime tomasEn) {
+        this.presupuesto = presupuesto;
+        this.fondo = fondo;
     }
 
     /**
-     * @param estado LISTA (ya la preparó o la pidió), PRONTO (la prepara en los días antes)
+     * Lo que se ve del plan.
+     *
+     * @param relleno  la cuenta se va a quedar callada: ofrece una pieza de su oficio
+     * @param presupuesto cuánto le queda al asistente este mes
      */
-    public record FechaVista(String nombre, LocalDate dia, String idea, String estado) {
+    public record Plan(List<FechaVista> fechas, List<ListaDeTomas.Toma> tomas, LocalDateTime tomasEn,
+            boolean relleno, com.metricol.api.service.agente.PresupuestoDelAsistente.Estado presupuesto) {
+    }
+
+    /**
+     * @param clave  para pedir que la prepare ("MADRES-2026")
+     * @param estado PREPARADA (ya la pidió), OFRECIDA (le preguntó), PRONTO (le preguntará unos días antes)
+     */
+    public record FechaVista(String clave, String nombre, LocalDate dia, String idea, String estado) {
     }
 
     public Plan plan(UUID workspaceId) {
@@ -87,13 +101,17 @@ public class PlanDelAgente {
     }
 
     public Plan plan(Workspace w, LocalDate hoy) {
-        Set<String> hechas = hechas(w);
+        Set<String> ofrecidas = hechas(w);
+        Set<String> preparadas = lista(w.getAgenteFechasPreparadas());
         List<FechaVista> fechas = new ArrayList<>();
         for (FechasDelAnio.Proxima p : proximas(w, hoy, 45)) {
-            fechas.add(new FechaVista(p.fecha().nombre(), p.dia(), p.fecha().idea(),
-                    hechas.contains(p.clave()) ? "LISTA" : "PRONTO"));
+            fechas.add(new FechaVista(p.clave(), p.fecha().nombre(), p.dia(), p.fecha().idea(),
+                    preparadas.contains(p.clave()) ? "PREPARADA" : ofrecidas.contains(p.clave()) ? "OFRECIDA" : "PRONTO"));
         }
-        return new Plan(fechas, leerTomas(w), w.getAgenteTomasEn());
+        boolean relleno = w.conAgente() && w.getAgenteUltimoRelleno() != null
+                && w.getAgenteUltimoRelleno().isAfter(LocalDateTime.now().minusDays(7))
+                && agente.callada(DIAS_DE_SILENCIO);
+        return new Plan(fechas, leerTomas(w), w.getAgenteTomasEn(), relleno, presupuesto.estado(w.getId()));
     }
 
     /** Una vuelta del plan para un espacio. Nunca lanza. */
@@ -119,41 +137,86 @@ public class PlanDelAgente {
 
     // ------------------------------------------------------------ 1. fechas
 
-    /** @return si hizo algo de diseño en esta vuelta (una por vuelta) */
+    /** Pregunta por la fecha más cercana que no se haya ofrecido. @return si ofreció algo */
     boolean atenderFecha(Workspace w, LocalDateTime ahora) {
         LocalDate hoy = ahora.toLocalDate();
-        Set<String> hechas = hechas(w);
+        Set<String> ofrecidas = hechas(w);
         for (FechasDelAnio.Proxima p : proximas(w, hoy, DIAS_ANTES_MAX)) {
-            if (hechas.contains(p.clave()) || p.dia().isBefore(hoy.plusDays(DIAS_ANTES_MIN))) {
+            if (ofrecidas.contains(p.clave()) || p.dia().isBefore(hoy.plusDays(DIAS_ANTES_MIN))) {
                 continue;
             }
-            LocalDateTime cuando = p.dia().atTime(LocalTime.of(10, 0));
-            String encargo = "Publicacion para " + p.fecha().nombre() + " (" + dia(p.dia()) + "): "
-                    + p.fecha().idea();
-            AgenteService.SinFoto r = agente.proponerSinFoto(w.getId(), encargo,
-                    "Se viene " + p.fecha().nombre() + " (" + dia(p.dia()) + ") y le toca a tu negocio: la preparé "
-                            + "para ese día.",
-                    CalendarioDelAgente.Categoria.COMUNIDAD, cuando);
-            switch (r == null ? AgenteService.SinFoto.NO_SALIO : r) {
-                case PROPUESTA -> {
-                    marcar(w, p.clave());
-                    log.info("Fecha {} preparada para {}", p.clave(), w.getId());
-                    return true;
-                }
-                case SIN_CREDITOS -> {
-                    avisos.avisarAlEquipo(w.getId(), p.fecha().nombre() + " es el " + dia(p.dia()),
-                            "Mándame una foto de tu negocio para esa fecha y la preparo. "
-                                    + p.fecha().idea(), Map.of("tipo", "fecha"));
-                    marcar(w, p.clave());
-                    return false;
-                }
-                default -> {
-                    // No salió (la IA, el tope del día): la siguiente vuelta lo intenta otra vez.
-                    return false;
-                }
-            }
+            avisos.avisarAlEquipo(w.getId(), p.fecha().nombre() + " es el " + dia(p.dia()),
+                    "¿Te preparo la publicación para ese día? Tócale «Prepárala» en Hoy, o mándame una foto tuya.",
+                    Map.of("tipo", "fecha", "clave", p.clave()));
+            marcar(w, p.clave());
+            return true;
         }
         return false;
+    }
+
+    /**
+     * El dueño dijo que sí: diseña la pieza para la fecha, en segundo plano, y
+     * avisa cuando está. Cuesta créditos y entra en el presupuesto.
+     *
+     * @throws IllegalStateException si la fecha no le toca o ya no alcanza el presupuesto
+     */
+    public void prepararFecha(UUID workspaceId, String clave) {
+        Workspace w = workspaces.findById(workspaceId)
+                .orElseThrow(() -> new IllegalStateException("Espacio no encontrado."));
+        LocalDate hoy = LocalDate.now();
+        FechasDelAnio.Proxima p = proximas(w, hoy, 45).stream().filter(x -> x.clave().equals(clave)).findFirst()
+                .orElseThrow(() -> new IllegalStateException("Esa fecha ya pasó o no le toca a tu negocio."));
+        if (lista(w.getAgenteFechasPreparadas()).contains(clave)) {
+            throw new IllegalStateException("Esa ya la preparé: está en tus propuestas.");
+        }
+        exigirPresupuesto(workspaceId);
+        agregar(w, clave);
+        LocalDateTime cuando = p.dia().atTime(LocalTime.of(10, 0));
+        if (cuando.isBefore(LocalDateTime.now().plusHours(3))) {
+            cuando = null;
+        }
+        LocalDateTime para = cuando;
+        fondo.enEspacio(workspaceId, () -> {
+            AgenteService.SinFoto r = agente.proponerSinFoto(workspaceId,
+                    "Publicacion para " + p.fecha().nombre() + " (" + dia(p.dia()) + "): " + p.fecha().idea(),
+                    "Me pediste la pieza para " + p.fecha().nombre() + " (" + dia(p.dia()) + ").",
+                    CalendarioDelAgente.Categoria.COMUNIDAD, para);
+            avisarResultado(workspaceId, r, p.fecha().nombre());
+            if (r != AgenteService.SinFoto.PROPUESTA) {
+                quitar(workspaceId, clave);
+            }
+        });
+    }
+
+    /** El dueño quiere la pieza de su oficio para que la cuenta no se calle. */
+    public void prepararRelleno(UUID workspaceId) {
+        Workspace w = workspaces.findById(workspaceId)
+                .orElseThrow(() -> new IllegalStateException("Espacio no encontrado."));
+        exigirPresupuesto(workspaceId);
+        String tema = tema(w.rasgos());
+        fondo.enEspacio(workspaceId, () -> avisarResultado(workspaceId, agente.proponerSinFoto(workspaceId,
+                "Publicacion para que la cuenta no se quede callada: " + tema + ".",
+                "Me pediste una pieza de tu oficio para que tu cuenta no se quede sin publicaciones.",
+                CalendarioDelAgente.Categoria.COMUNIDAD, null), "tu pieza de la semana"));
+    }
+
+    private void exigirPresupuesto(UUID workspaceId) {
+        if (!presupuesto.alcanza(workspaceId)) {
+            throw new IllegalStateException(
+                    "Llegaste al presupuesto del asistente de este mes. Puedes subirlo en Asistente.");
+        }
+    }
+
+    private void avisarResultado(UUID workspaceId, AgenteService.SinFoto r, String que) {
+        switch (r == null ? AgenteService.SinFoto.NO_SALIO : r) {
+            case PROPUESTA -> avisos.avisarAlEquipo(workspaceId, "Lista: " + que,
+                    "Ya está en tus propuestas. Revísala y apruébala cuando quieras.", Map.of("tipo", "nuevas"));
+            case SIN_CREDITOS -> avisos.avisarAlEquipo(workspaceId, "No alcanzaron los créditos",
+                    "No pude preparar " + que + ": se acabaron los créditos de la semana o el presupuesto del mes.",
+                    Map.of("tipo", "nuevas"));
+            default -> avisos.avisarAlEquipo(workspaceId, "No salió " + que,
+                    "No pude prepararla ahora. Inténtalo de nuevo en un rato.", Map.of("tipo", "nuevas"));
+        }
     }
 
     // ------------------------------------------------------------ 2. fotos de la semana
@@ -198,21 +261,19 @@ public class PlanDelAgente {
         if (agente.conMaterialPendiente(w) || !agente.callada(DIAS_DE_SILENCIO)) {
             return;
         }
-        Set<RasgoDelNegocio> rasgos = w.rasgos();
-        String tema = rasgos != null && rasgos.contains(RasgoDelNegocio.EDUCA)
+        avisos.avisarAlEquipo(w.getId(), "Tu cuenta se va a quedar callada",
+                "No hay publicaciones para los próximos días. ¿Te preparo una pieza de tu oficio? Tócale «Prepárala» "
+                        + "en Hoy, o mándame fotos.", Map.of("tipo", "relleno"));
+        w.setAgenteUltimoRelleno(ahora);
+        workspaces.save(w);
+    }
+
+    static String tema(Set<RasgoDelNegocio> rasgos) {
+        return rasgos != null && rasgos.contains(RasgoDelNegocio.EDUCA)
                 ? "un consejo practico de su oficio que le sirva a sus clientes"
                 : rasgos != null && rasgos.contains(RasgoDelNegocio.POR_PROYECTO)
                         ? "por que elegirlos para un proyecto: su experiencia y como trabajan"
                         : "algo util o interesante de su giro para sus clientes";
-        AgenteService.SinFoto r = agente.proponerSinFoto(w.getId(),
-                "Publicacion para que la cuenta no se quede callada: " + tema + ".",
-                "Tu cuenta se iba a quedar sin publicaciones estos días: preparé una pieza de tu oficio.",
-                CalendarioDelAgente.Categoria.COMUNIDAD, null);
-        if (r != null && r != AgenteService.SinFoto.NO_SALIO) {
-            // Sin créditos también cuenta: la lista de fotos de la semana ya le pide material.
-            w.setAgenteUltimoRelleno(ahora);
-            workspaces.save(w);
-        }
     }
 
     // ------------------------------------------------------------ apoyo
@@ -222,10 +283,30 @@ public class PlanDelAgente {
     }
 
     static Set<String> hechas(Workspace w) {
-        if (w.getAgenteFechasHechas() == null || w.getAgenteFechasHechas().isBlank()) {
+        return lista(w.getAgenteFechasHechas());
+    }
+
+    static Set<String> lista(String csv) {
+        if (csv == null || csv.isBlank()) {
             return Set.of();
         }
-        return new LinkedHashSet<>(Arrays.asList(w.getAgenteFechasHechas().split(",")));
+        return new LinkedHashSet<>(Arrays.asList(csv.split(",")));
+    }
+
+    private void agregar(Workspace w, String clave) {
+        Set<String> todas = new LinkedHashSet<>(lista(w.getAgenteFechasPreparadas()));
+        todas.add(clave);
+        w.setAgenteFechasPreparadas(String.join(",", todas));
+        workspaces.save(w);
+    }
+
+    private void quitar(UUID workspaceId, String clave) {
+        workspaces.findById(workspaceId).ifPresent(w -> {
+            Set<String> todas = new LinkedHashSet<>(lista(w.getAgenteFechasPreparadas()));
+            todas.remove(clave);
+            w.setAgenteFechasPreparadas(String.join(",", todas));
+            workspaces.save(w);
+        });
     }
 
     private void marcar(Workspace w, String clave) {

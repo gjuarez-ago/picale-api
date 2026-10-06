@@ -81,6 +81,12 @@ public class PostResponse {
     /** Qué hizo el agente y por qué. */
     private String agenteMotivo;
 
+    /** Lo que ganaría con "Mejorarla con IA"; nulo = no se ofrece. */
+    private String agenteMejoraSugerida;
+
+    /** La mejora pedida está en curso. */
+    private boolean agenteMejorando;
+
     /** La cambió de hora porque no llegó el sí a tiempo: se le dice a la persona. */
     private boolean agenteMovida;
 

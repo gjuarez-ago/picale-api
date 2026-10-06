@@ -43,13 +43,19 @@ public class AgenteController {
     private final com.metricol.api.service.metricas.LoQueFunciona loQueFunciona;
     private final com.metricol.api.service.social.UbicacionDelNegocio ubicacion;
     private final com.metricol.api.service.agente.plan.PlanDelAgente plan;
+    private final com.metricol.api.service.agente.foto.MejoraBajoDemanda mejoras;
+    private final com.metricol.api.service.agente.PresupuestoDelAsistente presupuesto;
 
     public AgenteController(AgenteService agente, PermissionService permisos, WorkspaceMembershipService membresias,
             com.metricol.api.service.agente.CuentaAparte otraCuenta,
             com.metricol.api.service.metricas.LoQueFunciona loQueFunciona,
             com.metricol.api.service.social.UbicacionDelNegocio ubicacion,
-            com.metricol.api.service.agente.plan.PlanDelAgente plan) {
+            com.metricol.api.service.agente.plan.PlanDelAgente plan,
+            com.metricol.api.service.agente.foto.MejoraBajoDemanda mejoras,
+            com.metricol.api.service.agente.PresupuestoDelAsistente presupuesto) {
         this.plan = plan;
+        this.mejoras = mejoras;
+        this.presupuesto = presupuesto;
         this.loQueFunciona = loQueFunciona;
         this.ubicacion = ubicacion;
         this.agente = agente;
@@ -129,6 +135,48 @@ public class AgenteController {
     }
 
     /** ¿Le cambiamos algo? El agente rehace la propuesta con lo que se pidió. */
+    /** "Mejorarla con IA": cuesta créditos y se hace en segundo plano; el aviso dice cuándo está. */
+    @PostMapping("/propuestas/{id}/mejorar")
+    public ResponseEntity<ApiResponse<Void>> mejorar(@AuthenticationPrincipal User currentUser, @PathVariable UUID id) {
+        permisos.exigir(currentUser, Permission.POST_CREATE);
+        mejoras.pedir(id, ws(currentUser));
+        return ResponseEntity.ok(ApiResponse.success(null));
+    }
+
+    /** "Prepárala": la pieza para una fecha que le toca al negocio. Cuesta créditos. */
+    @PostMapping("/plan/fechas/{clave}/preparar")
+    public ResponseEntity<ApiResponse<Void>> prepararFecha(@AuthenticationPrincipal User currentUser,
+            @PathVariable String clave) {
+        permisos.exigir(currentUser, Permission.POST_CREATE);
+        plan.prepararFecha(ws(currentUser), clave);
+        return ResponseEntity.ok(ApiResponse.success(null));
+    }
+
+    /** "Prepárala": una pieza de su oficio para que la cuenta no se quede callada. Cuesta créditos. */
+    @PostMapping("/plan/relleno/preparar")
+    public ResponseEntity<ApiResponse<Void>> prepararRelleno(@AuthenticationPrincipal User currentUser) {
+        permisos.exigir(currentUser, Permission.POST_CREATE);
+        plan.prepararRelleno(ws(currentUser));
+        return ResponseEntity.ok(ApiResponse.success(null));
+    }
+
+    public record PresupuestoPedido(int mensual) {
+    }
+
+    /** Cuántos créditos al mes puede usar el asistente en mejoras y diseños, y cuántos lleva. */
+    @GetMapping("/presupuesto")
+    public ResponseEntity<ApiResponse<com.metricol.api.service.agente.PresupuestoDelAsistente.Estado>> presupuesto(
+            @AuthenticationPrincipal User currentUser) {
+        return ResponseEntity.ok(ApiResponse.success(presupuesto.estado(ws(currentUser))));
+    }
+
+    @PutMapping("/presupuesto")
+    public ResponseEntity<ApiResponse<com.metricol.api.service.agente.PresupuestoDelAsistente.Estado>> guardarPresupuesto(
+            @AuthenticationPrincipal User currentUser, @RequestBody PresupuestoPedido pedido) {
+        permisos.exigir(currentUser, Permission.WORKSPACE_EDIT);
+        return ResponseEntity.ok(ApiResponse.success(presupuesto.guardar(ws(currentUser), pedido.mensual())));
+    }
+
     @PostMapping("/propuestas/{id}/cambiar")
     public ResponseEntity<ApiResponse<List<PostResponse>>> cambiar(
             @AuthenticationPrincipal User currentUser, @PathVariable UUID id, @RequestBody CambioPedido pedido) {

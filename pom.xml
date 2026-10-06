@@ -178,6 +178,7 @@
             <spring.datasource.hikari.minimum-idle>0</spring.datasource.hikari.minimum-idle>
             <!-- El asistente de fondo de un contexto cacheado tomaba las fotos de otra prueba a la vez. -->
             <app.agente.enabled>false</app.agente.enabled>
+            <app.agente.pedidos-en-linea>true</app.agente.pedidos-en-linea>
           </systemPropertyVariables>
         </configuration>
       </plugin>
