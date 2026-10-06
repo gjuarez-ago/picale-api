@@ -33,6 +33,9 @@ import javax.imageio.ImageIO;
  * negocio. Para el portafolio de quien firma su trabajo.</li>
  * <li><b>MARCO</b>: un borde fino del color de la marca con un filete claro.
  * Para piezas elegantes, producto, interiores.</li>
+ * <li><b>FRASE</b>: una frase de la marca sobre la foto, abajo, sobre un
+ * degradado suave, con el logo chico. Para fotos personales o de paisaje
+ * de una marca que motiva o cuenta su historia.</li>
  * </ul>
  *
  * <p><b>El logo, siempre sin fondo.</b> Si el archivo trae fondo blanco, se le
@@ -44,7 +47,7 @@ import javax.imageio.ImageIO;
  */
 final class AcabadoDeMarca {
 
-    enum Estilo { LIMPIO, FRANJA, MARCO;
+    enum Estilo { LIMPIO, FRANJA, MARCO, FRASE;
 
         static Estilo de(String codigo) {
             try {
@@ -106,7 +109,13 @@ final class AcabadoDeMarca {
                 : sinFondo(SelloDeLogo.leer(logo, "El logo no se puede leer: usa un archivo JPG o PNG."));
         Color color = colorDeMarca(logo);
 
-        Estilo estilo = o.historia() && o.estilo() == Estilo.FRANJA ? Estilo.LIMPIO : o.estilo();
+        Estilo estilo = o.historia() && (o.estilo() == Estilo.FRANJA || o.estilo() == Estilo.FRASE) ? Estilo.LIMPIO
+                : o.estilo();
+        if (estilo == Estilo.FRASE) {
+            return limpio(o.rotulo()).isEmpty() ? SelloDeLogo.aJpeg(marca == null ? base
+                    : logoSuelto(base, marca, o.zona(), o.anchoLogo(), false))
+                    : SelloDeLogo.aJpeg(frase(base, marca, color, o.rotulo()));
+        }
         if (estilo == Estilo.FRANJA && marca == null && limpio(o.rotulo()).isEmpty()) {
             // Una franja sin logo ni rótulo es una mancha: limpia.
             estilo = Estilo.LIMPIO;
@@ -310,6 +319,98 @@ final class AcabadoDeMarca {
             }
         } finally {
             g.dispose();
+        }
+        return salida;
+    }
+
+    /**
+     * Una frase sobre la foto: un degradado oscuro que sube suave desde abajo,
+     * unas comillas del color de la marca, la frase en blanco (hasta tres
+     * renglones) y el logo chico en la esquina.
+     */
+    static BufferedImage frase(BufferedImage base, BufferedImage logo, Color color, String texto) {
+        int ancho = base.getWidth();
+        int alto = base.getHeight();
+        int margen = (int) Math.round(ancho * 0.07);
+        BufferedImage salida = copia(base);
+        Graphics2D g = salida.createGraphics();
+        try {
+            calidad(g);
+            Font f = fuente(true, Math.max(18f, ancho * 0.058f));
+            g.setFont(f);
+            List<String> renglones = renglones(g.getFontMetrics(), limpio(texto), ancho - 2 * margen, 3);
+            if (renglones.size() == 3 && g.getFontMetrics().stringWidth(renglones.get(2)) > ancho - 2 * margen) {
+                f = f.deriveFont(f.getSize2D() * 0.85f);
+                g.setFont(f);
+                renglones = renglones(g.getFontMetrics(), limpio(texto), ancho - 2 * margen, 3);
+            }
+            FontMetrics m = g.getFontMetrics();
+            int interlinea = (int) Math.round(m.getHeight() * 1.05);
+            int abajo = alto - (int) Math.round(alto * 0.07);
+            int arribaTexto = abajo - interlinea * renglones.size();
+
+            // Poco degradado: de nada a oscuro, empezando bastante arriba del texto.
+            int desde = Math.max(0, arribaTexto - (int) Math.round(alto * 0.22));
+            g.setPaint(new GradientPaint(0, desde, new Color(0, 0, 0, 0), 0, alto, new Color(0, 0, 0, 185)));
+            g.fillRect(0, desde, ancho, alto - desde);
+
+            // Las comillas, del color de la marca.
+            Font comillas = fuente(true, f.getSize2D() * 2.2f);
+            g.setFont(comillas);
+            g.setColor(aclarar(color, 0.35));
+            g.drawString("\u201C", margen - (int) (f.getSize2D() * 0.1), arribaTexto + (int) (f.getSize2D() * 0.55));
+
+            g.setFont(f);
+            g.setColor(Color.WHITE);
+            int y = arribaTexto + m.getAscent();
+            for (String r : renglones) {
+                g.drawString(r, margen, y);
+                y += interlinea;
+            }
+
+            if (logo != null) {
+                BufferedImage recortado = recortarTransparente(logo);
+                int lw = (int) Math.round(ancho * 0.16);
+                int lh = (int) Math.round(recortado.getHeight() * (double) lw / recortado.getWidth());
+                if (lh > alto * 0.09) {
+                    lh = (int) Math.round(alto * 0.09);
+                    lw = (int) Math.round(recortado.getWidth() * (double) lh / recortado.getHeight());
+                }
+                BufferedImage chico = SelloDeLogo.escalar(recortado, lw, lh);
+                if (SelloDeLogo.luzDelDibujo(chico) < 110) {
+                    chico = SelloDeLogo.paraFondoOscuro(chico);
+                }
+                // Arriba a la derecha: abajo ya está la frase.
+                g.drawImage(chico, ancho - margen - lw, (int) Math.round(alto * 0.045), null);
+            }
+        } finally {
+            g.dispose();
+        }
+        return salida;
+    }
+
+    /** Parte el texto en renglones que caben; el último lleva "…" si sobra. */
+    static List<String> renglones(FontMetrics m, String texto, int disponible, int maximo) {
+        List<String> salida = new java.util.ArrayList<>();
+        StringBuilder actual = new StringBuilder();
+        for (String palabra : texto.split(" ")) {
+            String prueba = actual.length() == 0 ? palabra : actual + " " + palabra;
+            if (m.stringWidth(prueba) <= disponible || actual.length() == 0) {
+                actual.setLength(0);
+                actual.append(prueba);
+            } else {
+                salida.add(actual.toString());
+                actual.setLength(0);
+                actual.append(palabra);
+            }
+        }
+        if (actual.length() > 0) {
+            salida.add(actual.toString());
+        }
+        if (salida.size() > maximo) {
+            List<String> cortado = new java.util.ArrayList<>(salida.subList(0, maximo));
+            cortado.set(maximo - 1, recortarTexto(m, cortado.get(maximo - 1) + " " + salida.get(maximo), disponible));
+            return cortado;
         }
         return salida;
     }

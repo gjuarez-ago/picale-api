@@ -116,9 +116,14 @@ public final class DecisorDelAgente {
     public static Acabado acabado(String propuesto, int ajuste, String pedido) {
         if (pedido != null) {
             return new Acabado(pedido, "LIMPIO".equals(pedido) ? "Me pediste sin adornos: va limpia."
-                    : "Me pediste " + ("FRANJA".equals(pedido) ? "la franja" : "el marco") + ": se lo pongo.");
+                    : "Me pediste " + switch (pedido) {
+                        case "FRANJA" -> "la franja";
+                        case "FRASE" -> "una frase";
+                        default -> "el marco";
+                    } + ": se la pongo.");
         }
-        if ("MARCO".equals(propuesto) && ajuste >= 1 || "FRANJA".equals(propuesto) && ajuste >= 2) {
+        if ("MARCO".equals(propuesto) && ajuste >= 1
+                || ("FRANJA".equals(propuesto) || "FRASE".equals(propuesto)) && ajuste >= 2) {
             return new Acabado("LIMPIO", "En tu cuenta prefieres las fotos sin adornos: va limpia.");
         }
         return new Acabado(propuesto, null);

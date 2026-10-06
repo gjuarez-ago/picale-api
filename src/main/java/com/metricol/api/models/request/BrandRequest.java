@@ -57,4 +57,18 @@ public class BrandRequest {
      */
     @Size(max = 20)
     private List<@Size(max = 30) String> rasgos;
+
+    @Size(max = 600)
+    private String historia;
+
+    @Size(max = 300)
+    private String valores;
+
+    /** Una por línea. */
+    @Size(max = 800)
+    private String frases;
+
+    /** Códigos de PilarDeContenido. */
+    @Size(max = 10)
+    private List<@Size(max = 30) String> pilares;
 }

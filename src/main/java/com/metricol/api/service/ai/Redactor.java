@@ -412,6 +412,11 @@ public class Redactor {
         agregar(sb, "Como suena su marca (escribe asi)", marca.personalidadEs());
         agregar(sb, "Nunca digas ni hagas esto", marca.evitar());
         agregar(sb, "Como trabaja (respetalo al escribir)", marca.comoTrabajaEs());
+        agregar(sb, "Su historia (quien esta detras, por que existe)", marca.historia());
+        agregar(sb, "Sus valores", marca.valores());
+        agregar(sb, "Sus frases (usalas tal cual o inspirate en su estilo; no le atribuyas frases inventadas)",
+                marca.frases() == null ? null : marca.frases().replace('\n', '|'));
+        agregar(sb, "De que quiere hablar en redes", marca.pilaresEs());
         if (marca.hayContacto()) {
             // Los datos van con su limite pegado: se usan cuando la publicacion invita a escribir o visitar, y
             // no se inventan otros.

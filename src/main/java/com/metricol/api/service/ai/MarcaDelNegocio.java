@@ -29,21 +29,41 @@ public record MarcaDelNegocio(
         String web,
         String direccion,
         /** Cómo trabaja ({@link RasgoDelNegocio}); nulo = no se sabe todavía. */
-        Set<RasgoDelNegocio> rasgos) {
+        Set<RasgoDelNegocio> rasgos,
+        /** Por qué existe, quién está detrás. */
+        String historia,
+        String valores,
+        /** Su eslogan y sus frases, una por línea. */
+        String frases,
+        List<com.metricol.api.enums.PilarDeContenido> pilares) {
 
     public static final MarcaDelNegocio VACIA = new MarcaDelNegocio(null, null, List.of(), null, null, null, null);
 
     /** Sin rasgos: lo de antes del perfil del negocio. */
     public MarcaDelNegocio(String queVende, String publico, List<TonoDeMarca> tono, String evitar, String whatsapp,
             String web, String direccion) {
-        this(queVende, publico, tono, evitar, whatsapp, web, direccion, null);
+        this(queVende, publico, tono, evitar, whatsapp, web, direccion, null, null, null, null, List.of());
+    }
+
+    public MarcaDelNegocio(String queVende, String publico, List<TonoDeMarca> tono, String evitar, String whatsapp,
+            String web, String direccion, Set<RasgoDelNegocio> rasgos) {
+        this(queVende, publico, tono, evitar, whatsapp, web, direccion, rasgos, null, null, null, List.of());
+    }
+
+    /** "motivar a su publico…; contar la historia de quien esta detras…". Vacío si no eligió. */
+    public String pilaresEs() {
+        return pilares == null ? "" : pilares.stream().map(p -> p.instruccion).collect(Collectors.joining("; "));
+    }
+
+    public boolean conVidaPersonal() {
+        return com.metricol.api.enums.PilarDeContenido.conVidaPersonal(pilares);
     }
 
     /** La marca de un espacio con sus rasgos: lo que deben recibir todos los prompts. */
     public static MarcaDelNegocio delEspacio(Workspace w) {
         MarcaDelNegocio m = de(w.getBrandProfile());
         return new MarcaDelNegocio(m.queVende, m.publico, m.tono, m.evitar, m.whatsapp, m.web, m.direccion,
-                w.rasgos());
+                w.rasgos(), m.historia, m.valores, m.frases, m.pilares);
     }
 
     public boolean tiene(RasgoDelNegocio rasgo) {
@@ -65,7 +85,8 @@ public record MarcaDelNegocio(
         List<TonoDeMarca> tonos = perfil.tono() == null ? List.of() : perfil.tono().stream()
                 .map(TonoDeMarca::de).flatMap(java.util.Optional::stream).limit(TonoDeMarca.MAXIMO).toList();
         return new MarcaDelNegocio(perfil.queVende(), perfil.publico(), tonos, perfil.evitar(), perfil.whatsapp(),
-                perfil.web(), perfil.direccion());
+                perfil.web(), perfil.direccion(), null, perfil.historia(), perfil.valores(), perfil.frases(),
+                com.metricol.api.enums.PilarDeContenido.de(perfil.pilares()));
     }
 
     public boolean hayContacto() {

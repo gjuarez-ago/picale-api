@@ -39,12 +39,16 @@ public record Cambio(String texto, Boolean logo, Boolean diseno, String acabado)
         }
         String acabado = null;
         if (contiene(n, "sin franja", "quita la franja", "quitale la franja", "sin marco", "quita el marco",
-                "quitale el marco", "sin adornos", "mas sencilla", "mas limpia", "sin nada encima")) {
+                "quitale el marco", "sin adornos", "mas sencilla", "mas limpia", "sin nada encima", "sin frase",
+                "quita la frase", "quitale la frase", "sin texto encima")) {
             acabado = "LIMPIO";
         } else if (contiene(n, "con franja", "ponle franja", "ponle una franja", "pon una franja")) {
             acabado = "FRANJA";
         } else if (contiene(n, "con marco", "ponle marco", "ponle un marco", "pon un marco", "enmarcala")) {
             acabado = "MARCO";
+        } else if (contiene(n, "con frase", "ponle una frase", "ponle frase", "una frase motivacional",
+                "frase motivadora")) {
+            acabado = "FRASE";
         }
         return new Cambio(t, logo, diseno, acabado);
     }

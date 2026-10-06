@@ -22,6 +22,10 @@ import java.util.List;
  * @param whatsapp   con lada de país: +5219991234567
  * @param web        con https://
  * @param direccion  dónde está
+ * @param historia   por qué existe el negocio, quién está detrás
+ * @param valores    lo que lo distingue ("puntualidad, trabajo bien hecho")
+ * @param frases     su eslogan y sus frases, una por línea
+ * @param pilares    códigos de {@link com.metricol.api.enums.PilarDeContenido}: de qué quiere hablar
  */
 public record BrandProfile(
         String queVende,
@@ -30,14 +34,25 @@ public record BrandProfile(
         String evitar,
         String whatsapp,
         String web,
-        String direccion) {
+        String direccion,
+        String historia,
+        String valores,
+        String frases,
+        List<String> pilares) {
 
     public static final BrandProfile VACIO = new BrandProfile(null, null, List.of(), null, null, null, null);
+
+    /** Sin la voz de la marca (historia, valores, frases, pilares): lo de antes. */
+    public BrandProfile(String queVende, String publico, List<String> tono, String evitar, String whatsapp, String web,
+            String direccion) {
+        this(queVende, publico, tono, evitar, whatsapp, web, direccion, null, null, null, null);
+    }
 
     /** Sin un solo dato: se guarda como nulo en vez de un documento lleno de nulos. */
     public boolean vacio() {
         return vacio(queVende) && vacio(publico) && (tono == null || tono.isEmpty()) && vacio(evitar)
-                && vacio(whatsapp) && vacio(web) && vacio(direccion);
+                && vacio(whatsapp) && vacio(web) && vacio(direccion) && vacio(historia) && vacio(valores)
+                && vacio(frases) && (pilares == null || pilares.isEmpty());
     }
 
     /** Con al menos una forma de contactarlo. */

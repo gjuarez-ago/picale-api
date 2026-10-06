@@ -54,6 +54,14 @@ public class WorkspaceController {
         return ResponseEntity.ok(ApiResponse.success(marca.guardar(currentUser, request)));
     }
 
+    /** "Sugerir con IA": historia, valores, frases y pilares propuestos. No guarda nada. */
+    @org.springframework.web.bind.annotation.PostMapping("/brand/sugerir")
+    public ResponseEntity<ApiResponse<com.metricol.api.service.ai.SugerenciaDeMarca.Sugerencia>> sugerirMarca(
+            @AuthenticationPrincipal User currentUser) {
+        permisos.exigir(currentUser, Permission.WORKSPACE_EDIT);
+        return ResponseEntity.ok(ApiResponse.success(marca.sugerir(currentUser)));
+    }
+
     /** Que la IA deduzca otra vez cómo trabaja el negocio. Quien puede editar el espacio. */
     @org.springframework.web.bind.annotation.PostMapping("/brand/rasgos/deducir")
     public ResponseEntity<ApiResponse<BrandResponse>> deducirRasgos(@AuthenticationPrincipal User currentUser) {

@@ -112,4 +112,14 @@ class DecisorConDireccionTest {
         assertThat(Cambio.de("Con franja").acabado()).isEqualTo("FRANJA");
         assertThat(Cambio.de("cambia el texto").acabado()).isNull();
     }
+
+    @Test
+    @DisplayName("frase: se pide con palabras, se quita igual, y con la cuenta harta de adornos va limpia")
+    void fraseAprendida() {
+        assertThat(Cambio.de("ponle una frase motivadora").acabado()).isEqualTo("FRASE");
+        assertThat(Cambio.de("quítale la frase").acabado()).isEqualTo("LIMPIO");
+        assertThat(DecisorDelAgente.acabado("FRASE", 2, null).estilo()).isEqualTo("LIMPIO");
+        assertThat(DecisorDelAgente.acabado("FRASE", 1, null).estilo()).isEqualTo("FRASE");
+        assertThat(DecisorDelAgente.acabado("LIMPIO", 2, "FRASE").paso()).contains("una frase");
+    }
 }

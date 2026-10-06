@@ -1371,7 +1371,8 @@ public class AgenteService {
 
     /** Un acabado con adorno (franja o marco): de lo que se aprende. */
     private static boolean conAdorno(Post p) {
-        return "FRANJA".equals(p.getAgenteAcabado()) || "MARCO".equals(p.getAgenteAcabado());
+        return "FRANJA".equals(p.getAgenteAcabado()) || "MARCO".equals(p.getAgenteAcabado())
+                || "FRASE".equals(p.getAgenteAcabado());
     }
 
     /** Mueve cuánto adorno quiere la cuenta, entre 0 y 2. */
@@ -1452,6 +1453,9 @@ public class AgenteService {
             if ("FRANJA".equals(estilo) && direccion.rotulo().isBlank()) {
                 estilo = "MARCO";
             }
+            if ("FRASE".equals(estilo) && direccion.rotulo().isBlank()) {
+                estilo = "LIMPIO";
+            }
             if (vestido.paso() != null) {
                 pasos.add(vestido.paso());
             }
@@ -1469,6 +1473,7 @@ public class AgenteService {
                 if (sellada) {
                     pasos.add(switch (historia ? "LIMPIO" : estilo) {
                         case "FRANJA" -> "La vestí con una franja de tu marca: «" + direccion.rotulo() + "».";
+                        case "FRASE" -> "Le puse una frase para tu público: «" + direccion.rotulo() + "».";
                         case "MARCO" -> "Le puse un marco con el color de tu marca y tu logo "
                                 + dondeVa(direccion.logoZona()) + ".";
                         default -> "Puse tu logo sin fondo " + dondeVa(direccion.logoZona())
@@ -1476,7 +1481,7 @@ public class AgenteService {
                     });
                 }
                 return new FotoLista(url, decision, pasos, sellada,
-                        historia && "FRANJA".equals(estilo) ? "LIMPIO" : estilo, sugerencia,
+                        historia && ("FRANJA".equals(estilo) || "FRASE".equals(estilo)) ? "LIMPIO" : estilo, sugerencia,
                         guardarDireccion(direccion, conLogo, historia));
             }
         }

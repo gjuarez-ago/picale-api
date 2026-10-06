@@ -21,7 +21,11 @@ public record BrandResponse(
         /** Cómo trabaja; nulo = todavía no se deduce. */
         List<String> rasgos,
         /** Los eligió el dueño (no la IA). */
-        boolean rasgosDelDueno) {
+        boolean rasgosDelDueno,
+        String historia,
+        String valores,
+        String frases,
+        List<String> pilares) {
 
     /**
      * @param percent 0 a 100

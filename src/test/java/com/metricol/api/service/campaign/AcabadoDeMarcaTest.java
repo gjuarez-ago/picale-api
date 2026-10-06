@@ -101,4 +101,33 @@ class AcabadoDeMarcaTest {
         assertThat(SelloDeLogo.luz(m.getRGB(3, 500))).isLessThan(60);
         assertThat(SelloDeLogo.luz(m.getRGB(500, 500))).isGreaterThan(200);
     }
+
+    @Test
+    @DisplayName("frase: el pie de la foto se oscurece suave para leerla, arriba queda igual; en historia va limpia")
+    void frase() throws Exception {
+        byte[] f = AcabadoDeMarca.png(foto(1000, 1250, new Color(200, 200, 200)));
+        AcabadoDeMarca.Opciones conFrase = new AcabadoDeMarca.Opciones(AcabadoDeMarca.Estilo.FRASE,
+                SelloDeLogo.Posicion.BOTTOM_RIGHT, 0.22, null, "Lo que se construye con paciencia dura generaciones.",
+                "CMRG", false);
+        BufferedImage salida = leer(AcabadoDeMarca.acabar(f, AcabadoDeMarca.png(logoEnHojaBlanca()), conFrase));
+        assertThat(SelloDeLogo.luz(salida.getRGB(500, 200))).isGreaterThan(190);
+        assertThat(SelloDeLogo.luz(salida.getRGB(990, 1240))).isLessThan(110);
+
+        AcabadoDeMarca.Opciones enHistoria = new AcabadoDeMarca.Opciones(AcabadoDeMarca.Estilo.FRASE,
+                SelloDeLogo.Posicion.BOTTOM_RIGHT, 0.22, null, "Una frase", "CMRG", true);
+        assertThat(SelloDeLogo.luz(leer(AcabadoDeMarca.acabar(f, null, enHistoria)).getRGB(990, 1240))).isGreaterThan(190);
+    }
+
+    @Test
+    @DisplayName("la frase se parte en renglones que caben, tres como mucho")
+    void renglones() {
+        BufferedImage b = foto(10, 10, Color.WHITE);
+        java.awt.Graphics2D g = b.createGraphics();
+        g.setFont(new java.awt.Font(java.awt.Font.SANS_SERIF, java.awt.Font.BOLD, 20));
+        var m = g.getFontMetrics();
+        var r = AcabadoDeMarca.renglones(m, "uno dos tres cuatro cinco seis siete ocho nueve diez once doce", 120, 3);
+        g.dispose();
+        assertThat(r).hasSizeLessThanOrEqualTo(3);
+        r.forEach(linea -> assertThat(m.stringWidth(linea)).isLessThanOrEqualTo(130));
+    }
 }

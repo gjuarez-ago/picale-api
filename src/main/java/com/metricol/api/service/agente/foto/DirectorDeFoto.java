@@ -106,8 +106,8 @@ public class DirectorDeFoto {
                       "porque": "one short sentence in Spanish"},
              "quitar": ["IN ENGLISH: small distracting elements to remove, e.g. a loose tape measure in the foreground"],
              "encuadre": {"x": 0-1, "y": 0-1, "ancho": 0-1, "alto": 0-1} | null,
-             "acabado": {"estilo": "LIMPIO" | "FRANJA" | "MARCO",
-                         "rotulo": "IN SPANISH, 2 to 4 words naming the work or service shown, e.g. Senalizacion industrial"}}
+             "acabado": {"estilo": "LIMPIO" | "FRANJA" | "MARCO" | "FRASE",
+                         "rotulo": "IN SPANISH: for FRANJA 2 to 4 words naming the work (e.g. Senalizacion industrial); for FRASE the phrase itself, max 90 characters"}}
 
             1. mejorar
             Evaluate like a professional: perspective (converging or leaning
@@ -182,6 +182,13 @@ public class DirectorDeFoto {
               installation) where the bottom of the photo is ground or floor.
             - MARCO: a thin brand-colored frame. For elegant product or
               detail shots.
+            - FRASE: a short phrase over the photo (bottom, soft gradient). Only
+              when the brand wants to motivate or tell its story (see below)
+              and the photo is personal, a landscape, a trip, a moment of the
+              owner or the team, with calm space at the bottom. The phrase is
+              original, speaks to the brand's audience and connects with its
+              trade; prefer one of the brand's own phrases if it fits. No
+              cliches, no quotes from famous people, no prices.
             The rotulo names the work or service shown (no prices, no
             promises, no emojis). Required for FRANJA.
             """;
@@ -240,6 +247,20 @@ public class DirectorDeFoto {
         if (hay(descripcion)) {
             t.append("What a first reviewer saw (Spanish): ").append(descripcion.strip()).append('\n');
         }
+        if (n != null && n.marca() != null) {
+            if (hay(n.marca().publico())) {
+                t.append("Its audience (Spanish): ").append(n.marca().publico().strip()).append('\n');
+            }
+            if (!n.marca().pilaresEs().isBlank()) {
+                t.append("What the brand wants to talk about (Spanish): ").append(n.marca().pilaresEs()).append('\n');
+            }
+            if (hay(n.marca().frases())) {
+                t.append("The brand's own phrases (Spanish): ").append(n.marca().frases().replace('\n', '|')).append('\n');
+            }
+            if (n.marca().conVidaPersonal()) {
+                t.append("The owner wants to tell their story and motivate: a personal photo can use FRASE.\n");
+            }
+        }
         t.append("Direct this photo.");
         return t.toString();
     }
@@ -292,11 +313,11 @@ public class DirectorDeFoto {
         }
         JsonNode a = n.path("acabado");
         String estilo = a.path("estilo").asText("LIMPIO").strip().toUpperCase(Locale.ROOT);
-        if (!Set.of("LIMPIO", "FRANJA", "MARCO").contains(estilo)) {
+        if (!Set.of("LIMPIO", "FRANJA", "MARCO", "FRASE").contains(estilo)) {
             estilo = "LIMPIO";
         }
-        String rotulo = recortar(a.path("rotulo").asText(""), 40);
-        if ("FRANJA".equals(estilo) && rotulo.isBlank()) {
+        String rotulo = recortar(a.path("rotulo").asText(""), "FRASE".equals(estilo) ? 110 : 40);
+        if (("FRANJA".equals(estilo) || "FRASE".equals(estilo)) && rotulo.isBlank()) {
             estilo = "LIMPIO";
         }
         return new Direccion(mejorar, lista(n.path("deficiencias"), 4, 60), mejorar ? encargo : "",

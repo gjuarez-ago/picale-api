@@ -43,15 +43,27 @@ public class BrandService {
     private final WorkspaceRepository repository;
 
     private final PerfiladorDelNegocio perfilador;
+    private final com.metricol.api.service.ai.SugerenciaDeMarca sugerencias;
 
     public BrandService(WorkspaceRepository repository) {
-        this(repository, null);
+        this(repository, null, null);
     }
 
     @org.springframework.beans.factory.annotation.Autowired
-    public BrandService(WorkspaceRepository repository, PerfiladorDelNegocio perfilador) {
+    public BrandService(WorkspaceRepository repository, PerfiladorDelNegocio perfilador,
+            com.metricol.api.service.ai.SugerenciaDeMarca sugerencias) {
         this.repository = repository;
         this.perfilador = perfilador;
+        this.sugerencias = sugerencias;
+    }
+
+    /** "Sugerir con IA": la voz de la marca propuesta, sin guardar nada. */
+    @Transactional(readOnly = true)
+    public com.metricol.api.service.ai.SugerenciaDeMarca.Sugerencia sugerir(User usuario) {
+        if (sugerencias == null) {
+            throw new IllegalStateException("No pude sugerir ahora.");
+        }
+        return sugerencias.sugerir(buscar(usuario));
     }
 
     /**
@@ -96,6 +108,7 @@ public class BrandService {
             w.setObjetivo(pedido.getObjetivo());
         }
 
+        BrandProfile antes = w.getBrandProfile() == null ? BrandProfile.VACIO : w.getBrandProfile();
         BrandProfile perfil = new BrandProfile(
                 texto(pedido.getQueVende(), 400),
                 texto(pedido.getPublico(), 300),
@@ -103,7 +116,13 @@ public class BrandService {
                 texto(pedido.getEvitar(), 200),
                 whatsapp(pedido.getWhatsapp()),
                 web(pedido.getWeb()),
-                texto(pedido.getDireccion(), 200));
+                texto(pedido.getDireccion(), 200),
+                // La voz de la marca es nueva: quien no la manda (la app instalada, la bienvenida) no la borra.
+                pedido.getHistoria() == null ? antes.historia() : texto(pedido.getHistoria(), 600),
+                pedido.getValores() == null ? antes.valores() : texto(pedido.getValores(), 300),
+                pedido.getFrases() == null ? antes.frases() : lineas(pedido.getFrases(), 800),
+                pedido.getPilares() == null ? antes.pilares()
+                        : com.metricol.api.enums.PilarDeContenido.de(pedido.getPilares()).stream().map(Enum::name).toList());
         w.setBrandProfile(perfil.vacio() ? null : perfil);
 
         if (pedido.getRasgos() != null) {
@@ -144,12 +163,29 @@ public class BrandService {
                 p.publico(), p.tono() == null ? List.of() : p.tono(), p.evitar(), p.whatsapp(), p.web(), p.direccion(),
                 completitud(w),
                 w.rasgos() == null ? null : w.rasgos().stream().map(Enum::name).toList(),
-                Boolean.TRUE.equals(w.getPerfilRasgosDelDueno()));
+                Boolean.TRUE.equals(w.getPerfilRasgosDelDueno()),
+                p.historia(), p.valores(), p.frases(), p.pilares() == null ? List.of() : p.pilares());
     }
 
     // ------------------------------------------------------------------ limpieza
 
     /** Sin caracteres de control ni saltos, espacios normales, recortado; vacío = nulo. */
+    /** Como {@link #texto}, pero conserva los saltos de línea (una frase por línea) y quita las vacías. */
+    static String lineas(String valor, int max) {
+        if (valor == null) {
+            return null;
+        }
+        String limpio = java.util.Arrays.stream(valor.split("\\R"))
+                .map(l -> texto(l, 200))
+                .filter(l -> l != null && !l.isBlank())
+                .limit(12)
+                .collect(java.util.stream.Collectors.joining("\n"));
+        if (limpio.isBlank()) {
+            return null;
+        }
+        return limpio.length() <= max ? limpio : limpio.substring(0, max);
+    }
+
     static String texto(String valor, int max) {
         if (valor == null) {
             return null;

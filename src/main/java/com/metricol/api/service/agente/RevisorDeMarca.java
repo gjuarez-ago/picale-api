@@ -252,6 +252,13 @@ public class RevisorDeMarca {
         linea(t, "A quien le habla", m.publico());
         linea(t, "Lo que pide evitar", m.evitar());
         linea(t, "Como trabaja", m.comoTrabajaEs());
+        linea(t, "Su historia", m.historia());
+        linea(t, "De que quiere hablar en redes", m.pilaresEs());
+        if (m.conVidaPersonal()) {
+            t.append("El dueno quiere contar su historia y motivar: una foto suya (un viaje, un logro, un momento ")
+                    .append("personal) VA aunque no salga el negocio; con ella se publica una reflexion o una frase ")
+                    .append("que conecte con su publico.\n");
+        }
         if (MarcaDelNegocio.hay(n.loQueSiVa())) {
             t.append("Lo que el dueno ya te dijo que SI va (lo habias mandado a observacion y lo rescato).")
                     .append(" Lo de estos temas es VA, no vuelvas a dudar:\n").append(n.loQueSiVa().strip()).append('\n');

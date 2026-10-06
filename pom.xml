@@ -179,6 +179,10 @@
             <!-- El asistente de fondo de un contexto cacheado tomaba las fotos de otra prueba a la vez. -->
             <app.agente.enabled>false</app.agente.enabled>
             <app.agente.pedidos-en-linea>true</app.agente.pedidos-en-linea>
+            <!-- La cola y el programador de un contexto cacheado tomaban trabajos de otra prueba. -->
+            <app.publishing.queue.poll-delay-ms>3600000</app.publishing.queue.poll-delay-ms>
+            <app.publishing.queue.rescue-delay-ms>3600000</app.publishing.queue.rescue-delay-ms>
+            <app.scheduling.poll-delay-ms>3600000</app.scheduling.poll-delay-ms>
           </systemPropertyVariables>
         </configuration>
       </plugin>

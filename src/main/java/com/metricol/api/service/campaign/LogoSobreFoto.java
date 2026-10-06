@@ -144,7 +144,7 @@ public class LogoSobreFoto {
             SelloDeLogo.Posicion zona = SelloDeLogo.Posicion.de(a.zona());
             byte[] final_ = AcabadoDeMarca.acabar(imagen, sello, new AcabadoDeMarca.Opciones(
                     AcabadoDeMarca.Estilo.de(a.estilo()), zona == null ? SelloDeLogo.Posicion.BOTTOM_RIGHT : zona,
-                    a.anchoLogo() <= 0 ? 0.30 : a.anchoLogo(), encuadre, conLogo ? a.rotulo() : null,
+                    a.anchoLogo() <= 0 ? 0.30 : a.anchoLogo(), encuadre, conLogo || "FRASE".equalsIgnoreCase(a.estilo()) ? a.rotulo() : null,
                     conLogo ? a.negocio() : null, a.historia()));
 
             String nombre = "acabada-" + foto.getFileName();

@@ -61,5 +61,8 @@ public enum AiOperacion {
     AGENTE_PERFILAR,
 
     /** El plan de la semana: las fotos que el asistente le pide al dueño. */
-    AGENTE_PLANEAR
+    AGENTE_PLANEAR,
+
+    /** Sugerir la voz de la marca (historia, valores, frases, pilares) en Marca. */
+    SUGERIR_MARCA
 }

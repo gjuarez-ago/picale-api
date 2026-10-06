@@ -120,4 +120,16 @@ class DirectorDeFotoTest {
         assertThat(inventada.motivo()).isEqualTo("agregó una piedra");
         assertThat(m.leerJuicio("sin json").fiel()).isFalse();
     }
+
+    @Test
+    @DisplayName("frase: para una foto personal con frase la acepta larga; sin frase, va limpia")
+    void frase() throws Exception {
+        DirectorDeFoto.Direccion d = director.interpretar("""
+                {"mejorar": false, "acabado": {"estilo": "FRASE",
+                 "rotulo": "Lo que se construye con paciencia dura generaciones, y se nota en cada detalle."}}""");
+        assertThat(d.estilo()).isEqualTo("FRASE");
+        assertThat(d.rotulo()).hasSizeGreaterThan(40);
+        assertThat(director.interpretar("{\"acabado\": {\"estilo\": \"FRASE\", \"rotulo\": \"\"}}").estilo())
+                .isEqualTo("LIMPIO");
+    }
 }
