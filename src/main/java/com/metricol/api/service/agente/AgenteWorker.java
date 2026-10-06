@@ -35,6 +35,13 @@ public class AgenteWorker {
     @Value("${app.agente.enabled:true}")
     private boolean habilitado;
 
+    /**
+     * El plan por su cuenta (fechas, fotos de la semana, "tu cuenta se va a
+     * callar"). Apagado el 6 oct 2026: se va a rediseñar de otra forma.
+     */
+    @Value("${app.agente.plan.enabled:false}")
+    private boolean conPlan;
+
     public AgenteWorker(WorkspaceRepository workspaces, AgenteService agente,
             com.metricol.api.service.agente.plan.PlanDelAgente plan) {
         this.workspaces = workspaces;
@@ -97,7 +104,9 @@ public class AgenteWorker {
                         log.info("Agente de {}: {} foto(s) revisadas", w.getId(), hechas);
                     }
                     // Lo que hace por su cuenta: fechas, fotos de la semana y que la cuenta no se calle.
-                    plan.trabajar(w.getId(), java.time.LocalDateTime.now());
+                    if (conPlan) {
+                        plan.trabajar(w.getId(), java.time.LocalDateTime.now());
+                    }
                 });
             } catch (Exception ex) {
                 log.error("El agente falló en {}: {}", w.getId(), ex.toString());
