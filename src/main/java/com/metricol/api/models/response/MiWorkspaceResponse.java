@@ -14,7 +14,18 @@ import com.metricol.api.enums.Role;
  *                 servidor sigue decidiendo en cada petición.
  * @param activo    si es el que está usando ahora
  * @param archivado archivado: no publica y solo lo ve quien administra
+ * @param grupo     de quién son, para el selector cuando ve negocios de más de
+ *                  un dueño ("Tus negocios", "Negocios de Juan…"); nulo si todos son del mismo
  */
 public record MiWorkspaceResponse(UUID id, String name, String logoUrl, String color, List<String> tags,
-        Role role, List<String> permisos, boolean activo, boolean archivado) {
+        Role role, List<String> permisos, boolean activo, boolean archivado, String grupo) {
+
+    public MiWorkspaceResponse(UUID id, String name, String logoUrl, String color, List<String> tags, Role role,
+            List<String> permisos, boolean activo, boolean archivado) {
+        this(id, name, logoUrl, color, tags, role, permisos, activo, archivado, null);
+    }
+
+    public MiWorkspaceResponse conGrupo(String grupo) {
+        return new MiWorkspaceResponse(id, name, logoUrl, color, tags, role, permisos, activo, archivado, grupo);
+    }
 }

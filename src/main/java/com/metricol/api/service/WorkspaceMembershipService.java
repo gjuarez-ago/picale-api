@@ -101,10 +101,12 @@ public class WorkspaceMembershipService {
             administradas.add(0, organizacion.getId());
         }
         java.util.Map<UUID, MiWorkspaceResponse> lista = new java.util.LinkedHashMap<>();
+        java.util.Map<UUID, Organization> deQuien = new java.util.HashMap<>();
         for (UUID org : administradas) {
             for (Workspace w : workspaces.findDeLaOrganizacion(org)) {
                 lista.putIfAbsent(w.getId(),
                         respuesta(w, Role.ADMIN, Role.ADMIN.permisosPorDefecto(), w.getId().equals(activo)));
+                deQuien.putIfAbsent(w.getId(), w.getOrganization());
             }
         }
 
@@ -116,10 +118,11 @@ public class WorkspaceMembershipService {
             if (!m.getWorkspace().archivado()) {
                 lista.putIfAbsent(m.getWorkspace().getId(), respuesta(m.getWorkspace(), m.getRole(),
                         m.permisosEfectivos(), m.getWorkspace().getId().equals(activo)));
+                deQuien.putIfAbsent(m.getWorkspace().getId(), m.getWorkspace().getOrganization());
             }
         }
         if (!lista.isEmpty()) {
-            return new java.util.ArrayList<>(lista.values());
+            return conGrupos(actual, new java.util.ArrayList<>(lista.values()), deQuien);
         }
 
         if (propias.isEmpty()) {
@@ -392,6 +395,31 @@ public class WorkspaceMembershipService {
         organizaciones.exigirAdministrador(actual, organizacion.getId());
 
         return logoUploader.subirComo(file, workspaceId);
+    }
+
+    /**
+     * Con negocios de más de un dueño, cada uno dice de quién es: "Tus
+     * negocios" los de su propia cuenta y "Negocios de Juan…" los de alguien
+     * más que lo invitó. Con un solo dueño no se agrupa: no hace falta.
+     */
+    private List<MiWorkspaceResponse> conGrupos(User actual, List<MiWorkspaceResponse> lista,
+            java.util.Map<UUID, Organization> deQuien) {
+        long duenos = deQuien.values().stream().filter(java.util.Objects::nonNull).map(Organization::getId)
+                .distinct().count();
+        if (duenos <= 1) {
+            return lista;
+        }
+        return lista.stream().map(r -> {
+            Organization o = deQuien.get(r.id());
+            if (o == null) {
+                return r;
+            }
+            boolean suya = organizaciones.rolDe(actual.getId(), o.getId()) == com.metricol.api.enums.OrgRole.OWNER;
+            return r.conGrupo(suya ? "Tus negocios" : "Negocios de " + o.getName());
+        }).collect(java.util.stream.Collectors.groupingBy(r -> String.valueOf(r.grupo()),
+                java.util.LinkedHashMap::new, java.util.stream.Collectors.toList()))
+                // Cada dueño junto, en el orden en que aparece (el del espacio activo primero).
+                .values().stream().flatMap(List::stream).toList();
     }
 
     private static MiWorkspaceResponse respuesta(Workspace workspace, Role role,

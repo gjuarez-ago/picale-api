@@ -170,6 +170,9 @@ class WorkspaceMembershipServiceTest {
         List<MiWorkspaceResponse> mios = membresias.misWorkspaces(yo);
 
         assertThat(mios).extracting(MiWorkspaceResponse::name).containsExactly("Pícale HUB", "Juan Rodriguez", "CMRG");
+        // Sin palabras técnicas: de quién es cada negocio.
+        assertThat(mios).extracting(MiWorkspaceResponse::grupo)
+                .containsExactly("Tus negocios", "Negocios de Juan Rodriguez", "Negocios de Juan Rodriguez");
         assertThat(mios).filteredOn(MiWorkspaceResponse::activo).extracting(MiWorkspaceResponse::id)
                 .containsExactly(hub.getId());
     }
@@ -187,6 +190,8 @@ class WorkspaceMembershipServiceTest {
 
         assertThat(mios).extracting(MiWorkspaceResponse::name)
                 .containsExactlyInAnyOrder("Tacos Don Pepe", "Gym Fuerza");
+        // Todos del mismo dueño: no se agrupa.
+        assertThat(mios).extracting(MiWorkspaceResponse::grupo).containsOnlyNulls();
         assertThat(mios).filteredOn(MiWorkspaceResponse::activo)
                 .extracting(MiWorkspaceResponse::id)
                 .containsExactly(tacos.getId());
