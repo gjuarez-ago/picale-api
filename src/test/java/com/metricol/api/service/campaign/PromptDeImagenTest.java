@@ -178,6 +178,8 @@ class PromptDeImagenTest {
         assertThat(una).doesNotContain("context only");
         assertThat(varias).contains("context only").contains("do not make a collage");
         assertThat(ninguna).contains("No reference photo is given");
+        // Sin foto real no se inventa una persona (6 oct 2026).
+        assertThat(ninguna).contains("NO PEOPLE AT ALL").doesNotContain("realistic, credible photographic scene");
     }
 
     @Test

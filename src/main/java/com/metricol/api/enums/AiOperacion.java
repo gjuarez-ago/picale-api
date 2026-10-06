@@ -64,5 +64,8 @@ public enum AiOperacion {
     AGENTE_PLANEAR,
 
     /** Sugerir la voz de la marca (historia, valores, frases, pilares) en Marca. */
-    SUGERIR_MARCA
+    SUGERIR_MARCA,
+
+    /** Revisar si el logo subido es un logotipo o la foto de una persona. */
+    REVISAR_LOGO
 }

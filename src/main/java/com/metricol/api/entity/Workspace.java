@@ -229,6 +229,17 @@ public class Workspace {
 
     private java.time.LocalDateTime agentePiezaEn;
 
+    /** El archivo de logo que ya se revisó (si cambia el logo, se revisa otra vez). */
+    @Column(length = 1000)
+    private String logoRevisado;
+
+    /** El "logo" es una foto (de una persona, de un lugar): no se pega como sello. */
+    private Boolean logoEsFoto;
+
+    /** Los colores del logotipo ("#1A3A6B,#2BA84A"), sacados al revisarlo. */
+    @Column(length = 100)
+    private String marcaColores;
+
     /** Créditos al mes que el asistente puede usar en mejoras y diseños. Nulo = el de siempre. */
     private Integer agentePresupuesto;
 

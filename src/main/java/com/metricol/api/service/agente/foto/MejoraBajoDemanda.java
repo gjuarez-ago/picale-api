@@ -71,6 +71,12 @@ public class MejoraBajoDemanda {
     private final PresupuestoDelAsistente presupuesto;
     private final AvisosPush avisos;
     private final TrabajoDeFondo fondo;
+    private com.metricol.api.service.ai.RevisorDeLogo revisorDeLogo;
+
+    @org.springframework.beans.factory.annotation.Autowired(required = false)
+    void setRevisorDeLogo(com.metricol.api.service.ai.RevisorDeLogo revisorDeLogo) {
+        this.revisorDeLogo = revisorDeLogo;
+    }
 
     public MejoraBajoDemanda(PostRepository posts, MediaAssetRepository assets, WorkspaceRepository workspaces,
             MejoraDeFoto mejora, LogoSobreFoto logo, CreditService creditos, PresupuestoDelAsistente presupuesto,
@@ -129,7 +135,8 @@ public class MejoraBajoDemanda {
         try {
             if (r.salio()) {
                 DirectorDeFoto.Direccion d = g.direccion();
-                String acabada = logo.acabar(r.asset(), w.getLogoUrl(), workspaceId,
+                String acabada = logo.acabar(r.asset(), revisorDeLogo == null ? w.getLogoUrl() : revisorDeLogo.usable(w),
+                        workspaceId,
                         new LogoSobreFoto.Acabado(post.getAgenteAcabado() != null ? post.getAgenteAcabado() : d.estilo(),
                                 d.logoZona(), d.logoTamano().ancho, d.encuadre(), d.rotulo(), w.getName(), g.historia()),
                         g.conLogo());

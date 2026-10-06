@@ -25,7 +25,11 @@ public record BrandResponse(
         String historia,
         String valores,
         String frases,
-        List<String> pilares) {
+        List<String> pilares,
+        /** Lo subido como logo es una foto: no se pega en las publicaciones. */
+        boolean logoEsFoto,
+        /** Los colores de la marca, sacados del logotipo ("#1A3A6B"…). */
+        List<String> colores) {
 
     /**
      * @param percent 0 a 100

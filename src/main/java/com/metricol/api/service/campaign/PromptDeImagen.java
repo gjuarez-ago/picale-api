@@ -103,8 +103,12 @@ final class PromptDeImagen {
                     .append("faithful. Do not redraw, restyle or replace anything in them; only scale and place them ")
                     .append("as the layout describes. Never add fog, haze, blur or glow effects over the photo.\n\n");
         } else {
-            t.append("PHOTO: No reference photo is given. Create a realistic, credible photographic scene. ")
-                    .append("Never add fog, haze or glow effects.\n\n");
+            // Sin foto real no se inventa una persona: una cara hecha por la IA
+            // presentada como del negocio resta credibilidad (6 oct 2026, un
+            // diseño del Día de Muertos salió con una mujer inventada).
+            t.append("PHOTO: No reference photo is given. NO PEOPLE AT ALL: no faces, no bodies, no hands, no ")
+                    .append("silhouettes of real-looking people. Build the scene with objects, places, textures, ")
+                    .append("illustration or typography. Never add fog, haze or glow effects.\n\n");
         }
 
         // Sin botón no se nombra el botón en ningún lado: un prompt que lo menciona lo dibuja.

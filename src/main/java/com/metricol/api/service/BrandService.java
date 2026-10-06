@@ -44,17 +44,20 @@ public class BrandService {
 
     private final PerfiladorDelNegocio perfilador;
     private final com.metricol.api.service.ai.SugerenciaDeMarca sugerencias;
+    private final com.metricol.api.service.ai.RevisorDeLogo revisorDeLogo;
 
     public BrandService(WorkspaceRepository repository) {
-        this(repository, null, null);
+        this(repository, null, null, null);
     }
 
     @org.springframework.beans.factory.annotation.Autowired
     public BrandService(WorkspaceRepository repository, PerfiladorDelNegocio perfilador,
-            com.metricol.api.service.ai.SugerenciaDeMarca sugerencias) {
+            com.metricol.api.service.ai.SugerenciaDeMarca sugerencias,
+            com.metricol.api.service.ai.RevisorDeLogo revisorDeLogo) {
         this.repository = repository;
         this.perfilador = perfilador;
         this.sugerencias = sugerencias;
+        this.revisorDeLogo = revisorDeLogo;
     }
 
     /** "Sugerir con IA": la voz de la marca propuesta, sin guardar nada. */
@@ -82,9 +85,14 @@ public class BrandService {
         return respuesta(repository.save(w));
     }
 
-    @Transactional(readOnly = true)
+    @Transactional
     public BrandResponse obtener(User usuario) {
-        return respuesta(buscar(usuario));
+        Workspace w = buscar(usuario);
+        // La primera vez que se ve este logo, se revisa si es logotipo o foto (y sus colores).
+        if (revisorDeLogo != null && w.getLogoUrl() != null && !w.getLogoUrl().equals(w.getLogoRevisado())) {
+            revisorDeLogo.revisar(w);
+        }
+        return respuesta(w);
     }
 
     @Transactional
@@ -164,7 +172,10 @@ public class BrandService {
                 completitud(w),
                 w.rasgos() == null ? null : w.rasgos().stream().map(Enum::name).toList(),
                 Boolean.TRUE.equals(w.getPerfilRasgosDelDueno()),
-                p.historia(), p.valores(), p.frases(), p.pilares() == null ? List.of() : p.pilares());
+                p.historia(), p.valores(), p.frases(), p.pilares() == null ? List.of() : p.pilares(),
+                Boolean.TRUE.equals(w.getLogoEsFoto()),
+                w.getMarcaColores() == null || w.getMarcaColores().isBlank() ? List.of()
+                        : List.of(w.getMarcaColores().split(",")));
     }
 
     // ------------------------------------------------------------------ limpieza

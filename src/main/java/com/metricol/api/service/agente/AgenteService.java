@@ -114,6 +114,7 @@ public class AgenteService {
     private final RetoqueDeFoto retoque;
     private final com.metricol.api.service.agente.foto.DirectorDeFoto director;
     private final PresupuestoDelAsistente presupuesto;
+    private final com.metricol.api.service.ai.RevisorDeLogo revisorDeLogo;
     private final com.metricol.api.service.ai.PerfiladorDelNegocio perfilador;
     private final MedidorDeVideo medidor;
     /** Quien mira y escucha los videos. Ver {@code agente/video/}. */
@@ -176,7 +177,9 @@ public class AgenteService {
             com.metricol.api.service.social.ConexionesCaducadas conexiones,
             com.metricol.api.service.agente.foto.DirectorDeFoto director,
             PresupuestoDelAsistente presupuesto,
-            com.metricol.api.service.ai.PerfiladorDelNegocio perfilador) {
+            com.metricol.api.service.ai.PerfiladorDelNegocio perfilador,
+            com.metricol.api.service.ai.RevisorDeLogo revisorDeLogo) {
+        this.revisorDeLogo = revisorDeLogo;
         this.presupuesto = presupuesto;
         this.perfilador = perfilador;
         this.director = director;
@@ -1087,7 +1090,7 @@ public class AgenteService {
                     new CampaignImageRequest.Format("post", null, null),
                     List.of(asset.getUrl()),
                     // El logo también lo decide el decisor: sin él, se pide que no lo ponga.
-                    new CampaignImageRequest.Brand(w.getLogoUrl(), decision.logo() ? null : "NONE"),
+                    new CampaignImageRequest.Brand(revisorDeLogo.usable(w), decision.logo() ? null : "NONE"),
                     encargo, null, List.of(), null, "", false,
                     redes.stream().filter(CampaignImageService::disenaPostPara).map(Platform::name).toList()));
         } catch (RuntimeException ex) {
@@ -1202,7 +1205,7 @@ public class AgenteService {
         try {
             diseno = generador.disenarParaElAgente(w, new CampaignImageRequest(1,
                     new CampaignImageRequest.Format("post", null, null), List.of(),
-                    new CampaignImageRequest.Brand(w.getLogoUrl(), null), pedido, null, List.of(), null, "", false,
+                    new CampaignImageRequest.Brand(revisorDeLogo.usable(w), null), pedido, null, List.of(), null, "", false,
                     redes.stream().map(Platform::name).toList()));
         } catch (com.metricol.api.exception.QuotaExceededException sinCreditos) {
             return SinFoto.SIN_CREDITOS;
@@ -1453,6 +1456,8 @@ public class AgenteService {
 
         String url = base.getUrl();
         boolean sellada = false;
+        // Solo un logotipo de verdad se pega: si lo subido es una foto (el retrato del dueño), no.
+        String logoDeMarca = revisorDeLogo.usable(w);
         DecisorDelAgente.Acabado vestido = direccion == null ? null
                 : DecisorDelAgente.acabado(direccion.estilo(), ajusteDeAcabado(w),
                         cambio == null ? null : cambio.acabado());
@@ -1468,14 +1473,14 @@ public class AgenteService {
             if (vestido.paso() != null) {
                 pasos.add(vestido.paso());
             }
-            String acabada = logo.acabar(base, w.getLogoUrl(), w.getId(),
+            String acabada = logo.acabar(base, logoDeMarca, w.getId(),
                     new com.metricol.api.service.campaign.LogoSobreFoto.Acabado(estilo,
                             direccion.logoZona(), direccion.logoTamano().ancho, direccion.encuadre(),
                             direccion.rotulo(), w.getName(), historia),
                     conLogo);
             if (acabada != null) {
                 url = acabada;
-                sellada = conLogo && w.getLogoUrl() != null;
+                sellada = conLogo && logoDeMarca != null;
                 if (direccion.encuadre() != null) {
                     pasos.add("La encuadré para que el trabajo luzca.");
                 }
@@ -1495,8 +1500,8 @@ public class AgenteService {
             }
         }
         if (conLogo) {
-            String conSello = direccion == null ? logo.sellar(base, w.getLogoUrl(), w.getId())
-                    : logo.sellar(base, w.getLogoUrl(), w.getId(), direccion.logoZona(),
+            String conSello = direccion == null ? logo.sellar(base, logoDeMarca, w.getId())
+                    : logo.sellar(base, logoDeMarca, w.getId(), direccion.logoZona(),
                             direccion.logoTamano().ancho, historia);
             if (conSello != null) {
                 url = conSello;
@@ -1505,7 +1510,9 @@ public class AgenteService {
                     pasos.add("Puse tu logo " + dondeVa(direccion.logoZona()) + ", donde no tapa lo importante.");
                 }
             } else {
-                pasos.add(w.getLogoUrl() == null ? "No hay un logo guardado en tu marca." : "El logo no se pudo pegar.");
+                pasos.add(w.getLogoUrl() == null ? "No hay un logo guardado en tu marca."
+                        : logoDeMarca == null ? "No le puse logo: el que tienes en tu marca es una foto. Sube tu logotipo en Marca."
+                        : "El logo no se pudo pegar.");
             }
         }
         return new FotoLista(url, decision, pasos, sellada, null, sugerencia,
