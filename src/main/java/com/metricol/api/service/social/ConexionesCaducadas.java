@@ -98,6 +98,17 @@ public class ConexionesCaducadas {
     }
 
     /** Se pidió el enlace para (re)conectar estas redes; vacía = todas las del espacio. */
+    /**
+     * Si alguna red marcada tiene una reconexión empezada en las últimas dos
+     * horas: entonces vale la pena preguntarle al proveedor antes de enseñar
+     * la barra, porque lo más probable es que ya quedó.
+     */
+    public boolean reconexionEnCurso() {
+        LocalDateTime hace = LocalDateTime.now().minusHours(2);
+        return checks.findAll().stream().anyMatch(c -> c.necesitaReconectar() && c.getReconectandoDesde() != null
+                && c.getReconectandoDesde().isAfter(hace));
+    }
+
     public void reconectando(Collection<String> redes) {
         LocalDateTime ahora = LocalDateTime.now();
         for (SocialConnectionCheck c : checks.findAll()) {

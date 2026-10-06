@@ -86,11 +86,20 @@ public class SocialConnectController {
 
     /**
      * Las redes por reconectar y cuánto espera en cada una: la franja de Hoy.
-     * Lectura barata (solo la base): Hoy la pide en cada carga.
+     * Lectura barata (solo la base), salvo recién reconectada: entonces verifica con el proveedor primero.
      */
     @GetMapping("/por-reconectar")
     public ResponseEntity<ApiResponse<List<ConexionesCaducadas.PorReconectar>>> porReconectar(
             @AuthenticationPrincipal User currentUser) {
+        // Recién reconectada, la barra pregunta antes de que Redes verifique:
+        // se verifica aquí primero para que se quite en cuanto vuelve.
+        if (conexiones.reconexionEnCurso()) {
+            try {
+                connectService.connectionStatus(workspaceOf(currentUser));
+            } catch (RuntimeException ex) {
+                // Sin proveedor se contesta con lo que hay; la siguiente lo vuelve a intentar.
+            }
+        }
         return ResponseEntity.ok(ApiResponse.success(conexiones.porReconectar(currentUser.getWorkspace().getId())));
     }
 

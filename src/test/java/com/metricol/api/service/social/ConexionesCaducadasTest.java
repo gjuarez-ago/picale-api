@@ -159,13 +159,17 @@ class ConexionesCaducadasTest {
             SocialConnectionCheck check = checks.findByPlatform("instagram").orElseThrow();
             assertThat(conexiones.alVerificar(check, false, ws.getId())).isTrue();
 
+            assertThat(conexiones.reconexionEnCurso()).isFalse();
             conexiones.reconectando(List.of("instagram"));
+            // Recién empezada la reconexión, la barra verifica con el proveedor antes de enseñarse.
+            assertThat(conexiones.reconexionEnCurso()).isTrue();
             check = checks.findByPlatform("instagram").orElseThrow();
             boolean sigue = conexiones.alVerificar(check, false, ws.getId());
             checks.save(check);
 
             assertThat(sigue).isFalse();
             assertThat(conexiones.necesitaReconectar(Platform.INSTAGRAM)).isFalse();
+            assertThat(conexiones.reconexionEnCurso()).isFalse();
             assertThat(posts.findById(reciente.getId()).orElseThrow().getStatus()).isEqualTo(PostStatus.QUEUED);
             assertThat(jobs.findAll()).hasSize(1);
             assertThat(destinos.findAll()).filteredOn(t -> t.getPost().getId().equals(vieja.getId()))
