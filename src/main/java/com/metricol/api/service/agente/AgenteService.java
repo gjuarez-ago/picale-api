@@ -1099,8 +1099,8 @@ public class AgenteService {
         String disenoId = UUID.randomUUID().toString();
         List<Post> creadas = new ArrayList<>();
         try {
-            crearVersiones(w, diseno, destino, redes, encargo, decision, porQue, categoria, hueco, fecha, asset,
-                    disenoId, creadas, tipo);
+            crearVersiones(w, diseno, destino, redes, encargo, decision, porQue, categoria, hueco, fecha,
+                    asset.getUrl(), disenoId, creadas, tipo);
         } catch (RuntimeException ex) {
             // A medias no se queda: si una versión no se pudo guardar, se quitan
             // las que sí, y la foto sigue tal cual (el diseño ya se pagó, eso no
@@ -1114,8 +1114,8 @@ public class AgenteService {
 
     private void crearVersiones(Workspace w, CampaignImageService.Diseno diseno, List<SocialAccount> destino, Set<Platform> redes,
             String encargo, DecisorDelAgente.Decision decision, String porQue, CalendarioDelAgente.Categoria categoria,
-            CalendarioDelAgente.Hueco hueco, LocalDateTime fecha, MediaAsset asset, String disenoId, List<Post> creadas,
-            String tipo) {
+            CalendarioDelAgente.Hueco hueco, LocalDateTime fecha, String fotoOriginal, String disenoId,
+            List<Post> creadas, String tipo) {
         for (CampaignImageService.Diseno.Version v : diseno.versiones()) {
             List<SocialAccount> suyas = destino.stream().filter(c -> v.redes().contains(c.getPlatform())).toList();
             if (suyas.isEmpty()) {
@@ -1147,11 +1147,93 @@ public class AgenteService {
             pedido.setConUbicacion(lugar.va());
             String motivo = porQue + " " + decision.explicacion() + " (" + creditos.porGeneracion() + " créditos)"
                     + lugar.frase() + " " + cuandoYDonde(deEsta, hueco);
-            Post creada = postService.crearPropuesta(pedido, fecha, motivo, asset.getUrl(),
+            Post creada = postService.crearPropuesta(pedido, fecha, motivo, fotoOriginal,
                     DecisorDelAgente.Tratamiento.DISENO.name(), categoria == null ? null : categoria.name());
             creada.setAgenteDisenoId(disenoId);
             creadas.add(posts.save(creada));
         }
+    }
+
+    /** Lo que salió de pedirle al asistente una pieza sin foto. */
+    public enum SinFoto { PROPUESTA, SIN_CREDITOS, NO_SALIO }
+
+    /**
+     * Una pieza que el asistente diseña por su cuenta, sin foto del dueño:
+     * para una fecha que le toca al negocio, o para que la cuenta no se quede
+     * callada. Gasta un diseño de la semana (respeta el ritmo de créditos) y
+     * pasa por aprobación como cualquier propuesta.
+     *
+     * <p>Sin foto real no se inventa una: el encargo pide diseño gráfico,
+     * ilustración o tipografía, nunca personas u obras que parezcan reales.
+     *
+     * @param cuando para cuándo (el día de la fecha); nulo = el siguiente hueco del calendario
+     */
+    public SinFoto proponerSinFoto(UUID workspaceId, String encargo, String porQue,
+            CalendarioDelAgente.Categoria categoria, LocalDateTime cuando) {
+        Workspace w = workspace(workspaceId);
+        List<SocialAccount> destino = cuentasParaFotos();
+        if (destino.isEmpty() || !w.conAgente()) {
+            return SinFoto.NO_SALIO;
+        }
+        if (disenosDisponibles(w) < 1) {
+            return SinFoto.SIN_CREDITOS;
+        }
+        try {
+            cupoIa.exigirCupo();
+        } catch (RuntimeException topeDelDia) {
+            return SinFoto.NO_SALIO;
+        }
+        Set<Platform> redes = destino.stream().map(SocialAccount::getPlatform)
+                .collect(Collectors.toCollection(LinkedHashSet::new));
+        String pedido = encargo + " Sin foto del negocio: haz un diseno grafico (tipografia, ilustracion, "
+                + "texturas u objetos), nunca personas, obras ni lugares que parezcan fotos reales.";
+        CampaignImageService.Diseno diseno;
+        try {
+            diseno = generador.disenarParaElAgente(w, new CampaignImageRequest(1,
+                    new CampaignImageRequest.Format("post", null, null), List.of(),
+                    new CampaignImageRequest.Brand(w.getLogoUrl(), null), pedido, null, List.of(), null, "", false,
+                    redes.stream().map(Platform::name).toList()));
+        } catch (com.metricol.api.exception.QuotaExceededException sinCreditos) {
+            return SinFoto.SIN_CREDITOS;
+        } catch (RuntimeException ex) {
+            log.info("El asistente no pudo diseñar sin foto en {}: {}", workspaceId, ex.getMessage());
+            return SinFoto.NO_SALIO;
+        }
+        if (diseno == null) {
+            return SinFoto.NO_SALIO;
+        }
+        CalendarioDelAgente.Hueco hueco = cuando == null ? hueco(w, categoria)
+                : new CalendarioDelAgente.Hueco(cuando, null);
+        DecisorDelAgente.Decision decision = new DecisorDelAgente.Decision(DecisorDelAgente.Tratamiento.DISENO,
+                true, DecisorDelAgente.Prioridad.ALTA, List.of("La diseñé con IA."));
+        List<Post> creadas = new ArrayList<>();
+        try {
+            crearVersiones(w, diseno, destino, redes, pedido, decision, porQue, categoria, hueco, hueco.cuando(), null,
+                    UUID.randomUUID().toString(), creadas, "OTRO");
+        } catch (RuntimeException ex) {
+            log.warn("No se pudieron guardar las versiones sin foto de {}: {}", workspaceId, ex.toString());
+            creadas.forEach(p -> postService.delete(p.getId()));
+            return SinFoto.NO_SALIO;
+        }
+        return creadas.isEmpty() ? SinFoto.NO_SALIO : SinFoto.PROPUESTA;
+    }
+
+    /** Si no hay nada propuesto ni programado en el feed en los próximos {@code dias}: la cuenta se quedaría callada. */
+    public boolean callada(int dias) {
+        LocalDateTime ahora = LocalDateTime.now();
+        return posts.tomadosConCategoria(ahora).stream()
+                .map(r -> (LocalDateTime) r[0])
+                .noneMatch(f -> f != null && f.isBefore(ahora.plusDays(dias)));
+    }
+
+    /** Si quedan fotos suyas por revisar: entonces no está sin material. */
+    public boolean conMaterialPendiente(Workspace w) {
+        return w.getAgenteDesde() != null && assets.porRevisarDelAgente(w.getAgenteDesde()) > 0;
+    }
+
+    /** Si hay a dónde publicar fotos. */
+    public boolean conRedes() {
+        return !cuentasParaFotos().isEmpty();
     }
 
     /**

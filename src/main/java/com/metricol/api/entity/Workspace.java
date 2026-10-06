@@ -201,6 +201,20 @@ public class Workspace {
      */
     private Integer agenteAjusteAcabado;
 
+    /** Las fechas del año ya atendidas ("MADRES-2026,PATRIAS-2026"): no se vuelven a proponer. */
+    @Column(length = 1000)
+    private String agenteFechasHechas;
+
+    /** Las fotos que el asistente pidió esta semana, en JSON ([{que, consejo}]). */
+    @Column(length = 3000)
+    private String agenteTomas;
+
+    /** Cuándo pidió esas fotos: cada siete días pide otras. */
+    private java.time.LocalDateTime agenteTomasEn;
+
+    /** La última vez que llenó un hueco por su cuenta (sin material): una por semana como mucho. */
+    private java.time.LocalDateTime agenteUltimoRelleno;
+
     /** El último aviso al teléfono de "tengo publicaciones listas": entre uno y otro pasa al menos una hora. */
     private java.time.LocalDateTime agenteUltimoAviso;
 

@@ -42,11 +42,14 @@ public class AgenteController {
     private final com.metricol.api.service.agente.CuentaAparte otraCuenta;
     private final com.metricol.api.service.metricas.LoQueFunciona loQueFunciona;
     private final com.metricol.api.service.social.UbicacionDelNegocio ubicacion;
+    private final com.metricol.api.service.agente.plan.PlanDelAgente plan;
 
     public AgenteController(AgenteService agente, PermissionService permisos, WorkspaceMembershipService membresias,
             com.metricol.api.service.agente.CuentaAparte otraCuenta,
             com.metricol.api.service.metricas.LoQueFunciona loQueFunciona,
-            com.metricol.api.service.social.UbicacionDelNegocio ubicacion) {
+            com.metricol.api.service.social.UbicacionDelNegocio ubicacion,
+            com.metricol.api.service.agente.plan.PlanDelAgente plan) {
+        this.plan = plan;
         this.loQueFunciona = loQueFunciona;
         this.ubicacion = ubicacion;
         this.agente = agente;
@@ -73,6 +76,13 @@ public class AgenteController {
     @GetMapping
     public ResponseEntity<ApiResponse<AgenteService.Estado>> estado(@AuthenticationPrincipal User currentUser) {
         return ResponseEntity.ok(ApiResponse.success(agente.estado(ws(currentUser))));
+    }
+
+    /** Lo que el asistente planea por su cuenta: las fechas que vienen y las fotos que pidió esta semana. */
+    @GetMapping("/plan")
+    public ResponseEntity<ApiResponse<com.metricol.api.service.agente.plan.PlanDelAgente.Plan>> plan(
+            @AuthenticationPrincipal User currentUser) {
+        return ResponseEntity.ok(ApiResponse.success(plan.plan(ws(currentUser))));
     }
 
     /** Lo que le funciona a la cuenta: sus mejores horas, sus hashtags y sus publicaciones que más rindieron. */

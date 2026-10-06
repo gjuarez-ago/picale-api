@@ -58,5 +58,8 @@ public enum AiOperacion {
     AGENTE_VERIFICAR_FOTO,
 
     /** Deducir cómo trabaja el negocio (sus rasgos), una vez por espacio. */
-    AGENTE_PERFILAR
+    AGENTE_PERFILAR,
+
+    /** El plan de la semana: las fotos que el asistente le pide al dueño. */
+    AGENTE_PLANEAR
 }

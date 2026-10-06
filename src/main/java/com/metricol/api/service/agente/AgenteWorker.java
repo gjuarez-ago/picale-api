@@ -30,13 +30,16 @@ public class AgenteWorker {
 
     private final WorkspaceRepository workspaces;
     private final AgenteService agente;
+    private final com.metricol.api.service.agente.plan.PlanDelAgente plan;
 
     @Value("${app.agente.enabled:true}")
     private boolean habilitado;
 
-    public AgenteWorker(WorkspaceRepository workspaces, AgenteService agente) {
+    public AgenteWorker(WorkspaceRepository workspaces, AgenteService agente,
+            com.metricol.api.service.agente.plan.PlanDelAgente plan) {
         this.workspaces = workspaces;
         this.agente = agente;
+        this.plan = plan;
     }
 
     /**
@@ -93,6 +96,8 @@ public class AgenteWorker {
                     if (hechas > 0) {
                         log.info("Agente de {}: {} foto(s) revisadas", w.getId(), hechas);
                     }
+                    // Lo que hace por su cuenta: fechas, fotos de la semana y que la cuenta no se calle.
+                    plan.trabajar(w.getId(), java.time.LocalDateTime.now());
                 });
             } catch (Exception ex) {
                 log.error("El agente falló en {}: {}", w.getId(), ex.toString());

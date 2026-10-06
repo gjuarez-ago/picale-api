@@ -485,6 +485,31 @@ class AgenteServiceTest {
     }
 
     @Test
+    @DisplayName("sin foto: el asistente diseña solo una pieza para una fecha y queda por aprobar ese día")
+    void piezaSinFoto() {
+        enElWorkspace(() -> {
+            conInstagram();
+            agente.encender(ws.getId(), true);
+            when(generador.disenarParaElAgente(any(), any())).thenReturn(new com.metricol.api.service.campaign.CampaignImageService.Diseno(
+                    List.of(new com.metricol.api.service.campaign.CampaignImageService.Diseno.Version(List.of(Platform.INSTAGRAM),
+                            "https://cdn.test/diseno-madres.jpg")),
+                    "Feliz Día de las Madres", java.util.Map.of(Platform.INSTAGRAM, "Feliz día, mamá")));
+            LocalDateTime cuando = LocalDateTime.now().plusDays(5).withHour(10).withMinute(0).withSecond(0).withNano(0);
+
+            AgenteService.SinFoto r = agente.proponerSinFoto(ws.getId(), "Publicacion para el Día de las Madres",
+                    "Se viene el Día de las Madres.", CalendarioDelAgente.Categoria.COMUNIDAD, cuando);
+
+            assertThat(r).isEqualTo(AgenteService.SinFoto.PROPUESTA);
+            Post p = posts.propuestasDelAgente().get(0);
+            assertThat(p.getAgenteTratamiento()).isEqualTo("DISENO");
+            assertThat(p.getFechaPropuesta()).isEqualTo(cuando);
+            assertThat(p.getMediaUrls()).containsExactly("https://cdn.test/diseno-madres.jpg");
+            org.mockito.Mockito.verify(generador).disenarParaElAgente(any(), org.mockito.ArgumentMatchers.argThat(
+                    c -> c.brief().contains("nunca personas") && c.resourceUrls().isEmpty()));
+        });
+    }
+
+    @Test
     @DisplayName("acabado: si descarta la franja, la cuenta aprende; dos veces y ya no las pone")
     void aprendeElAcabado() {
         enElWorkspace(() -> {
