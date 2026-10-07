@@ -271,13 +271,24 @@ public class PostPublishStore {
                 List.copyOf(post.getMediaUrls()),
                 post.esVideo(),
                 post.formatoEfectivo(),
-                Boolean.TRUE.equals(post.getMusicaAutomatica()),
+                // La música de TikTok se decide aquí, con los destinos que de
+                // verdad van a recibir el envío: una publicación a la que se
+                // le cayó TikTok por cuota no tiene por qué llevar el campo.
+                MusicaDeTikTok.decidir(post, redesDe(destinos), post.esVideo()),
                 post.getPortadaMs(),
                 Boolean.FALSE.equals(post.getConUbicacion())
                         ? com.metricol.api.service.social.Ubicacion.NINGUNA : ubicacionDe(workspaceId),
                 hechaConIa(post),
                 destinos,
                 null);
+    }
+
+    /** Las redes que de verdad reciben el envío, como las nombra upload-post. */
+    private static List<String> redesDe(List<PublishPlan.Destino> destinos) {
+        return destinos.stream()
+                .map(d -> d.platform().name().toLowerCase())
+                .distinct()
+                .toList();
     }
 
     /**
