@@ -118,6 +118,24 @@ public class PostTarget {
     @jakarta.persistence.Column(length = 200)
     private String metricasAviso;
 
+    // ------------------------------------------------------------ comentarios
+    // Lo justo para no pedirle a la red una lista que no cambió. El tope de
+    // upload-post es por llave y lo comparte con publicar: preguntar de más
+    // aquí es quitarle cupo a lo que sí importa.
+
+    /** Cuándo se trajeron sus comentarios por última vez. Nulo = nunca. */
+    private LocalDateTime comentariosEn;
+
+    /**
+     * Cuántos comentarios decía tener la red la última vez que se revisó.
+     *
+     * <p>Mientras {@link #comentarios} no suba por encima de este número, no
+     * hay nada nuevo que pedir. Es toda la astucia del asunto: las métricas ya
+     * traen ese contador, así que enterarse de que no hay nada nuevo sale
+     * gratis.
+     */
+    private Long comentariosRevisados;
+
     /**
      * Cuánto rindió, en un solo número para comparar publicaciones de la misma
      * cuenta: lo que cuesta más (comentar, compartir, guardar) pesa más que un

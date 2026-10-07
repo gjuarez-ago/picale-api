@@ -160,6 +160,54 @@ public interface PostTargetRepository extends JpaRepository<PostTarget, UUID> {
     @Query(value = "update post_targets set metricas_en = :en where id = :id", nativeQuery = true)
     int marcarMedido(@Param("id") UUID id, @Param("en") LocalDateTime en);
 
+    /**
+     * Lo publicado a lo que le toca revisar comentarios, de TODOS los
+     * workspaces: [id del destino, red, id en la red, perfil de upload-post,
+     * workspace, id de la cuenta, nombre de la cuenta].
+     *
+     * <p>Entra lo que nunca se revisó, y después solo lo que CRECIÓ: si el
+     * contador de comentarios que trajeron las métricas sigue igual que la
+     * última vez, no hay nada que pedir y la publicación no gasta una llamada.
+     * Primero lo que más creció, que es donde está lo que la gente espera que
+     * les contesten.
+     *
+     * <p>El nombre de la cuenta viaja para poder distinguir nuestros propios
+     * comentarios de los de la gente: una respuesta nuestra no es un pendiente.
+     *
+     * <p>En SQL nativo por lo de siempre: el worker no tiene tenant.
+     */
+    @Query(value = """
+            select cast(pt.id as varchar), sa.platform, pt.external_post_id,
+                   coalesce(nullif(w.upload_post_profile, ''), p.tenant_id),
+                   p.tenant_id, cast(sa.id as varchar), sa.account_name
+            from post_targets pt
+            join posts p on p.id = pt.post_id
+            join social_accounts sa on sa.id = pt.social_account_id
+            left join workspaces w on cast(w.id as varchar) = p.tenant_id
+            where pt.status = 'PUBLISHED'
+              and p.deleted_at is null
+              and pt.external_post_id is not null and pt.external_post_id <> ''
+              and pt.published_at >= :desde
+              and (pt.comentarios_en is null
+                   or coalesce(pt.comentarios, 0) > coalesce(pt.comentarios_revisados, 0))
+            order by pt.comentarios_en asc nulls first,
+                     coalesce(pt.comentarios, 0) - coalesce(pt.comentarios_revisados, 0) desc
+            limit :tope
+            """, nativeQuery = true)
+    List<Object[]> conComentariosPorRevisar(@Param("desde") LocalDateTime desde, @Param("tope") int tope);
+
+    /**
+     * Apunta que ya se revisaron sus comentarios, y con qué contador: a partir
+     * de ahí solo se vuelve a preguntar si la red dice que hay más.
+     */
+    @org.springframework.data.jpa.repository.Modifying
+    @org.springframework.transaction.annotation.Transactional
+    @Query(value = """
+            update post_targets set comentarios_en = :en, comentarios_revisados = coalesce(comentarios, 0)
+            where id = :id
+            """, nativeQuery = true)
+    int marcarComentariosRevisados(@Param("id") UUID id, @Param("en") LocalDateTime en);
+
     /** Apunta el intento y por qué la red no da números. */
     @org.springframework.data.jpa.repository.Modifying
     @org.springframework.transaction.annotation.Transactional

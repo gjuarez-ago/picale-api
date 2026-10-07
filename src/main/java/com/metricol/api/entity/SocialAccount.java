@@ -84,6 +84,20 @@ public class SocialAccount {
     private SocialAccountStatus status;
 
     /**
+     * Cuándo se supo que esta cuenta no deja leer ni contestar comentarios
+     * porque hay que volver a conectarla.
+     *
+     * <p>TikTok no da el permiso con la conexión vieja, y YouTube necesita el
+     * alcance {@code youtube.force-ssl}, que antes no se pedía. No es un error
+     * que se arregle por dentro: hay que pedírselo a la persona, una vez.
+     *
+     * <p>Aparte de {@link #status}: publicar sigue funcionando perfectamente.
+     * Marcarla como desconectada por esto la sacaría de donde se publica, que
+     * es muchísimo peor que quedarse sin ver unos comentarios.
+     */
+    private LocalDateTime comentariosBloqueadoEn;
+
+    /**
      * La apagó la persona desde la app, no el proveedor.
      *
      * <p>Existe porque desconectar de verdad no está en nuestra mano: los

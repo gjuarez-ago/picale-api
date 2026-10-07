@@ -33,7 +33,8 @@ public enum Role {
             Permission.POST_PUBLISH,
             Permission.POST_SCHEDULE,
             Permission.POST_DELETE,
-            Permission.MEDIA_DELETE)),
+            Permission.MEDIA_DELETE,
+            Permission.COMMENT_REPLY)),
 
     /**
      * Mira y ya: el calendario, lo publicado y cómo va todo. Para el cliente

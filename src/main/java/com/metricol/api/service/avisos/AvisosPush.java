@@ -118,6 +118,19 @@ public class AvisosPush {
      *         {@code false} sin credenciales o sin teléfonos registrados
      */
     public boolean avisarAlEquipo(UUID workspaceId, String titulo, String cuerpo, Map<String, String> datos) {
+        return avisarAQuienPuede(workspaceId, Permission.POST_SCHEDULE, titulo, cuerpo, datos);
+    }
+
+    /**
+     * Igual, pero a quienes tienen ESE permiso.
+     *
+     * <p>Quién debe enterarse depende de qué se avisa: de una publicación por
+     * aprobar, quien programa; de un comentario sin contestar, quien contesta.
+     * Avisar a quien no puede hacer nada al respecto es ruido puro, y el ruido
+     * es lo que hace que la gente silencie la app.
+     */
+    public boolean avisarAQuienPuede(UUID workspaceId, Permission permiso, String titulo, String cuerpo,
+            Map<String, String> datos) {
         if (!activo()) {
             if (!avisadoSinCredenciales) {
                 log.info("Avisos push apagados: falta app.push.credenciales.");
@@ -126,7 +139,7 @@ public class AvisosPush {
             return false;
         }
         try {
-            Set<UUID> quienes = quienesAprueban(workspaceId);
+            Set<UUID> quienes = quienesPueden(workspaceId, permiso);
             List<Dispositivo> telefonos = quienes.isEmpty() ? List.of() : dispositivos.findByUserIdIn(quienes);
             if (telefonos.isEmpty()) {
                 return false;
@@ -145,6 +158,11 @@ public class AvisosPush {
 
     /** Miembros del espacio con permiso de programar, y los administradores de su organización. */
     Set<UUID> quienesAprueban(UUID workspaceId) {
+        return quienesPueden(workspaceId, Permission.POST_SCHEDULE);
+    }
+
+    /** Miembros del espacio con ese permiso, y los administradores de su organización. */
+    Set<UUID> quienesPueden(UUID workspaceId, Permission permiso) {
         Set<UUID> candidatos = new LinkedHashSet<>();
         for (WorkspaceMember m : miembros.findDelWorkspace(workspaceId)) {
             candidatos.add(m.getUser().getId());
@@ -156,7 +174,7 @@ public class AvisosPush {
                 }
             }
         });
-        candidatos.removeIf(id -> !permisos.permisosDe(id, workspaceId).contains(Permission.POST_SCHEDULE));
+        candidatos.removeIf(id -> !permisos.permisosDe(id, workspaceId).contains(permiso));
         return candidatos;
     }
 

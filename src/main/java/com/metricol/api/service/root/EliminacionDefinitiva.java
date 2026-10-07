@@ -272,6 +272,10 @@ public class EliminacionDefinitiva {
         int publicaciones = contar("select count(*) from posts where tenant_id = :t", t.getValues());
         int archivos = contar("select count(*) from media_assets where tenant_id = :t", t.getValues());
 
+        // Los comentarios cuelgan de las publicaciones: primero ellos.
+        if (existe("comentarios")) {
+            sql.update("delete from comentarios where workspace_id = :ws", ws);
+        }
         sql.update("delete from post_targets where post_id in (select id from posts where tenant_id = :t)", t);
         sql.update("delete from post_media where post_id in (select id from posts where tenant_id = :t)", t);
         sql.update("delete from publish_jobs where workspace_id = :ws", ws);
@@ -311,6 +315,11 @@ public class EliminacionDefinitiva {
         sql.update("delete from conexiones_ia where user_id = :u", u);
         // Sus teléfonos: sin persona, a ese token no hay a quién avisarle.
         sql.update("delete from dispositivos where user_id = :u", u);
+        // Los comentarios que atendió siguen atendidos en los espacios que
+        // siguen vivos, pero ya sin nombrarla.
+        if (existe("comentarios")) {
+            sql.update("update comentarios set atendido_por = null where atendido_por = :u", u);
+        }
         sql.update("delete from email_verification_codes where lower(email) = lower(:e)",
                 new MapSqlParameterSource("e", correo == null ? "" : correo));
         sql.update("delete from users where id = :u", u);

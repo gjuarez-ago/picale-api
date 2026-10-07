@@ -348,6 +348,9 @@ class EliminacionDefinitivaTest {
                 "publish_jobs.post_id", "social_accounts.tenant_id", "social_connection_checks.tenant_id",
                 "media_assets.tenant_id", "ai_usage.workspace_id", "acciones_ia.workspace_id", "acciones_ia.user_id",
                 "conexiones_ia.user_id", "dispositivos.user_id",
+                // Los comentarios se van con el espacio; de la persona solo se
+                // olvida quién atendió (ver borrarPersona).
+                "comentarios.tenant_id", "comentarios.workspace_id",
                 "daily_publish_usage.workspace_id",
                 "credit_movements.workspace_id", "image_credits.workspace_id", "licenses.workspace_id",
                 "licenses.organization_id", "invitation_workspaces.workspace_id",

@@ -133,6 +133,7 @@ public class PermissionService {
             case NETWORK_MANAGE -> "No tienes permiso para administrar las redes de este espacio.";
             case MEMBER_MANAGE -> "No tienes permiso para administrar el equipo de este espacio.";
             case WORKSPACE_EDIT -> "No tienes permiso para cambiar los datos de este espacio.";
+            case COMMENT_REPLY -> "No tienes permiso para contestar comentarios en este espacio.";
         };
     }
 }

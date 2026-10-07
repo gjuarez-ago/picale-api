@@ -71,11 +71,45 @@ public class UploadPostClient {
                 .baseUrl(props.getBaseUrl())
                 .defaultHeader("Authorization", "Apikey " + props.getApiKey())
                 .requestFactory(conLimite)
+                .requestInterceptor((peticion, cuerpo, ejecucion) -> {
+                    org.springframework.http.client.ClientHttpResponse respuesta = ejecucion.execute(peticion, cuerpo);
+                    anotarCupo(respuesta.getHeaders().getFirst("X-RateLimit-Remaining"));
+                    return respuesta;
+                })
                 .build();
     }
 
     /** Para leer (métricas, lugares de TikTok): con tiempo límite. */
     private final RestClient consultas;
+
+    /**
+     * Cuántas peticiones nos quedan en la ventana actual, según la última
+     * respuesta de upload-post ({@code X-RateLimit-Remaining}), o -1 si
+     * todavía no lo sabemos.
+     *
+     * <p>El tope de upload-post es por LLAVE, no por red: lo comparten
+     * publicar, leer métricas y leer comentarios. Quien sondea mira esto y se
+     * detiene antes de agotarlo, porque quedarse sin cupo significa que no
+     * sale una publicación — y eso sí no se puede fallar.
+     */
+    private final java.util.concurrent.atomic.AtomicInteger cupo =
+            new java.util.concurrent.atomic.AtomicInteger(-1);
+
+    /** @return lo que queda en la ventana, o -1 si el proveedor no lo dijo */
+    public int cupoRestante() {
+        return cupo.get();
+    }
+
+    private void anotarCupo(String cabecera) {
+        if (cabecera == null || cabecera.isBlank()) {
+            return;
+        }
+        try {
+            cupo.set(Integer.parseInt(cabecera.strip()));
+        } catch (NumberFormatException ignorado) {
+            // Una cabecera rara no es motivo para romper la consulta.
+        }
+    }
 
     public Map<String, Object> publishText(String user, List<String> platforms, String title) {
         return publishText(user, platforms, title, Ubicacion.NINGUNA);
@@ -226,6 +260,121 @@ public class UploadPostClient {
                         .queryParam("platform", platform)
                         .queryParam("user", user)
                         .build())
+                .retrieve()
+                .body(Map.class);
+    }
+
+    // ------------------------------------------------------- comentarios
+
+    /**
+     * Los comentarios de UNA publicación en UNA red.
+     *
+     * <p>{@code GET /uploadposts/comments?platform=&user=&post_id=&limit=&after=}.
+     * Contesta {@code {success, comments:[...], pagination:{next_cursor, has_next}}};
+     * el JSON crudo lo interpreta {@code LecturaDeComentarios}, porque cada red
+     * nombra los campos a su manera.
+     *
+     * @param despues cursor de la página anterior ({@code next_cursor}), o
+     *                {@code null} para empezar desde el principio
+     */
+    @SuppressWarnings("unchecked")
+    public Map<String, Object> comentarios(String user, String platform, String postId, Integer limite,
+            String despues) {
+        return consultas.get()
+                .uri(uriBuilder -> {
+                    uriBuilder.path("/uploadposts/comments")
+                            .queryParam("platform", platform)
+                            .queryParam("user", user)
+                            .queryParam("post_id", postId);
+                    if (limite != null) {
+                        uriBuilder.queryParam("limit", limite);
+                    }
+                    if (despues != null && !despues.isBlank()) {
+                        uriBuilder.queryParam("after", despues);
+                    }
+                    return uriBuilder.build();
+                })
+                .retrieve()
+                .body(Map.class);
+    }
+
+    /**
+     * Deja un comentario o contesta a uno.
+     *
+     * <p>{@code POST /uploadposts/comments/create}. Va uno solo de los tres
+     * identificadores: {@code comment_id} para contestar (lo único que admite
+     * Instagram), {@code post_id} si no. TikTok pide {@code post_id} SIEMPRE,
+     * también al contestar, así que ahí van los dos.
+     */
+    @SuppressWarnings("unchecked")
+    public Map<String, Object> comentar(String user, String platform, String postId, String comentarioId,
+            String mensaje) {
+        boolean contesta = comentarioId != null && !comentarioId.isBlank();
+        Map<String, Object> cuerpo = new java.util.LinkedHashMap<>();
+        cuerpo.put("platform", platform);
+        cuerpo.put("user", user);
+        cuerpo.put("message", mensaje);
+        if (contesta) {
+            cuerpo.put("comment_id", comentarioId);
+        }
+        // Sin comentario al que contestar, o en TikTok (que lo exige siempre).
+        if (postId != null && !postId.isBlank() && (!contesta || "tiktok".equalsIgnoreCase(platform))) {
+            cuerpo.put("post_id", postId);
+        }
+        return consultas.post()
+                .uri("/uploadposts/comments/create")
+                .contentType(MediaType.APPLICATION_JSON)
+                .body(cuerpo)
+                .retrieve()
+                .body(Map.class);
+    }
+
+    /**
+     * Ocultar, fijar, dar me gusta… {@code POST /uploadposts/comments/action}.
+     *
+     * <p>Qué acepta cada red lo decide {@code CapacidadesPorRed}, no esto: aquí
+     * se manda lo que pidan. {@code post_id} va cuando la red lo exige
+     * (TikTok y YouTube); de más no estorba.
+     */
+    @SuppressWarnings("unchecked")
+    public Map<String, Object> accionSobreComentario(String user, String platform, String postId,
+            String comentarioId, String accion) {
+        Map<String, Object> cuerpo = new java.util.LinkedHashMap<>();
+        cuerpo.put("platform", platform);
+        cuerpo.put("user", user);
+        cuerpo.put("comment_id", comentarioId);
+        cuerpo.put("action", accion);
+        if (postId != null && !postId.isBlank()) {
+            cuerpo.put("post_id", postId);
+        }
+        return consultas.post()
+                .uri("/uploadposts/comments/action")
+                .contentType(MediaType.APPLICATION_JSON)
+                .body(cuerpo)
+                .retrieve()
+                .body(Map.class);
+    }
+
+    /**
+     * Borra un comentario propio.
+     *
+     * <p>Se manda por {@code POST} y no por {@code DELETE} aunque el proveedor
+     * acepte las dos: un DELETE con cuerpo lo tumban proxys y CDNs por el
+     * camino, y el suyo lleva cuerpo. Ellos mismos ofrecen el POST para eso.
+     */
+    @SuppressWarnings("unchecked")
+    public Map<String, Object> borrarComentario(String user, String platform, String postId, String comentarioId) {
+        Map<String, Object> cuerpo = new java.util.LinkedHashMap<>();
+        cuerpo.put("platform", platform);
+        cuerpo.put("user", user);
+        cuerpo.put("comment_id", comentarioId);
+        if (postId != null && !postId.isBlank()) {
+            cuerpo.put("post_id", postId); // LinkedIn lo exige.
+        }
+        return consultas.post()
+                .uri("/uploadposts/comments/delete")
+                .contentType(MediaType.APPLICATION_JSON)
+                .body(cuerpo)
                 .retrieve()
                 .body(Map.class);
     }

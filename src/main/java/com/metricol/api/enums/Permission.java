@@ -42,5 +42,13 @@ public enum Permission {
     MEMBER_MANAGE,
 
     /** Cambiar los datos del workspace: nombre, giro, ciudad, descripción. */
-    WORKSPACE_EDIT
+    WORKSPACE_EDIT,
+
+    /**
+     * Contestar y moderar los comentarios que deja la gente en las
+     * publicaciones. Es permiso aparte de crear o publicar: responder es
+     * hablar en nombre del negocio, delante de todos y sin poder editarlo
+     * después en casi ninguna red.
+     */
+    COMMENT_REPLY
 }
