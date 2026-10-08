@@ -1,0 +1,296 @@
+<!doctype html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Arquitectura del servidor</title>
+<style>
+  :root {
+    --fondo: #ffffff;
+    --tinta: #111827;
+    --tinta-suave: #4b5563;
+    --linea: #d1d5db;
+    --caja: #f9fafb;
+    --acento: #2563eb;
+    --acento-lavado: #dbeafe;
+    --alerta: #b45309;
+    --alerta-lavado: #fef3c7;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root:not([data-theme="light"]) {
+      --fondo: #0b0f19;
+      --tinta: #e5e7eb;
+      --tinta-suave: #9ca3af;
+      --linea: #374151;
+      --caja: #111827;
+      --acento: #60a5fa;
+      --acento-lavado: #1e3a5f;
+      --alerta: #fbbf24;
+      --alerta-lavado: #3f2d0a;
+    }
+  }
+  :root[data-theme="dark"] {
+    --fondo: #0b0f19;
+    --tinta: #e5e7eb;
+    --tinta-suave: #9ca3af;
+    --linea: #374151;
+    --caja: #111827;
+    --acento: #60a5fa;
+    --acento-lavado: #1e3a5f;
+    --alerta: #fbbf24;
+    --alerta-lavado: #3f2d0a;
+  }
+
+  * { box-sizing: border-box; }
+  body {
+    margin: 0;
+    background: var(--fondo);
+    color: var(--tinta);
+    font: 15px/1.6 system-ui, -apple-system, "Segoe UI", sans-serif;
+  }
+  main { max-width: 1120px; margin: 0 auto; padding: 32px 16px 72px; }
+  h1 { font-size: 1.9rem; line-height: 1.2; margin: 0 0 6px; }
+  h2 { font-size: 1.2rem; margin: 44px 0 10px; }
+  .sub { color: var(--tinta-suave); margin: 0 0 8px; }
+  .sello { color: var(--tinta-suave); font-size: .85rem; margin: 0 0 28px; }
+
+  figure { margin: 0 0 8px; }
+  figure svg { width: 100%; max-width: 100%; height: auto; display: block; }
+  figcaption { color: var(--tinta-suave); font-size: .88rem; margin-top: 10px; }
+
+  /* El SVG hereda el color del texto: funciona en claro y en oscuro. */
+  .caja  { fill: var(--caja); stroke: var(--linea); stroke-width: 1.5; }
+  .marco { fill: none; stroke: var(--linea); stroke-width: 1.5; stroke-dasharray: 6 5; }
+  .foco  { fill: var(--acento-lavado); stroke: var(--acento); stroke-width: 2; }
+  .flecha { stroke: currentColor; stroke-width: 1.5; fill: none; }
+  .flecha-foco { stroke: var(--acento); stroke-width: 2.5; fill: none; }
+  .rotulo { fill: currentColor; font-size: 12px; }
+  .rotulo-chico { fill: var(--tinta-suave); font-size: 10.5px; }
+  .titulo-caja { fill: currentColor; font-size: 12.5px; font-weight: 700; }
+  .titulo-foco { fill: var(--acento); font-size: 12.5px; font-weight: 700; }
+
+  table { border-collapse: collapse; width: 100%; font-size: .9rem; margin-top: 6px; }
+  th, td { text-align: left; padding: 8px 10px; border-bottom: 1px solid var(--linea); }
+  th { font-weight: 700; color: var(--tinta-suave); font-size: .78rem; text-transform: uppercase; letter-spacing: .04em; }
+  code { font-family: ui-monospace, "Cascadia Code", Menlo, monospace; font-size: .88em; }
+  tr.destacada td { background: var(--acento-lavado); }
+
+  .nota {
+    border-left: 3px solid var(--alerta);
+    background: var(--alerta-lavado);
+    padding: 12px 16px;
+    margin: 18px 0;
+    border-radius: 0 8px 8px 0;
+  }
+  .nota p { margin: 0 0 8px; }
+  .nota p:last-child { margin: 0; }
+  .tarjetas { display: grid; gap: 12px; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); margin-top: 8px; }
+  .tarjeta { border: 1px solid var(--linea); background: var(--caja); border-radius: 10px; padding: 12px 14px; }
+  .tarjeta b { display: block; margin-bottom: 2px; }
+  .tarjeta span { color: var(--tinta-suave); font-size: .85rem; }
+  @media (max-width: 640px) { main { padding: 24px 16px 56px; } h1 { font-size: 1.5rem; } }
+</style>
+</head>
+<body>
+<main>
+
+  <h1>Arquitectura del servidor</h1>
+  <p class="sub">Todo lo que corre hoy en la VM <code>api-videos-prod</code>, y de qué depende.</p>
+  <p class="sello">Levantado del servidor el 8 de octubre de 2026 · e2-standard-4 (4 vCPU, 16 GB) · disco 80 GB SSD · us-central1-a</p>
+
+  <h2>Por dónde entra una petición</h2>
+
+  <figure>
+    <svg viewBox="0 0 1240 760" role="img"
+         aria-label="Una sola VM atiende ocho aplicaciones de seis productos: Cloudflare manda el tráfico a un nginx, que reparte por dominio a contenedores que solo escuchan en loopback, y todos llegan a una misma instancia de Cloud SQL a través de un proxy por aplicación.">
+      <defs>
+        <marker id="punta" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+          <path d="M 0 0 L 10 5 L 0 10 z" fill="currentColor"/>
+        </marker>
+        <marker id="punta-foco" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+          <path d="M 0 0 L 10 5 L 0 10 z" fill="var(--acento)"/>
+        </marker>
+      </defs>
+
+      <!-- Internet / Cloudflare -->
+      <rect class="caja" x="470" y="14" width="300" height="52" rx="10"/>
+      <text class="titulo-caja" x="620" y="38" text-anchor="middle">Internet → Cloudflare</text>
+      <text class="rotulo-chico" x="620" y="55" text-anchor="middle">DNS, TLS y caché por delante de todo</text>
+
+      <line class="flecha" x1="620" y1="66" x2="620" y2="126" marker-end="url(#punta)"/>
+      <text class="rotulo-chico" x="630" y="100">HTTPS :443</text>
+
+      <!-- La VM -->
+      <rect class="marco" x="40" y="130" width="1160" height="430" rx="14"/>
+      <text class="rotulo" x="56" y="152">VM · api-videos-prod · 4 vCPU · 16 GB · carga 0.04</text>
+
+      <!-- nginx -->
+      <rect class="caja" x="470" y="166" width="300" height="50" rx="9"/>
+      <text class="titulo-caja" x="620" y="188" text-anchor="middle">nginx + certbot</text>
+      <text class="rotulo-chico" x="620" y="204" text-anchor="middle">reparte por nombre de dominio</text>
+
+      <!-- Bus de reparto -->
+      <line class="flecha" x1="620" y1="216" x2="620" y2="244"/>
+      <line class="flecha" x1="108" y1="244" x2="1132" y2="244"/>
+
+      <!-- Ocho contenedores -->
+      <!-- 1 direccion360 -->
+      <line class="flecha" x1="108" y1="244" x2="108" y2="276" marker-end="url(#punta)"/>
+      <rect class="caja" x="48" y="278" width="120" height="58" rx="8"/>
+      <text class="titulo-caja" x="108" y="300" text-anchor="middle">direccion360</text>
+      <text class="rotulo-chico" x="108" y="318" text-anchor="middle">:18084</text>
+
+      <!-- 2 PICALE -->
+      <line class="flecha-foco" x1="254" y1="244" x2="254" y2="276" marker-end="url(#punta-foco)"/>
+      <rect class="foco" x="194" y="278" width="120" height="58" rx="8"/>
+      <text class="titulo-foco" x="254" y="300" text-anchor="middle">Pícale API</text>
+      <text class="rotulo-chico" x="254" y="318" text-anchor="middle">:18085</text>
+
+      <!-- 3 rutita -->
+      <line class="flecha" x1="400" y1="244" x2="400" y2="276" marker-end="url(#punta)"/>
+      <rect class="caja" x="340" y="278" width="120" height="58" rx="8"/>
+      <text class="titulo-caja" x="400" y="300" text-anchor="middle">rutita</text>
+      <text class="rotulo-chico" x="400" y="318" text-anchor="middle">:18086</text>
+
+      <!-- 4 picale-mcp -->
+      <line class="flecha-foco" x1="546" y1="244" x2="546" y2="276" marker-end="url(#punta-foco)"/>
+      <rect class="foco" x="486" y="278" width="120" height="58" rx="8"/>
+      <text class="titulo-foco" x="546" y="300" text-anchor="middle">Pícale MCP</text>
+      <text class="rotulo-chico" x="546" y="318" text-anchor="middle">:18087</text>
+
+      <!-- 5 vivento365 -->
+      <line class="flecha" x1="692" y1="244" x2="692" y2="276" marker-end="url(#punta)"/>
+      <rect class="caja" x="632" y="278" width="120" height="58" rx="8"/>
+      <text class="titulo-caja" x="692" y="300" text-anchor="middle">vivento365</text>
+      <text class="rotulo-chico" x="692" y="318" text-anchor="middle">:18088</text>
+
+      <!-- 6 vivento-mcp -->
+      <line class="flecha" x1="838" y1="244" x2="838" y2="276" marker-end="url(#punta)"/>
+      <rect class="caja" x="778" y="278" width="120" height="58" rx="8"/>
+      <text class="titulo-caja" x="838" y="300" text-anchor="middle">vivento MCP</text>
+      <text class="rotulo-chico" x="838" y="318" text-anchor="middle">:18089</text>
+
+      <!-- 7 cmrg-control -->
+      <line class="flecha" x1="984" y1="244" x2="984" y2="276" marker-end="url(#punta)"/>
+      <rect class="caja" x="924" y="278" width="120" height="58" rx="8"/>
+      <text class="titulo-caja" x="984" y="300" text-anchor="middle">cmrg-control</text>
+      <text class="rotulo-chico" x="984" y="318" text-anchor="middle">:18090</text>
+
+      <!-- 8 api-videos (sin nginx) -->
+      <rect class="caja" x="1070" y="278" width="120" height="58" rx="8"/>
+      <text class="titulo-caja" x="1130" y="300" text-anchor="middle">api-videos</text>
+      <text class="rotulo-chico" x="1130" y="318" text-anchor="middle">:8092 · VPC</text>
+      <text class="rotulo-chico" x="1130" y="266" text-anchor="middle">sin nginx</text>
+
+      <!-- Bus hacia los proxys -->
+      <line class="flecha" x1="108" y1="336" x2="108" y2="392"/>
+      <line class="flecha-foco" x1="254" y1="336" x2="254" y2="392"/>
+      <line class="flecha" x1="400" y1="336" x2="400" y2="392"/>
+      <line class="flecha" x1="692" y1="336" x2="692" y2="392"/>
+      <line class="flecha" x1="984" y1="336" x2="984" y2="392"/>
+      <line class="flecha" x1="1130" y1="336" x2="1130" y2="392"/>
+
+      <rect class="caja" x="48" y="394" width="1142" height="52" rx="9"/>
+      <text class="titulo-caja" x="619" y="416" text-anchor="middle">6 × cloud-sql-proxy — uno por aplicación que usa base</text>
+      <text class="rotulo-chico" x="619" y="433" text-anchor="middle">los dos MCP no tienen base propia</text>
+
+      <line class="flecha" x1="620" y1="446" x2="620" y2="492" marker-end="url(#punta)"/>
+      <text class="rotulo-chico" x="630" y="472">conexión cifrada</text>
+
+      <rect class="caja" x="340" y="494" width="560" height="52" rx="9"/>
+      <text class="titulo-caja" x="620" y="516" text-anchor="middle">sale de la VM hacia Cloud SQL</text>
+      <text class="rotulo-chico" x="620" y="533" text-anchor="middle">el único salto que cruza la frontera de la máquina</text>
+
+      <line class="flecha" x1="620" y1="560" x2="620" y2="604" marker-end="url(#punta)"/>
+
+      <!-- Cloud SQL -->
+      <rect class="caja" x="230" y="606" width="780" height="124" rx="12"/>
+      <text class="titulo-caja" x="620" y="632" text-anchor="middle">Cloud SQL · instancia «cmrg» · PostgreSQL 18</text>
+      <text class="rotulo-chico" x="620" y="650" text-anchor="middle">1 vCPU · 3.75 GB · 10 GB · zonal (sin réplica)</text>
+      <text class="rotulo" x="620" y="680" text-anchor="middle">8 bases en la MISMA instancia</text>
+      <text class="rotulo-chico" x="620" y="700" text-anchor="middle">picale_dev · direccion360 · vivento365 · rutita</text>
+      <text class="rotulo-chico" x="620" y="716" text-anchor="middle">api_videos · cmrg_control · postgres</text>
+    </svg>
+    <figcaption>
+      Seis productos, ocho contenedores, un solo nginx y una sola instancia de base.
+      En azul, lo que es de Pícale. Los puertos <code>18084–18090</code> solo escuchan
+      en <code>127.0.0.1</code>: desde fuera no se llega a ellos sin pasar por nginx.
+    </figcaption>
+  </figure>
+
+  <div class="nota">
+    <p><b>Lo que el dibujo deja ver:</b> no hay nada redundante. Una VM, un nginx y
+    una instancia de base sostienen seis productos. Si se cae la VM, se caen los seis
+    a la vez; si se llena o se satura la instancia <code>cmrg</code>, también.</p>
+    <p>Hoy eso está bien: la carga es 0.04 sobre 4 vCPU y la base de Pícale pesa 11 MB.
+    Es la decisión correcta para el tamaño actual. Pero conviene saber que es así
+    <em>a propósito</em> y no por accidente, para el día que deje de serlo.</p>
+  </div>
+
+  <h2>Qué dominio llega a qué</h2>
+
+  <table>
+    <thead>
+      <tr><th>Dominio</th><th>Puerto</th><th>Contenedor</th><th>Producto</th></tr>
+    </thead>
+    <tbody>
+      <tr class="destacada">
+        <td><code>picale.rodtech.cloud</code></td><td><code>18085</code></td>
+        <td><code>metricol-api</code></td><td>Pícale — la API</td>
+      </tr>
+      <tr class="destacada">
+        <td><code>mcp.picale.click</code></td><td><code>18087</code></td>
+        <td><code>picale-mcp</code></td><td>Pícale — conector de IA</td>
+      </tr>
+      <tr>
+        <td><code>api.direccion360.space</code></td><td><code>18084</code></td>
+        <td><code>direccion360-api</code></td><td>Dirección360</td>
+      </tr>
+      <tr>
+        <td><code>eventos-api.picale.click</code></td><td><code>18086</code></td>
+        <td><code>rutita-api</code></td><td>Rutita</td>
+      </tr>
+      <tr>
+        <td><code>api.vivento365.click</code></td><td><code>18088</code></td>
+        <td><code>vivento365-api</code></td><td>Vivento365</td>
+      </tr>
+      <tr>
+        <td><code>mcp.vivento365.click</code></td><td><code>18089</code></td>
+        <td><code>vivento-mcp</code></td><td>Vivento365 — conector de IA</td>
+      </tr>
+      <tr>
+        <td><code>api.cmrg.company</code></td><td><code>18090</code></td>
+        <td><code>cmrg-control-api</code></td><td>CMRG Control</td>
+      </tr>
+      <tr>
+        <td><em>sin dominio público</em></td><td><code>8092</code></td>
+        <td><code>deploy-api-videos-1</code></td><td>api-videos (solo red interna)</td>
+      </tr>
+    </tbody>
+  </table>
+
+  <h2>De qué depende Pícale fuera del servidor</h2>
+
+  <div class="tarjetas">
+    <div class="tarjeta"><b>Cloudflare Pages</b><span>picale.click — el panel web. No vive en la VM.</span></div>
+    <div class="tarjeta"><b>Cloudflare R2</b><span>bucket <code>meyi-imagenes</code> — 186 archivos, 224 MB.</span></div>
+    <div class="tarjeta"><b>upload-post.com</b><span>publica en las redes y trae métricas y comentarios.</span></div>
+    <div class="tarjeta"><b>OpenAI</b><span>redacta, mira fotos y genera imágenes. $3.13 USD en 30 días.</span></div>
+    <div class="tarjeta"><b>Stripe</b><span>suscripciones y paquetes de créditos.</span></div>
+    <div class="tarjeta"><b>Firebase FCM</b><span>avisos al teléfono.</span></div>
+    <div class="tarjeta"><b>Resend</b><span>correos de la cuenta.</span></div>
+    <div class="tarjeta"><b>Cloud Run (europe-west1)</b><span><code>vivento365-api</code> — recibe los webhooks de Stripe de Vivento365. No es de Pícale.</span></div>
+  </div>
+
+  <div class="nota">
+    <p><b>Un detalle que vale la pena mirar:</b> Vivento365 existe en dos sitios a la vez
+    — como contenedor en la VM (<code>:18088</code>, detrás de <code>api.vivento365.click</code>)
+    y como servicio en Cloud Run en Europa, que es el que está recibiendo los webhooks
+    de Stripe.</p>
+    <p>No está roto: funciona. Pero son dos despliegues del mismo producto en dos
+    continentes, y conviene saber cuál manda antes de tocar cualquiera de los dos.</p>
+  </div>
+
+</main>
+</body>
+</html>
