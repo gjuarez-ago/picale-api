@@ -208,6 +208,23 @@ public interface PostTargetRepository extends JpaRepository<PostTarget, UUID> {
             """, nativeQuery = true)
     int marcarComentariosRevisados(@Param("id") UUID id, @Param("en") LocalDateTime en);
 
+    /**
+     * De qué publicación es cada comentario: [post_target_id, miniatura,
+     * texto de la publicación, enlace en la red].
+     *
+     * <p>Se pide de golpe para toda la página de la bandeja. Una consulta por
+     * comentario serían veinticinco por pantalla, y la bandeja se abre a cada
+     * rato.
+     */
+    @Query(value = """
+            select cast(pt.id as varchar), p.thumbnail_url,
+                   coalesce(nullif(pt.caption, ''), p.caption), pt.external_url
+            from post_targets pt
+            join posts p on p.id = pt.post_id
+            where pt.id in (:ids)
+            """, nativeQuery = true)
+    List<Object[]> resumenDePublicaciones(@Param("ids") List<UUID> ids);
+
     /** Apunta el intento y por qué la red no da números. */
     @org.springframework.data.jpa.repository.Modifying
     @org.springframework.transaction.annotation.Transactional

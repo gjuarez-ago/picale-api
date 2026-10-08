@@ -93,6 +93,38 @@ class LecturaDeComentariosTest {
     }
 
     @Test
+    @DisplayName("Facebook: un comentario que es solo una foto, con su fecha de verdad")
+    void facebookComentarioConFoto() {
+        // Tal cual lo devolvió producción el 7 oct 2026: `message` vacío, la
+        // foto anidada y la fecha en `created_time`. Antes se guardaba sin
+        // texto, sin foto y con la hora en que lo leímos: en la pantalla era
+        // una fila muda que decía "hace 12 min" de algo de hace dos semanas.
+        Map<String, Object> respuesta = Map.of("success", true, "comments", List.of(Map.of(
+                "id", "122146655835050733_1788093392194064",
+                "message", "",
+                "from", Map.of("name", "Distribuidora Peña", "id", "672934939247493"),
+                "created_time", "2026-09-23T05:00:49+0000",
+                "permalink_url", "https://www.facebook.com/122147742081050733/posts/122146655835050733",
+                "attachment", Map.of(
+                        "type", "photo",
+                        "media", Map.of("image", Map.of("src", "https://scontent.xx.fbcdn.net/foto.jpg",
+                                "width", 720, "height", 720))))));
+
+        LecturaDeComentarios.Leido uno = LecturaDeComentarios.leer(respuesta, null).comentarios().get(0);
+
+        assertThat(uno.autor()).isEqualTo("Distribuidora Peña");
+        assertThat(uno.adjunto()).isEqualTo("https://scontent.xx.fbcdn.net/foto.jpg");
+        assertThat(uno.enlace()).contains("facebook.com");
+        // Se compara el instante y no el día: 05:00 UTC del 23 son las 23:00
+        // del 22 en México, y una prueba que dependa del huso de quien la corre
+        // es una prueba que falla sola el día que la corre otra persona.
+        assertThat(uno.escritoEn()).isEqualTo(
+                java.time.OffsetDateTime.parse("2026-09-23T05:00:49Z")
+                        .atZoneSameInstant(java.time.ZoneId.systemDefault())
+                        .toLocalDateTime());
+    }
+
+    @Test
     @DisplayName("C-12: hay más páginas solo si además vino el cursor")
     void paginacion() {
         Map<String, Object> conCursor = Map.of("comments", List.of(Map.of("id", "1", "text", "a")),

@@ -62,8 +62,13 @@ public class ComentariosController {
             @RequestParam(defaultValue = "25") int size) {
         Page<Comentario> pagina = comentarios.bandeja(currentUser, !"todos".equalsIgnoreCase(estado),
                 redDe(red), q, page, size);
+        // De qué publicación es cada uno, de una sola consulta para la página.
+        Map<UUID, ComentarioResponse.Publicacion> publicaciones =
+                comentarios.publicacionesDe(pagina.getContent());
         Map<String, Object> cuerpo = new LinkedHashMap<>();
-        cuerpo.put("comentarios", pagina.getContent().stream().map(ComentarioResponse::de).toList());
+        cuerpo.put("comentarios", pagina.getContent().stream()
+                .map(c -> ComentarioResponse.de(c, publicaciones.get(c.getPostTargetId())))
+                .toList());
         cuerpo.put("total", pagina.getTotalElements());
         cuerpo.put("hayMas", pagina.hasNext());
         return ResponseEntity.ok(ApiResponse.success(cuerpo));
@@ -97,8 +102,11 @@ public class ComentariosController {
     @GetMapping("/{id}")
     public ResponseEntity<ApiResponse<List<ComentarioResponse>>> hilo(@AuthenticationPrincipal User currentUser,
             @PathVariable UUID id) {
-        return ResponseEntity.ok(ApiResponse.success(
-                comentarios.hilo(currentUser, id).stream().map(ComentarioResponse::de).toList()));
+        List<Comentario> hilo = comentarios.hilo(currentUser, id);
+        Map<UUID, ComentarioResponse.Publicacion> publicaciones = comentarios.publicacionesDe(hilo);
+        return ResponseEntity.ok(ApiResponse.success(hilo.stream()
+                .map(c -> ComentarioResponse.de(c, publicaciones.get(c.getPostTargetId())))
+                .toList()));
     }
 
     @PostMapping("/{id}/responder")

@@ -52,7 +52,7 @@ class ComentariosServiceTest {
     void preparar() {
         repo = mock(ComentarioRepository.class);
         client = mock(UploadPostClient.class);
-        servicio = new ComentariosService(repo, client, null, null);
+        servicio = new ComentariosService(repo, client, null, null, null);
 
         espacio = Workspace.builder().name("Tacos El Güero").uploadPostProfile("tacos").build();
         espacio.setId(UUID.randomUUID());
@@ -307,7 +307,7 @@ class ComentariosServiceTest {
     @DisplayName("P-01: si TikTok se queja de permisos, la cuenta queda marcada para reconectar")
     void marcaParaReconectar() {
         SocialAccountRepository cuentas = mock(SocialAccountRepository.class);
-        servicio = new ComentariosService(repo, client, null, cuentas);
+        servicio = new ComentariosService(repo, client, null, cuentas, null);
         ComentariosService.Destino tiktok = new ComentariosService.Destino(DESTINO, espacio.getId(),
                 UUID.randomUUID(), Platform.TIKTOK, "post-1", "tacos", "tacos_el_guero");
         when(client.comentarios(anyString(), anyString(), anyString(), anyInt(), isNull()))
@@ -322,7 +322,7 @@ class ComentariosServiceTest {
     @DisplayName("Una red caída NO manda a nadie a reconectar nada")
     void redCaidaNoEsReconectar() {
         SocialAccountRepository cuentas = mock(SocialAccountRepository.class);
-        servicio = new ComentariosService(repo, client, null, cuentas);
+        servicio = new ComentariosService(repo, client, null, cuentas, null);
         ComentariosService.Destino tiktok = new ComentariosService.Destino(DESTINO, espacio.getId(),
                 UUID.randomUUID(), Platform.TIKTOK, "post-1", "tacos", "tacos_el_guero");
         when(client.comentarios(anyString(), anyString(), anyString(), anyInt(), isNull()))
@@ -337,7 +337,7 @@ class ComentariosServiceTest {
     @DisplayName("En Instagram y Facebook no se marca nada: no hay que reconectar nada")
     void instagramNoPideReconectar() {
         SocialAccountRepository cuentas = mock(SocialAccountRepository.class);
-        servicio = new ComentariosService(repo, client, null, cuentas);
+        servicio = new ComentariosService(repo, client, null, cuentas, null);
         when(client.comentarios(anyString(), anyString(), anyString(), anyInt(), isNull()))
                 .thenReturn(Map.of("success", false, "error", "Insufficient scope"));
 

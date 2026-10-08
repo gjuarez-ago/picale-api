@@ -17,9 +17,11 @@ import org.springframework.transaction.annotation.Transactional;
 
 import com.metricol.api.entity.Comentario;
 import com.metricol.api.entity.User;
+import com.metricol.api.models.response.ComentarioResponse;
 import com.metricol.api.enums.Platform;
 import com.metricol.api.exception.ResourceNotFoundException;
 import com.metricol.api.repository.ComentarioRepository;
+import com.metricol.api.repository.PostTargetRepository;
 import com.metricol.api.repository.SocialAccountRepository;
 import com.metricol.api.service.social.UploadPostClient;
 
@@ -51,14 +53,44 @@ public class ComentariosService {
     private final UploadPostClient client;
     private final AvisoDeComentarios aviso;
     private final SocialAccountRepository cuentas;
+    private final PostTargetRepository destinos;
 
     public ComentariosService(ComentarioRepository comentarios, UploadPostClient client,
             @org.springframework.beans.factory.annotation.Autowired(required = false) AvisoDeComentarios aviso,
-            @org.springframework.beans.factory.annotation.Autowired(required = false) SocialAccountRepository cuentas) {
+            @org.springframework.beans.factory.annotation.Autowired(required = false) SocialAccountRepository cuentas,
+            @org.springframework.beans.factory.annotation.Autowired(required = false) PostTargetRepository destinos) {
         this.comentarios = comentarios;
         this.client = client;
         this.aviso = aviso;
         this.cuentas = cuentas;
+        this.destinos = destinos;
+    }
+
+    /**
+     * De qué publicación es cada comentario de la lista, en una sola consulta.
+     *
+     * <p>Sin esto la pantalla enseña un comentario suelto y quien lo lee no
+     * sabe a qué le están contestando — que es justo lo que uno necesita saber
+     * antes de responder.
+     */
+    public Map<UUID, ComentarioResponse.Publicacion> publicacionesDe(List<Comentario> lista) {
+        if (destinos == null || lista.isEmpty()) {
+            return Map.of();
+        }
+        List<UUID> ids = lista.stream().map(Comentario::getPostTargetId).filter(java.util.Objects::nonNull)
+                .distinct().toList();
+        if (ids.isEmpty()) {
+            return Map.of();
+        }
+        Map<UUID, ComentarioResponse.Publicacion> porDestino = new java.util.LinkedHashMap<>();
+        for (Object[] fila : destinos.resumenDePublicaciones(ids)) {
+            porDestino.put(UUID.fromString(String.valueOf(fila[0])), ComentarioResponse.Publicacion.builder()
+                    .miniaturaUrl(fila[1] == null ? null : String.valueOf(fila[1]))
+                    .texto(recortar(fila[2] == null ? null : String.valueOf(fila[2]), 140))
+                    .enlace(fila[3] == null ? null : String.valueOf(fila[3]))
+                    .build());
+        }
+        return porDestino;
     }
 
     // ------------------------------------------------------------- traer
@@ -169,6 +201,8 @@ public class ComentariosService {
                     .autorNombre(recortar(leido.autor(), 255))
                     .autorAvatarUrl(cabe(leido.avatar()))
                     .texto(recortar(leido.texto(), Comentario.MAX_TEXTO))
+                    .adjuntoUrl(cabe(leido.adjunto()))
+                    .enlace(cabe(leido.enlace()))
                     .escritoEn(leido.escritoEn() == null ? ahora : leido.escritoEn())
                     .traidoEn(ahora)
                     .propio(leido.propio())

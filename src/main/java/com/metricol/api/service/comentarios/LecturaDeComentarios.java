@@ -22,7 +22,7 @@ public final class LecturaDeComentarios {
 
     /** Un comentario tal como lo entendimos, antes de guardarlo. */
     public record Leido(String id, String padreId, String autor, String avatar, String texto,
-            LocalDateTime escritoEn, boolean propio) {
+            LocalDateTime escritoEn, boolean propio, String adjunto, String enlace) {
     }
 
     /** Lo que trajo una página: sus comentarios y por dónde seguir. */
@@ -96,8 +96,39 @@ public final class LecturaDeComentarios {
                 texto(c, "author_avatar", "avatar_url", "profile_picture_url", "authorProfileImageUrl",
                         "profile_image_url"),
                 texto(c, "text", "message", "comment", "textOriginal", "textDisplay", "content"),
-                fecha(texto(c, "created_at", "createdAt", "timestamp", "create_time", "publishedAt", "published_at")),
-                propio);
+                // `created_time` es el de Facebook. Faltaba, y sin él la fecha
+                // caía al momento de leerlo: un comentario de hace dos semanas
+                // salía como "hace 12 min".
+                fecha(texto(c, "created_time", "created_at", "createdAt", "timestamp", "create_time",
+                        "publishedAt", "published_at")),
+                propio,
+                adjunto(c),
+                texto(c, "permalink_url", "permalink", "url", "link"));
+    }
+
+    /**
+     * La foto con la que comentaron, si comentaron con una.
+     *
+     * <p>Facebook la trae anidada en
+     * {@code attachment.media.image.src}, y en ese caso {@code message} viene
+     * vacío: el comentario ES la foto. Se aceptan además las formas planas por
+     * si otra red la pone más a mano.
+     */
+    private static String adjunto(Map<?, ?> c) {
+        if (c.get("attachment") instanceof Map<?, ?> adj) {
+            if (adj.get("media") instanceof Map<?, ?> media
+                    && media.get("image") instanceof Map<?, ?> imagen) {
+                String src = texto(imagen, "src", "url");
+                if (src != null) {
+                    return src;
+                }
+            }
+            String directo = texto(adj, "image", "url", "src");
+            if (directo != null) {
+                return directo;
+            }
+        }
+        return texto(c, "image_url", "media_url", "photo_url");
     }
 
     private static String autor(Map<?, ?> c) {
@@ -146,8 +177,14 @@ public final class LecturaDeComentarios {
             return LocalDateTime.ofInstant(Instant.ofEpochSecond(v.length() > 10 ? n / 1000 : n),
                     ZoneId.systemDefault());
         }
+        // Facebook escribe el huso pegado ("+0000") y eso ISO-8601 no lo come:
+        // pide "+00:00". Sin esta línea la fecha quedaba nula y el comentario
+        // salía con la hora en que lo leímos — uno de hace dos semanas decía
+        // "hace 12 min" (visto en producción el 7 oct 2026).
+        String conHuso = v.replaceAll("([+-]\\d{2})(\\d{2})$", "$1:$2");
         try {
-            return java.time.OffsetDateTime.parse(v).atZoneSameInstant(ZoneId.systemDefault()).toLocalDateTime();
+            return java.time.OffsetDateTime.parse(conHuso).atZoneSameInstant(ZoneId.systemDefault())
+                    .toLocalDateTime();
         } catch (DateTimeParseException ignorado) {
             // Sigue abajo: puede venir sin zona horaria.
         }

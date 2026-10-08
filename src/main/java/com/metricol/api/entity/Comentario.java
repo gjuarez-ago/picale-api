@@ -94,6 +94,21 @@ public class Comentario {
     @Column(length = MAX_TEXTO)
     private String texto;
 
+    /**
+     * La foto con la que comentaron, si comentaron con una.
+     *
+     * <p>Pasa más de lo que parece: en Facebook se contesta con una imagen y
+     * {@code message} viene vacío. Sin esto la bandeja enseñaba una fila con
+     * nombre y hora y nada más, como si el comentario no dijera nada — y sí
+     * decía, solo que con una foto.
+     */
+    @Column(length = SocialAccount.MAX_AVATAR_URL)
+    private String adjuntoUrl;
+
+    /** El comentario en la propia red, para poder ir a verlo ahí. */
+    @Column(length = SocialAccount.MAX_AVATAR_URL)
+    private String enlace;
+
     /** Cuándo lo escribió la persona en la red (no cuándo lo leímos nosotros). */
     private LocalDateTime escritoEn;
 
@@ -129,6 +144,11 @@ public class Comentario {
     /** Para contestar hace falta el id de la publicación en la red; se guarda al traerlo. */
     @Column(name = "post_id_en_la_red", length = 255)
     private String postIdEnLaRed;
+
+    /** Dijo algo, aunque sea con una foto. */
+    public boolean vacio() {
+        return (texto == null || texto.isBlank()) && (adjuntoUrl == null || adjuntoUrl.isBlank());
+    }
 
     public boolean pendiente() {
         return atendidoEn == null && !propio && ocultoEn == null;
