@@ -48,7 +48,9 @@ public record EspecTexto(int maxCaracteres, int hashtagsSugeridos, String estilo
     public static EspecTexto de(Platform platform) {
         return switch (platform) {
             case INSTAGRAM -> new EspecTexto(2200, 5,
-                    "cercano y visual, con emojis con medida; los hashtags al final, nunca dentro de la frase");
+                    "cercano y visual, con emojis con medida. En parrafos cortos separados por una"
+                            + " linea en blanco: gancho, cuerpo, cierre. Si hay cosas que enumerar, una"
+                            + " por linea. Los hashtags al final, en su propia linea, nunca dentro de la frase");
 
             // 300: el caption de Facebook. Historicamente era 255, el tope
             // del campo `title` de Facebook en upload-post (359 caracteres
@@ -60,7 +62,8 @@ public record EspecTexto(int maxCaracteres, int hashtagsSugeridos, String estilo
             // mas". Es el mismo tope que TikTok, lo que permite reutilizar un
             // texto entre ambas.
             case FACEBOOK -> new EspecTexto(300, 2,
-                    "conversacional y directo, como quien le cuenta algo a un vecino; casi sin hashtags");
+                    "conversacional y directo, como quien le cuenta algo a un vecino. Dos o tres lineas,"
+                            + " no un parrafo; lo concreto en la primera. Casi sin hashtags, y abajo");
 
             // 300 y ya no 90: los 90 eran el TITULO de una publicacion de
             // fotos en TikTok, y ahi es donde iba nuestro texto. Ahora el
@@ -73,7 +76,8 @@ public record EspecTexto(int maxCaracteres, int hashtagsSugeridos, String estilo
             // UTF-16, que es la regla de TikTok ("an emoji counts as 2").
             case TIKTOK -> new EspecTexto(300, 2,
                     "corto y de un vistazo: el gancho en las primeras palabras y nada de"
-                            + " relleno; lenguaje de la plataforma, sin sonar a anuncio");
+                            + " relleno; lenguaje de la plataforma, sin sonar a anuncio."
+                            + " Una o dos lineas como mucho, y los hashtags en la ultima");
 
             // La descripcion del video, no su titulo: el titulo va aparte
             // (TITULO, que cabe en los 100 de YouTube). En la descripcion caben
@@ -81,10 +85,13 @@ public record EspecTexto(int maxCaracteres, int hashtagsSugeridos, String estilo
             // video, pero ya no se recorta a un titular.
             case YOUTUBE -> new EspecTexto(1000, 3,
                     "la descripcion del video: que se ve y por que verlo, en dos o tres"
-                            + " frases claras, sin relleno ni saludo");
+                            + " frases claras, sin relleno ni saludo. Si hay puntos que listar,"
+                            + " uno por linea; los hashtags al final, aparte");
 
             case LINKEDIN -> new EspecTexto(3000, 3,
-                    "profesional pero humano, en primera persona; nada de jerga corporativa vacia");
+                    "profesional pero humano, en primera persona; nada de jerga corporativa vacia."
+                            + " En parrafos cortos con una linea en blanco entre ellos: la primera linea"
+                            + " tiene que sostenerse sola, porque es lo unico que se ve antes de \"ver mas\"");
         };
     }
 

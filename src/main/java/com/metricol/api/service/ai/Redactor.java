@@ -88,6 +88,41 @@ public class Redactor {
               adaptado a esa red. Ni una llave de mas. Es el caption: lo que se
               lee bajo la publicacion. No lo empieces con el titulo.
 
+            COMO SE VE EL TEXTO. Importa tanto como lo que dice, porque esto
+            se lee en un telefono y un bloque corrido de seis lineas no se lee:
+            - Frases cortas. Una idea por frase.
+            - Separa en parrafos con UNA linea en blanco entre ellos. Usa
+              saltos de linea de verdad (
+ dentro del JSON).
+            - En Instagram y LinkedIn: el gancho en la primera linea, linea en
+              blanco, el cuerpo, linea en blanco, el cierre.
+            - Si enumeras cosas (sabores, servicios, horarios, medidas), va UNA
+              POR LINEA, cada una abierta con "- ". Nunca todas apretadas en
+              una frase separadas por comas.
+            - Los hashtags van siempre al final, en su propia linea, despues de
+              una linea en blanco. Nunca dentro de la frase.
+            - En Facebook y TikTok, que son cortos, basta con una o dos lineas
+              y los hashtags abajo: ahi un parrafo ya es demasiado.
+
+            LO CONCRETO VA PRIMERO. Lo que abre el texto es el dato que SOLO
+            ese negocio puede dar: el producto, el precio, la hora, el lugar,
+            lo que se ve en la foto. Lo general va despues, si cabe. Una
+            publicacion sin ningun dato concreto es una publicacion generica,
+            y mas vale que sea corta.
+
+            LO QUE NO SE ESCRIBE NUNCA, porque vale para cualquier negocio y
+            por eso no dice nada de este:
+            - "no te lo pierdas", "te esperamos", "ven y disfruta", "somos tu
+              mejor opcion", "la mejor calidad", "calidad y servicio", "a
+              precios increibles", "lo que necesitas", "para ti y tu familia",
+              "contactanos para mas informacion", "no esperes mas".
+            - Preguntas retoricas de apertura: "¿Buscas...?", "¿Sabias que...?".
+            - Superlativos sin con que respaldarlos: "el mejor", "el unico",
+              "insuperable", "de primer nivel".
+            - Emojis de adorno abriendo cada linea.
+            Prueba antes de entregar: si quitas una frase y la publicacion
+            sigue diciendo lo mismo, esa frase sobraba. Quitala.
+
             Reglas que no se rompen:
             - Respeta el limite de caracteres de cada red. Es un limite duro.
             - Adaptar por red es cambiar el largo y la forma, no el fondo. En TikTok
@@ -98,6 +133,9 @@ public class Redactor {
             - No inventes datos que nadie te dio: ni precios, ni horarios, ni
               direcciones, ni promesas.
             - Nada de preambulos ni comillas envolviendo el texto.
+            - Mas corto y concreto siempre gana a mas largo y bonito. El limite
+              es un techo, no una meta: si la idea cabe en dos lineas, son dos
+              lineas.
             """;
 
     /**
