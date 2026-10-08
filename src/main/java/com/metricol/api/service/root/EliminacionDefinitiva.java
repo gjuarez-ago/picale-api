@@ -276,6 +276,14 @@ public class EliminacionDefinitiva {
         if (existe("comentarios")) {
             sql.update("delete from comentarios where workspace_id = :ws", ws);
         }
+        // Las conversaciones para crear imagenes, y sus turnos.
+        if (existe("mensajes_de_imagen")) {
+            sql.update("delete from mensajes_de_imagen where hilo_id in "
+                    + "(select id from hilos_de_imagen where workspace_id = :ws)", ws);
+        }
+        if (existe("hilos_de_imagen")) {
+            sql.update("delete from hilos_de_imagen where workspace_id = :ws", ws);
+        }
         sql.update("delete from post_targets where post_id in (select id from posts where tenant_id = :t)", t);
         sql.update("delete from post_media where post_id in (select id from posts where tenant_id = :t)", t);
         sql.update("delete from publish_jobs where workspace_id = :ws", ws);

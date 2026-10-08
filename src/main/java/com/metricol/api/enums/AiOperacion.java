@@ -67,5 +67,14 @@ public enum AiOperacion {
     SUGERIR_MARCA,
 
     /** Revisar si el logo subido es un logotipo o la foto de una persona. */
-    REVISAR_LOGO
+    REVISAR_LOGO,
+
+    /**
+     * Un turno de la conversación para crear una imagen.
+     *
+     * <p>Es texto, y por eso NO se cobra en créditos: lo que se cobra es
+     * crear la imagen. Se anota igual para saber cuánto cuesta de verdad
+     * conversar, que es el número con el que se defiende esa decisión.
+     */
+    ASISTENTE_IMAGEN
 }

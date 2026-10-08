@@ -351,6 +351,9 @@ class EliminacionDefinitivaTest {
                 // Los comentarios se van con el espacio; de la persona solo se
                 // olvida quién atendió (ver borrarPersona).
                 "comentarios.tenant_id", "comentarios.workspace_id",
+                // Las conversaciones de imagenes se van con el espacio.
+                "hilos_de_imagen.tenant_id", "hilos_de_imagen.workspace_id", "hilos_de_imagen.user_id",
+                "mensajes_de_imagen.tenant_id",
                 "daily_publish_usage.workspace_id",
                 "credit_movements.workspace_id", "image_credits.workspace_id", "licenses.workspace_id",
                 "licenses.organization_id", "invitation_workspaces.workspace_id",
