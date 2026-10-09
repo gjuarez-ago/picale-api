@@ -144,4 +144,24 @@ echo 'La API no contesto en 90 s. Revisa: sudo docker logs metricol-api' >&2
 exit 1
 "
 
+# Que responda no basta: el 9 oct 2026 la API respondio 200 durante seis horas
+# contra la base EQUIVOCADA, porque un despliegue a mano se levanto sin
+# --env-file y DB_NAME quedo vacio. Todo se veia sano; lo unico raro era que a
+# la gente le aparecian datos de otros. Desde entonces el despliegue no se da
+# por bueno hasta comprobar commit Y base.
+echo "==> Comprobando que sirve la base correcta"
+# La base esperada se lee del .env.vps DE LA VM, que es la unica fuente de
+# verdad: comparar contra algo de esta maquina solo comprobaria que dos copias
+# coinciden, no que el contenedor este usando la buena.
+gcloud compute ssh "$VM" --zone="$ZONA" --project="$PROYECTO" --command "
+respuesta=\$(curl -s --max-time 10 http://127.0.0.1:18085/api/v1/ops/version)
+echo \"  \$respuesta\"
+esperada=\$(grep -E '^DB_NAME=' \$HOME/metricol.api/.env.vps | cut -d= -f2-)
+if ! echo \"\$respuesta\" | grep -q \"\\\"base\\\":\\\"\$esperada\\\"\"; then
+  echo \"ERROR: la API NO esta usando la base '\$esperada'. Revisa --env-file y DB_NAME.\" >&2
+  exit 1
+fi
+echo \"  base correcta: \$esperada\"
+"
+
 echo "==> Listo. Si es el primer despliegue, falta nginx y el DNS de Cloudflare."

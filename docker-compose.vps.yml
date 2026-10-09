@@ -29,7 +29,18 @@ services:
       # contra la MISMA instancia y una base distinta. La instancia ya esta
       # pagada y dimensionada; levantar un Postgres aparte en el VPS seria un
       # segundo sitio que respaldar y que se llena sin avisar.
-      SPRING_DATASOURCE_URL: jdbc:postgresql://cloud-sql-proxy:5432/${DB_NAME:-metricol}
+      #
+      # SIN VALOR POR OMISION, Y A PROPOSITO. Antes decia
+      # `${DB_NAME:-metricol}`, y el 9 oct 2026 un despliegue a mano sin
+      # `--env-file .env.vps` dejo la variable vacia: compose tomo el valor de
+      # respaldo y la API estuvo SEIS HORAS sirviendo otra base. Nadie se dio
+      # cuenta porque todo respondia 200 y la salud estaba en verde; se noto
+      # porque a un usuario le aparecieron espacios y redes que no eran suyos.
+      #
+      # Con `:?` compose se niega a levantar si la variable falta. Un
+      # despliegue que no arranca se arregla en un minuto; uno que arranca
+      # contra la base equivocada se descubre horas despues.
+      SPRING_DATASOURCE_URL: jdbc:postgresql://cloud-sql-proxy:5432/${DB_NAME:?Falta DB_NAME. Usa --env-file .env.vps al levantar el contenedor.}
       # La cuenta de servicio de Firebase, para los avisos al telefono. Vive
       # SOLO en la VM, en ./secretos (fuera del repo y del tar). Si falta el
       # archivo, los avisos se apagan solos y todo lo demas sigue igual.

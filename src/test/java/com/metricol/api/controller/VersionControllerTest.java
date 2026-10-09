@@ -2,51 +2,55 @@ package com.metricol.api.controller;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
-import java.io.IOException;
-import java.nio.file.Files;
-import java.nio.file.Path;
-import java.util.Map;
-
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
-import org.springframework.http.HttpStatus;
-import org.springframework.http.ResponseEntity;
 
-import com.metricol.api.models.response.ApiResponse;
-
-/** El SHA de lo que corre: se lee una vez del archivo que deja el build, sin llave ni sesión. */
+/**
+ * Qué base está usando el servidor, dicho por él mismo.
+ *
+ * <p>Existe por el 9 oct 2026: un despliegue a mano levantó la API contra otra
+ * base y estuvo seis horas así. Respondía 200, la salud estaba en verde y el
+ * commit era el correcto — el único síntoma era que a la gente le aparecían
+ * datos que no eran suyos. Comprobar un despliegue pasó a ser "responde, con
+ * este commit y contra esta base".
+ */
 class VersionControllerTest {
 
     @Test
-    @DisplayName("con el archivo puesto, contesta el SHA que trae")
-    void conElArchivo(@org.junit.jupiter.api.io.TempDir Path dir) throws IOException {
-        Path archivo = dir.resolve("BUILD_SHA");
-        Files.writeString(archivo, "e93414d1234567890\n");
-
-        VersionController c = new VersionController(archivo.toString());
-        ResponseEntity<ApiResponse<Map<String, String>>> respuesta = c.version();
-
-        assertThat(respuesta.getStatusCode()).isEqualTo(HttpStatus.OK);
-        assertThat(respuesta.getBody().isOk()).isTrue();
-        assertThat(respuesta.getBody().getResult().get("sha")).isEqualTo("e93414d1234567890");
+    @DisplayName("del JDBC sale el nombre de la base, y nada más")
+    void sacaElNombre() {
+        assertThat(VersionController.nombreDeLaBase(
+                "jdbc:postgresql://cloud-sql-proxy:5432/picale_dev")).isEqualTo("picale_dev");
+        assertThat(VersionController.nombreDeLaBase(
+                "jdbc:postgresql://cloud-sql-proxy:5432/metricol")).isEqualTo("metricol");
     }
 
     @Test
-    @DisplayName("sin el archivo (corrida local, o un despliegue de antes de esto) no se cae: contesta 'desconocido'")
-    void sinElArchivo() {
-        VersionController c = new VersionController("/una/ruta/que/no/existe/BUILD_SHA");
-
-        assertThat(c.version().getBody().getResult().get("sha")).isEqualTo("desconocido");
+    @DisplayName("los parámetros de la URL no se cuelan en el nombre")
+    void sinParametros() {
+        assertThat(VersionController.nombreDeLaBase(
+                "jdbc:postgresql://host:5432/picale_dev?sslmode=require&user=metricol"))
+                .isEqualTo("picale_dev");
     }
 
     @Test
-    @DisplayName("un archivo vacio tampoco se toma como un sha valido")
-    void archivoVacio(@org.junit.jupiter.api.io.TempDir Path dir) throws IOException {
-        Path archivo = dir.resolve("BUILD_SHA");
-        Files.writeString(archivo, "   \n");
+    @DisplayName("NUNCA se publica el host, el usuario ni la contraseña")
+    void nadaDeSecretos() {
+        String nombre = VersionController.nombreDeLaBase(
+                "jdbc:postgresql://10.0.0.5:5432/picale_dev?user=metricol&password=supersecreta");
 
-        VersionController c = new VersionController(archivo.toString());
+        assertThat(nombre).isEqualTo("picale_dev");
+        assertThat(nombre).doesNotContain("supersecreta").doesNotContain("10.0.0.5")
+                .doesNotContain("metricol");
+    }
 
-        assertThat(c.version().getBody().getResult().get("sha")).isEqualTo("desconocido");
+    @Test
+    @DisplayName("una URL vacía o rara no tumba el arranque: se dice que no se sabe")
+    void urlRara() {
+        assertThat(VersionController.nombreDeLaBase(null)).isEqualTo("desconocida");
+        assertThat(VersionController.nombreDeLaBase("")).isEqualTo("desconocida");
+        assertThat(VersionController.nombreDeLaBase("jdbc:postgresql://host:5432/"))
+                .isEqualTo("desconocida");
+        assertThat(VersionController.nombreDeLaBase("algo-sin-forma")).isEqualTo("desconocida");
     }
 }
