@@ -101,7 +101,18 @@ sudo mkdir -p $DESTINO
 sudo rm -rf $DESTINO/src
 sudo tar --no-same-owner -xzf /tmp/metricol-api-$SHA.tar.gz -C $DESTINO
 rm -f /tmp/metricol-api-$SHA.tar.gz
+# El dueno puede ser un uid que en esta VM no existe: paso el 9 oct 2026,
+# cuando la carpeta acabo a nombre del uid 197609 —un uid de Windows, colado
+# desde la maquina de quien desplego a mano— y stat devolvio UNKNOWN. El chown
+# fallo, set -e aborto, y el despliegue se quedo a medias: el codigo nuevo ya
+# estaba en la VM pero el contenedor seguia sirviendo el de antes. Ruidoso,
+# pero a mitad. Si el dueno no es nadie conocido, la carpeta pasa a ser de
+# quien esta desplegando, que es lo unico que siempre tiene sentido.
 DUENO=\$(sudo stat -c %U $DESTINO)
+if [ \"\$DUENO\" = UNKNOWN ] || [ -z \"\$DUENO\" ]; then
+  DUENO=\$(id -un)
+  echo \"La carpeta era de un usuario que no existe aqui; pasa a ser de \$DUENO.\"
+fi
 sudo chown -R \"\$DUENO\":\"\$DUENO\" $DESTINO
 
 if ! sudo test -f $DESTINO/.env.vps; then
