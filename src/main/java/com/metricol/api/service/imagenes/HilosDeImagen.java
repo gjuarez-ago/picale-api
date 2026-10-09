@@ -231,6 +231,11 @@ public class HilosDeImagen {
         }
         guardar(hilo.getId(), "ASISTENTE", "Esto es lo que salió. Tócala para verla en grande.",
                 List.of(), null, null, urls);
+        // La última creada queda puesta SOLA para seguir afinándola. Antes
+        // había que tocarla para elegirla, y eso convertía en obligatorio un
+        // paso que nadie pidió: lo normal es querer ajustar lo que acabas de
+        // ver. Si quieres otra, la abres y dices que te quedas con esa.
+        hilo.setFicha(aJson(leer(hilo).conPieza(urls.get(0))));
         hilo.setTrabajoEnCurso(null);
         hilo.setActualizadoEn(LocalDateTime.now());
         hilos.save(hilo);
@@ -259,6 +264,36 @@ public class HilosDeImagen {
             }
         }
         return List.of();
+    }
+
+    /**
+     * Todo lo que se creó en esta conversación, de lo más nuevo a lo más viejo.
+     *
+     * <p>Es lo que deja ver "el contenido de esta charla" sin tener que
+     * recorrer los mensajes hacia arriba. Sale de los propios turnos, así que
+     * no hay nada que mantener aparte.
+     */
+    public List<String> contenidosDe(UUID hiloId) {
+        List<String> todas = new ArrayList<>();
+        List<MensajeDeImagen> turnos = mensajes.findByHiloIdOrderByCreadoEnAsc(hiloId);
+        for (int i = turnos.size() - 1; i >= 0; i--) {
+            String json = turnos.get(i).getImagenes();
+            if (json == null || json.isBlank()) {
+                continue;
+            }
+            try {
+                for (String url : mapper.readValue(json,
+                        new com.fasterxml.jackson.core.type.TypeReference<java.util.ArrayList<String>>() {
+                        })) {
+                    if (url != null && !url.isBlank() && !todas.contains(url)) {
+                        todas.add(url);
+                    }
+                }
+            } catch (Exception ex) {
+                log.debug("Imágenes ilegibles en un turno de {}: {}", hiloId, ex.toString());
+            }
+        }
+        return todas;
     }
 
     /** Las conversaciones de la persona, de la más reciente a la más vieja. */

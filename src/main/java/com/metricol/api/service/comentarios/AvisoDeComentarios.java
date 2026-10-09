@@ -160,7 +160,12 @@ public class AvisoDeComentarios {
      * 8 de la mañana a 10 de la noche".
      */
     private boolean deNoche(LocalTime hora) {
-        return hora.isBefore(LocalTime.of(desdeHora, 0)) || !hora.isBefore(LocalTime.of(hastaHora, 0));
+        // Se compara el número de la hora y no un LocalTime: `LocalTime.of(24,
+        // 0)` lanza, y 24 es justo como alguien escribiría "hasta medianoche"
+        // al configurarlo. Con el LocalTime, ese valor tumbaba TODO el envío
+        // de avisos, no solo la ventana.
+        int h = hora.getHour();
+        return h < desdeHora || h >= hastaHora;
     }
 
     /** Package-private para poder probar los topes sin esperar horas de verdad. */

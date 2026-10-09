@@ -159,6 +159,9 @@ public class AsistenteImagenesController {
         cuerpo.put("listoParaCrear", v.listoParaCrear());
         // Lo que sigue creándose, para reanudar el sondeo al volver.
         cuerpo.put("trabajoEnCurso", v.hilo().getTrabajoEnCurso());
+        // Todo lo creado en esta conversación, para verlo junto sin tener que
+        // recorrer los mensajes hacia arriba.
+        cuerpo.put("contenidos", hilos.contenidosDe(v.hilo().getId()));
         return cuerpo;
     }
 

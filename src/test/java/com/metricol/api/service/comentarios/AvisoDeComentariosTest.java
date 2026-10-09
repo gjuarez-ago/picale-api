@@ -42,7 +42,12 @@ class AvisoDeComentariosTest {
         when(push.activo()).thenReturn(true);
         when(push.avisarAQuienPuede(any(), any(), anyString(), anyString(), any())).thenReturn(true);
         aviso = new AvisoDeComentarios(repo, push);
-        aviso.configurar(2, 4, 8, 22);
+        // Sin ventana de silencio: estas pruebas miran el agrupado, el respiro
+        // y a quién se avisa, no la hora. Con la ventana real fallaban solas
+        // de madrugada —visto a las 03:43—, que es el peor tipo de prueba: la
+        // que te hace dudar de un cambio que estaba bien. La ventana se prueba
+        // aparte, con horas puestas a mano.
+        aviso.configurar(2, 4, 0, 24);
     }
 
     private void hay(long cuantos, long cuentas) {
@@ -98,6 +103,7 @@ class AvisoDeComentariosTest {
     @Test
     @DisplayName("N-05: de noche no se avisa; a las 8 de la mañana sí")
     void deNoche() {
+        aviso.configurar(2, 4, 8, 22);
         LocalDateTime noche = LocalDateTime.of(2026, 10, 7, 23, 30);
         LocalDateTime madrugada = LocalDateTime.of(2026, 10, 8, 3, 0);
         LocalDateTime manana = LocalDateTime.of(2026, 10, 8, 8, 0);
@@ -110,6 +116,7 @@ class AvisoDeComentariosTest {
     @Test
     @DisplayName("N-06: pasados los cuatro del día, se calla hasta mañana")
     void topeDiario() {
+        aviso.configurar(2, 4, 8, 22);
         LocalDateTime dia = LocalDateTime.of(2026, 10, 7, 9, 0);
 
         // Cuatro avisos repartidos a lo largo del día, respetando el respiro.
@@ -145,6 +152,20 @@ class AvisoDeComentariosTest {
         aviso.avisarDeLoNuevo();
 
         verify(push).avisarAQuienPuede(eq(espacio), eq(Permission.COMMENT_REPLY), anyString(), anyString(), any());
+    }
+
+    @Test
+    @DisplayName("Una ventana de 0 a 24 no revienta: es como se escribe 'a toda hora'")
+    void ventanaDeTodoElDia() {
+        aviso.configurar(2, 4, 0, 24);
+
+        // Antes, LocalTime.of(24, 0) lanzaba y se llevaba por delante el envío
+        // entero de avisos, no solo la ventana.
+        for (int h = 0; h < 24; h++) {
+            assertThat(aviso.toca(UUID.randomUUID(), LocalDateTime.of(2026, 10, 9, h, 30)))
+                    .describedAs("a las %d", h)
+                    .isTrue();
+        }
     }
 
     @Test

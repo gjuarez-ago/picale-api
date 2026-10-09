@@ -977,6 +977,18 @@ class AgenteServiceTest {
             when(avisos.avisarAlEquipo(any(), anyString(), anyString(), any())).thenReturn(true);
             LocalDateTime hoy10 = LocalDateTime.now().withHour(10).withMinute(0).withSecond(0).withNano(0);
 
+            // Las propuestas se alejan en el tiempo a propósito. La hora que
+            // les pone el agente sale del reloj de verdad, y corriendo de
+            // madrugada caían dentro de las 3 h que las vuelven urgentes: el
+            // aviso que salía era el de urgencia y no el de lo nuevo, y la
+            // prueba fallaba sola a las 3 de la mañana sin que nada estuviera
+            // mal. Aquí se comprueba el aviso de LO NUEVO; lo urgente tiene su
+            // propio tramo más abajo.
+            for (Post p : posts.propuestasDelAgente()) {
+                p.setFechaPropuesta(hoy10.plusDays(2));
+                posts.save(p);
+            }
+
             // De noche no se avisa lo nuevo.
             agente.avisar(workspaces.findById(ws.getId()).orElseThrow(), hoy10.withHour(23));
             org.mockito.Mockito.verify(avisos, org.mockito.Mockito.never())
