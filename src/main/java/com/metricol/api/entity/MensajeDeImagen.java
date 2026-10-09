@@ -73,5 +73,17 @@ public class MensajeDeImagen {
     @Column(length = 400)
     private String motivo;
 
+    /**
+     * Las imágenes que salieron en este turno, como JSON (lista de URLs).
+     *
+     * <p>Van EN la conversación y no solo en la pantalla: antes vivían en la
+     * memoria del teléfono y al salir desaparecían, con lo que volver a un
+     * chat de ayer era volver a una conversación que hablaba de imágenes que
+     * ya no estaban. Siguen además en Contenido, que es donde se guardan de
+     * verdad; esto es para que el hilo se entienda solo.
+     */
+    @Column(columnDefinition = "text")
+    private String imagenes;
+
     private LocalDateTime creadoEn;
 }

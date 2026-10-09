@@ -26,6 +26,19 @@ public interface HiloDeImagenRepository extends JpaRepository<HiloDeImagen, UUID
         return abiertosDe(workspace, user).stream().findFirst();
     }
 
+    /**
+     * Todas las conversaciones de esa persona en ese espacio, abiertas o no.
+     *
+     * <p>Las cerradas también: "guardar los chats" significa poder volver a
+     * una de la semana pasada, no solo a la de ahora.
+     */
+    @Query("""
+            select h from HiloDeImagen h
+            where h.workspaceId = :workspace and h.userId = :user
+            order by h.actualizadoEn desc
+            """)
+    List<HiloDeImagen> deLaPersona(@Param("workspace") UUID workspace, @Param("user") UUID user);
+
     /** Al eliminar un espacio para siempre, sus conversaciones se van con él. */
     @Modifying
     @Transactional

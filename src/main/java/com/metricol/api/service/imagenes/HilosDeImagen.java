@@ -43,6 +43,17 @@ public class HilosDeImagen {
     static final String SALUDO =
             "Cuéntame qué quieres anunciar y te la preparo. Puedes dictarlo si prefieres.";
 
+    /**
+     * Ejemplos que se tocan, para quien abre y no sabe qué se espera de él.
+     *
+     * <p><b>Es el punto donde se abandona.</b> Un cuadro de texto vacío
+     * delante de alguien que nunca ha pedido una imagen no se contesta: se
+     * cierra. Tres ejemplos tocados con el dedo arrancan la conversación, y a
+     * partir del primer turno el asistente ya propone solo.
+     */
+    static final List<String> PARA_EMPEZAR = List.of(
+            "Una promoción", "Un producto", "Que abrimos hoy");
+
     private final HiloDeImagenRepository hilos;
     private final MensajeDeImagenRepository mensajes;
     private final SocialAccountRepository cuentas;
@@ -84,9 +95,10 @@ public class HilosDeImagen {
                     .creadoEn(ahora)
                     .actualizadoEn(ahora)
                     .build());
-            guardar(hilo.getId(), "ASISTENTE", SALUDO, List.of(), null, null);
+            guardar(hilo.getId(), "ASISTENTE", SALUDO, PARA_EMPEZAR, null, null);
+            return vista(hilo, PARA_EMPEZAR, false);
         }
-        return vista(hilo, List.of(), false);
+        return vista(hilo, ultimasOpciones(hilo.getId()), false);
     }
 
     /** Empezar de nuevo: cierra lo que hubiera y abre limpio. */
@@ -103,7 +115,7 @@ public class HilosDeImagen {
     @Transactional(readOnly = true)
     public Vista ver(User user, UUID hiloId) {
         HiloDeImagen hilo = mio(user, hiloId);
-        return vista(hilo, List.of(), leer(hilo).completa());
+        return vista(hilo, ultimasOpciones(hilo.getId()), leer(hilo).completa());
     }
 
     /**
@@ -173,6 +185,8 @@ public class HilosDeImagen {
         String trabajoId = trabajos.iniciar(user, PeticionDesdeFicha.armar(ficha));
 
         guardar(hilo.getId(), "ASISTENTE", "Va, la estoy creando. Tarda un momento.", List.of(), null, null);
+        // Queda apuntado: si la persona sale, al volver se reanuda.
+        hilo.setTrabajoEnCurso(trabajoId);
         hilo.setCreaciones(hilo.getCreaciones() + 1);
         hilo.setActualizadoEn(LocalDateTime.now());
         hilos.save(hilo);
@@ -199,6 +213,73 @@ public class HilosDeImagen {
                 "Me quedo con esa. ¿Le cambiamos algo o así va?",
                 List.of("Así va", "Acércala más", "Cambia el texto"), null, null);
         return vista(hilo, List.of("Así va", "Acércala más", "Cambia el texto"), true);
+    }
+
+    /**
+     * Apunta en la conversación lo que acabó de salir.
+     *
+     * <p>Lo manda la pantalla cuando el trabajo termina, porque es ella quien
+     * lo está sondeando. Con esto, volver a un chat de ayer devuelve también
+     * sus imágenes; sin esto la conversación hablaba de cosas que ya no se
+     * veían.
+     */
+    @Transactional
+    public Vista apuntarLoQueSalio(User user, UUID hiloId, List<String> urls) {
+        HiloDeImagen hilo = mio(user, hiloId);
+        if (urls == null || urls.isEmpty()) {
+            return vista(hilo, List.of(), false);
+        }
+        guardar(hilo.getId(), "ASISTENTE", "Esto es lo que salió. Tócala para verla en grande.",
+                List.of(), null, null, urls);
+        hilo.setTrabajoEnCurso(null);
+        hilo.setActualizadoEn(LocalDateTime.now());
+        hilos.save(hilo);
+        return vista(hilo, List.of(), false);
+    }
+
+    /**
+     * Las opciones del último turno del asistente.
+     *
+     * <p>Al reabrir una conversación guardada, las respuestas que se tocaban
+     * tienen que seguir ahí: volver a un chat y encontrar solo un cuadro
+     * vacío es perder el hilo de lo que se estaba contestando.
+     */
+    private List<String> ultimasOpciones(UUID hiloId) {
+        List<MensajeDeImagen> todos = mensajes.findByHiloIdOrderByCreadoEnAsc(hiloId);
+        for (int i = todos.size() - 1; i >= 0; i--) {
+            MensajeDeImagen m = todos.get(i);
+            if ("ASISTENTE".equals(m.getRol()) && m.getOpciones() != null) {
+                try {
+                    return mapper.readValue(m.getOpciones(),
+                            new com.fasterxml.jackson.core.type.TypeReference<java.util.ArrayList<String>>() {
+                            });
+                } catch (Exception ex) {
+                    return List.of();
+                }
+            }
+        }
+        return List.of();
+    }
+
+    /** Las conversaciones de la persona, de la más reciente a la más vieja. */
+    @Transactional(readOnly = true)
+    public List<HiloDeImagen> historial(User user) {
+        return hilos.deLaPersona(espacioDe(user), user.getId());
+    }
+
+    /**
+     * El título de una conversación, para la lista.
+     *
+     * <p>Sale de lo que se estaba anunciando, que es como la recuerda quien la
+     * tuvo. Sin eso, la fecha; nunca un identificador.
+     */
+    public String tituloDe(HiloDeImagen hilo) {
+        FichaDeImagen ficha = leer(hilo);
+        if (ficha.queSeAnuncia() != null && !ficha.queSeAnuncia().isBlank()) {
+            String t = ficha.queSeAnuncia().strip();
+            return t.length() <= 60 ? t : t.substring(0, 60) + "…";
+        }
+        return "Conversación sin terminar";
     }
 
     // ------------------------------------------------------------- apoyos
@@ -248,6 +329,11 @@ public class HilosDeImagen {
 
     private void guardar(UUID hiloId, String rol, String texto, List<String> opciones,
             String veredicto, String motivo) {
+        guardar(hiloId, rol, texto, opciones, veredicto, motivo, null);
+    }
+
+    private void guardar(UUID hiloId, String rol, String texto, List<String> opciones,
+            String veredicto, String motivo, List<String> imagenes) {
         mensajes.save(MensajeDeImagen.builder()
                 .hiloId(hiloId)
                 .rol(rol)
@@ -255,6 +341,7 @@ public class HilosDeImagen {
                 .opciones(opciones == null || opciones.isEmpty() ? null : aJson(opciones))
                 .veredicto(veredicto)
                 .motivo(motivo)
+                .imagenes(imagenes == null || imagenes.isEmpty() ? null : aJson(imagenes))
                 .creadoEn(LocalDateTime.now())
                 .build());
     }

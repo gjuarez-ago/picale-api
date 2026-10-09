@@ -65,6 +65,17 @@ public class HiloDeImagen {
     @Builder.Default
     private int creaciones = 0;
 
+    /**
+     * El trabajo de creación que sigue en marcha, si lo hay.
+     *
+     * <p>Sin esto, salirse de la pantalla mientras se crea perdía las
+     * imágenes: el sondeo vivía en el teléfono, y al volver la conversación no
+     * sabía que había algo en camino. Se pagaron y se quedaron solo en
+     * Contenido, sin que nadie lo dijera. Con esto, al reabrir se reanuda.
+     */
+    @Column(length = 64)
+    private String trabajoEnCurso;
+
     private LocalDateTime creadoEn;
 
     private LocalDateTime actualizadoEn;

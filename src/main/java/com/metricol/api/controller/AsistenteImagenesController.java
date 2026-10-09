@@ -43,6 +43,9 @@ public class AsistenteImagenesController {
     public record Elegida(String url) {
     }
 
+    public record LoQueSalio(List<String> urls) {
+    }
+
     private final HilosDeImagen hilos;
     private final PermissionService permisos;
     private final ObjectMapper mapper = new ObjectMapper();
@@ -100,6 +103,40 @@ public class AsistenteImagenesController {
                 Map.of("trabajoId", hilos.crear(currentUser, id))));
     }
 
+    /**
+     * Las conversaciones guardadas, de la más reciente a la más vieja.
+     *
+     * <p>Sin imágenes ni mensajes: es una lista para elegir, y traer todo de
+     * todas las conversaciones sería pesadísimo para una pantalla que solo
+     * enseña títulos.
+     */
+    @GetMapping
+    public ResponseEntity<ApiResponse<List<Map<String, Object>>>> historial(
+            @AuthenticationPrincipal User currentUser) {
+        permisos.exigir(currentUser, Permission.POST_CREATE);
+        List<Map<String, Object>> salida = new ArrayList<>();
+        for (var h : hilos.historial(currentUser)) {
+            Map<String, Object> fila = new LinkedHashMap<>();
+            fila.put("hiloId", h.getId());
+            fila.put("titulo", hilos.tituloDe(h));
+            fila.put("creaciones", h.getCreaciones());
+            fila.put("actualizadoEn", h.getActualizadoEn());
+            fila.put("abierta", h.getCerradoEn() == null);
+            salida.add(fila);
+        }
+        return ResponseEntity.ok(ApiResponse.success(salida));
+    }
+
+    /** Apunta en la conversación lo que acabó de salir, para que no se pierda. */
+    @PostMapping("/{id}/imagenes")
+    public ResponseEntity<ApiResponse<Map<String, Object>>> apuntarLoQueSalio(
+            @AuthenticationPrincipal User currentUser, @PathVariable UUID id,
+            @RequestBody LoQueSalio salio) {
+        permisos.exigir(currentUser, Permission.POST_CREATE);
+        return ResponseEntity.ok(ApiResponse.success(cuerpo(
+                hilos.apuntarLoQueSalio(currentUser, id, salio == null ? null : salio.urls()))));
+    }
+
     /** La persona tocó la versión que le gustó: a partir de aquí se afina esa. */
     @PostMapping("/{id}/elegir")
     public ResponseEntity<ApiResponse<Map<String, Object>>> elegir(
@@ -120,6 +157,8 @@ public class AsistenteImagenesController {
         // cual ("solo me falta saber...") sin tener que traducir nada.
         cuerpo.put("falta", v.ficha().queFalta());
         cuerpo.put("listoParaCrear", v.listoParaCrear());
+        // Lo que sigue creándose, para reanudar el sondeo al volver.
+        cuerpo.put("trabajoEnCurso", v.hilo().getTrabajoEnCurso());
         return cuerpo;
     }
 
@@ -129,6 +168,7 @@ public class AsistenteImagenesController {
         salida.put("mio", "PERSONA".equals(m.getRol()));
         salida.put("texto", m.getTexto());
         salida.put("opciones", leerOpciones(m.getOpciones()));
+        salida.put("imagenes", leerOpciones(m.getImagenes()));
         salida.put("veredicto", m.getVeredicto());
         salida.put("motivo", m.getMotivo());
         salida.put("creadoEn", m.getCreadoEn());
