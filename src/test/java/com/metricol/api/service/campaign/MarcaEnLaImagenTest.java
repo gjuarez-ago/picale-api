@@ -54,6 +54,20 @@ class MarcaEnLaImagenTest {
     }
 
     @Test
+    @DisplayName("la ciudad es dato de fondo y queda prohibido escribirla en la imagen")
+    void laCiudadNoSeEscribe() {
+        // Por lo del 9 oct 2026: "Mérida" salía impresa en imágenes donde nadie
+        // la había pedido. El prompt la ofrecía como texto permitido por
+        // omisión —"a lo sumo un titular, la ciudad y una llamada a la acción"—.
+        assertThat(prompt(MARCA))
+                .contains("City (background only, to judge the audience; NEVER write it on the image): Mérida")
+                .doesNotContain("(Restaurante), Mérida")
+                .doesNotContain("the city and one call to action")
+                .doesNotContain("a headline and the city")
+                .contains("never add the city");
+    }
+
+    @Test
     @DisplayName("sin marca el prompt queda como antes")
     void sinMarca() {
         assertThat(prompt(MarcaDelNegocio.VACIA))

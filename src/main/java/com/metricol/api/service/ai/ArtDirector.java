@@ -101,13 +101,30 @@ public class ArtDirector {
             You write the brief that an image-generation model will follow to compose ONE finished, professional
             social-media ad from the business's REAL photos.
 
+            WHO DECIDES WHAT, IN THIS ORDER. When two of these disagree, the one higher up wins, and
+            you follow it even if you would have done it differently:
+              1. What the owner asked for, in their own words. It is the first thing in the request,
+                 under WHAT THE OWNER ASKED FOR. If they asked for something plain, make it plain; if
+                 they asked for something loud and promotional, make it loud; if they asked for a
+                 specific word on the image, that word goes in and nothing competes with it.
+              2. What the brand says never to say or do.
+              3. Your own taste as an art director. You are the last word here, not the first.
+
+            NEVER ADD TEXT NOBODY ASKED FOR. The only words that may appear on the image are the ones
+            the owner asked for. Do NOT add the city, a phone number, a web address, a date, a price,
+            a percentage, "¡Visítanos!", "Calidad garantizada", a badge, a seal or a slogan. If the
+            owner asked for "2x1" and nothing else, the image says "2x1" and nothing else. An empty
+            "subtitle" is a correct answer, and most of the time it is the best one: a line of filler
+            text is what makes an ad look like a template instead of a piece of work.
+
             Reply with ONLY a JSON object with exactly these keys:
             "layout": one of "photo_bottom_band", "photo_top_title", "framed_photo".
             "hero_photo": the number (starting at 1) of the photo that should lead, or 0 if none is clearly better.
             "scene": 2-4 sentences IN ENGLISH about lighting, subtle natural color grade, background treatment and
               mood. Never mention text, logos, buttons or layout: those are added separately.
             "headline": SPANISH (Mexico), at most 7 words, correct accents, concrete, no clichés.
-            "subtitle": SPANISH, at most 8 words (city or a real differentiator), or "".
+            "subtitle": SPANISH, at most 8 words, ONLY when the owner asked for a second line or their
+              request plainly needs one to be understood. Never the city, never filler. Otherwise "".
             "cta": SPANISH, at most 4 words, or "".
             "caption": SPANISH, 2-4 short lines, at most 2 emojis, no hashtags, ends with the call to action.
             "captions": an object with one caption per requested network, using exactly the network names given
@@ -287,14 +304,29 @@ public class ArtDirector {
 
     static String pedidoDelUsuario(Contexto c) {
         StringBuilder t = new StringBuilder();
+
+        // Lo que pidió la persona va PRIMERO y con su propio encabezado. Antes
+        // iba en medio de la lista, entre el tono y la paleta, con el mismo
+        // peso visual que todo lo demás —y un modelo trata una lista plana
+        // como una lista plana—. Esto y el orden de prioridades del sistema
+        // son lo mismo dicho dos veces, a propósito: es la regla que decide si
+        // la imagen es la que se pidió o la que al director le apetecía.
+        t.append("WHAT THE OWNER ASKED FOR (this outranks everything below):\n");
+        t.append(valor(c.idea(), "(they did not say; follow the business context below)")).append("\n\n");
+
+        t.append("THE BUSINESS (background, to understand who this talks to):\n");
         t.append("Business: ").append(valor(c.negocio(), "a local business"));
         if (hay(c.giro())) {
             t.append(" (").append(c.giro().trim()).append(")");
         }
-        if (hay(c.ciudad())) {
-            t.append(", ").append(c.ciudad().trim());
-        }
         t.append("\n");
+        if (hay(c.ciudad())) {
+            // En línea aparte y con la prohibición pegada. Pegada al nombre del
+            // negocio era una invitación a imprimirla, y el subtítulo la tomaba
+            // como relleno: por eso salía la ciudad en todas las imágenes.
+            t.append("City (background only, to judge the audience — NEVER write it on the image): ")
+                    .append(c.ciudad().trim()).append("\n");
+        }
         if (hay(c.descripcion())) {
             t.append("About the business: ").append(c.descripcion().trim()).append("\n");
         }
@@ -319,7 +351,6 @@ public class ArtDirector {
                     .append("NEVER draw them as text in the image): ").append(marca.contactoEs()).append("\n");
         }
         t.append("Format: ").append(valor(c.formato(), "post")).append("\n");
-        t.append("What this post must communicate (the owner's own words): ").append(valor(c.idea(), "")).append("\n");
         if (hay(c.objetivoCampana())) {
             t.append("Goal of the post: ").append(c.objetivoCampana().trim()).append("\n");
         }

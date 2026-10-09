@@ -888,10 +888,13 @@ public class CampaignImageService {
         if (negocio.giro() != null && !negocio.giro().isBlank()) {
             t.append(" (").append(negocio.giro().trim()).append(")");
         }
-        if (negocio.ciudad() != null && !negocio.ciudad().isBlank()) {
-            t.append(", ").append(negocio.ciudad().trim());
-        }
         t.append(".\n");
+        if (negocio.ciudad() != null && !negocio.ciudad().isBlank()) {
+            // Dato de fondo, no texto. Pegada al nombre del negocio acababa
+            // impresa en la imagen aunque nadie la hubiera pedido.
+            t.append("City (background only, to judge the audience; NEVER write it on the image): ")
+                    .append(negocio.ciudad().trim()).append("\n");
+        }
         if (negocio.descripcion() != null && !negocio.descripcion().isBlank()) {
             t.append("About the business: ").append(negocio.descripcion().trim()).append("\n");
         }
@@ -951,8 +954,12 @@ public class CampaignImageService {
                 .append("suffix (such as S.A. de C.V.): the real logo is added separately. ")
                 .append("Any text must be in Spanish, LARGE, short and correctly spelled with proper accents ")
                 .append(Boolean.TRUE.equals(p.ctaEnImagen())
-                        ? "(at most a headline, the city and one call to action); avoid small print. "
-                        : "(at most a headline and the city, and no button or call to action); avoid small print. ")
+                        ? "(at most a headline and one call to action); avoid small print. "
+                        : "(at most a headline, and no button or call to action); avoid small print. ")
+                // Nada que nadie pidió. La ciudad estaba aquí como texto
+                // permitido por omisión y por eso salía en todas las imágenes.
+                .append("Write ONLY what was asked for above: never add the city, a phone number, a web address, ")
+                .append("a date, a price, a slogan, a badge or a seal that was not requested. ")
                 .append("No watermarks and no fake interface elements.");
         return t.toString();
     }
@@ -981,7 +988,8 @@ public class CampaignImageService {
                 usuario.append("Giro: ").append(negocio.giro().trim()).append("\n");
             }
             if (negocio.ciudad() != null && !negocio.ciudad().isBlank()) {
-                usuario.append("Ciudad: ").append(negocio.ciudad().trim()).append("\n");
+                usuario.append("Ciudad (solo para entender a quien le hablas; NO la escribas en el titular "
+                        + "ni en el subtitulo): ").append(negocio.ciudad().trim()).append("\n");
             }
             MarcaDelNegocio marca = negocio.marca() == null ? MarcaDelNegocio.VACIA : negocio.marca();
             if (MarcaDelNegocio.hay(marca.queVende())) {
@@ -1024,6 +1032,11 @@ public class CampaignImageService {
                     "headline": titular de máximo 8 palabras, "supportingCopy": un subtítulo de máximo 8 palabras
                     que lo complementa, y "caption": texto de 2 a 4 líneas para la publicación, con máximo 2
                     emojis, sin hashtags, que incluya el llamado a la acción si se dio uno.
+
+                    Escribe SOLO sobre lo que te pidieron. Nunca agregues la ciudad, un teléfono, una página,
+                    una fecha, un precio, un porcentaje ni frases de relleno como "¡Visítanos!" o "Calidad
+                    garantizada": si no te lo dieron, no existe. Un "supportingCopy" vacío es una respuesta
+                    correcta, y casi siempre es mejor que una línea de relleno.
                     """, usuario.toString());
             JsonNode nodo = json.readTree(crudo);
             String titular = limpio(nodo.path("headline").asText(null));

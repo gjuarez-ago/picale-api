@@ -124,6 +124,47 @@ class ArtDirectorTest {
     }
 
     @Test
+    @DisplayName("lo que pidió la persona va PRIMERO, antes que nada del negocio")
+    void loQuePidioVaPrimero() {
+        String pedido = ArtDirector.pedidoDelUsuario(contexto(List.of("https://cdn.test/a.jpg")));
+
+        assertThat(pedido).startsWith("WHAT THE OWNER ASKED FOR");
+        assertThat(pedido.indexOf("Anunciar nuestro servicio de montaje"))
+                .as("el encargo de la persona aparece antes que el bloque del negocio")
+                .isLessThan(pedido.indexOf("THE BUSINESS"));
+    }
+
+    @Test
+    @DisplayName("la ciudad va como dato de fondo y con la prohibición de escribirla pegada")
+    void laCiudadNoSeEscribe() {
+        // El 9 oct 2026 el dueño reportó que TODAS sus imágenes salían con
+        // "Manzanillo" encima, sin haberlo pedido nunca. No lo inventaba el
+        // modelo: la ciudad iba pegada al nombre del negocio y el prompt la
+        // ofrecía como relleno del subtítulo.
+        String pedido = ArtDirector.pedidoDelUsuario(contexto(List.of("https://cdn.test/a.jpg")));
+
+        assertThat(pedido).contains(
+                "City (background only, to judge the audience — NEVER write it on the image): Manzanillo, Colima");
+        assertThat(pedido)
+                .as("la ciudad ya no va pegada al giro, que era lo que la hacía parecer parte del nombre")
+                .doesNotContain("(Mantenimiento industrial), Manzanillo");
+    }
+
+    @Test
+    @DisplayName("las instrucciones llevan el orden de prioridades y la prohibición de texto no pedido")
+    void mandaLoQuePideLaPersona() {
+        servidor.expect(requestTo(URL))
+                .andExpect(content().string(containsString("WHO DECIDES WHAT, IN THIS ORDER")))
+                .andExpect(content().string(containsString("What the owner asked for, in their own words")))
+                .andExpect(content().string(containsString("NEVER ADD TEXT NOBODY ASKED FOR")))
+                .andRespond(withSuccess(respuesta(PLAN), MediaType.APPLICATION_JSON));
+
+        director.dirigir(contexto(List.of("https://cdn.test/a.jpg")));
+
+        servidor.verify();
+    }
+
+    @Test
     @DisplayName("una composición que no existe cae a la de siempre, y una foto fuera de rango a 'sin preferencia'")
     void valoresCerrados() {
         String plan = "{\"layout\":\"collage_loco\",\"hero_photo\":9,\"scene\":\"x\",\"headline\":\"Obra\","
