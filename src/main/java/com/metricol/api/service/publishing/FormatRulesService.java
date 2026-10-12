@@ -21,14 +21,8 @@ import com.metricol.api.enums.PostFormat;
  * servidor, y ya no coincidían: la app cortaba los videos en 90 segundos
  * mientras el servidor creía admitir diez minutos en TikTok.
  *
- * <p><b>Las reglas son por FORMATO, no por red.</b> Es una decisión de producto
- * y no un descuido: un reel dura lo mismo en todas partes porque así se decidió,
- * no porque las redes coincidan —TikTok admite diez minutos—. Lo único que
- * cambia de red en red es <em>si</em> publica ese formato: TikTok no tiene
- * historias y YouTube no admite fotos.
- *
- * <p>Quedarse por debajo de lo que admite la red no cuesta nada; pasarse cuesta
- * la publicación. Por eso, donde hay duda, manda el número chico.
+ * <p>La duración máxima de los videos depende de la red. Facebook publica
+ * como video normal cuando el contenido supera el límite de Reels.
  */
 @Service
 public class FormatRulesService {
@@ -46,16 +40,6 @@ public class FormatRulesService {
      */
     @Value("${app.post.max-photos:6}")
     private int maxFotos = 6;
-
-    /**
-     * Lo que puede durar un video, en segundos.
-     *
-     * <p>Un minuto y medio para todas las redes y para los dos formatos de
-     * video. No es el tope de ninguna red en concreto: es lo que esta
-     * herramienta publica.
-     */
-    @Value("${app.post.max-video-seconds:90}")
-    private int maxSegundosVideo = 90;
 
     /**
      * Lo mínimo que admite una red para dar un video por válido. Por debajo de
@@ -106,7 +90,7 @@ public class FormatRulesService {
                 // pide el formato en todas, y Facebook lo rechaza si no.
                 new Regla(PostFormat.REEL, PostFormat.REEL.getLabel(), true,
                         EnumSet.allOf(Platform.class),
-                        1, false, true, MIN_SEGUNDOS_VIDEO, maxSegundosVideo, true),
+                        1, false, true, MIN_SEGUNDOS_VIDEO, null, true),
 
                 // Historia. Solo Meta: TikTok no las tiene y YouTube tampoco.
                 // Es el único formato que acepta las dos clases de archivo.
@@ -121,7 +105,7 @@ public class FormatRulesService {
                 new Regla(PostFormat.VIDEO, PostFormat.VIDEO.getLabel(), false,
                         EnumSet.of(Platform.FACEBOOK, Platform.INSTAGRAM,
                                 Platform.TIKTOK, Platform.LINKEDIN, Platform.YOUTUBE),
-                        1, false, true, MIN_SEGUNDOS_VIDEO, maxSegundosVideo, false));
+                        1, false, true, MIN_SEGUNDOS_VIDEO, null, false));
     }
 
     /** Solo lo que se le puede proponer a alguien hoy. */

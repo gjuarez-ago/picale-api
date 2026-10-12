@@ -32,6 +32,8 @@ import lombok.Setter;
 @Setter
 public class VideoLimitsProperties {
 
+    public static final int FACEBOOK_REEL_MAX_SECONDS = 90;
+
     /**
      * Tope por red. Un valor de 0 o ausente significa "sin límite conocido":
      * no se bloquea nada, porque inventar un tope sería peor que no tenerlo.

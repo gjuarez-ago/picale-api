@@ -25,6 +25,36 @@ import com.metricol.api.enums.PostFormat;
  * cada red, cada uno en el campo que esa red muestra.
  */
 class UploadPostClientTextosTest {
+    @Test
+    void facebookAdaptaSoloVideosQueSuperanElLimiteDeReels() {
+        for (int segundos : new int[] {90, 91, 99, 600}) {
+            var body = cliente().cuerpoVideo("perfil", REDES, TITULO, TODOS,
+                    PostFormat.REEL, null, segundos);
+            assertThat(body.getFirst("facebook_media_type"))
+                    .isEqualTo(segundos > 90 ? "VIDEO" : null);
+            assertThat(body.getFirst("media_type")).isNull();
+            assertThat(body.get("platform[]")).contains("facebook", "instagram", "tiktok");
+        }
+    }
+
+    @Test
+    void laAdaptacionNoConvierteHistoriasNiAgregaRedes() {
+        var historia = cliente().cuerpoVideo("perfil", REDES, TITULO, TODOS,
+                PostFormat.STORY, null, 99);
+        assertThat(historia.getFirst("facebook_media_type")).isEqualTo("STORIES");
+        assertThat(historia.getFirst("media_type")).isEqualTo("STORIES");
+        var sinFacebook = cliente().cuerpoVideo("perfil", List.of("instagram"), TITULO, TODOS,
+                PostFormat.REEL, null, 99);
+        assertThat(sinFacebook.getFirst("facebook_media_type")).isNull();
+    }
+
+    @Test
+    void facebookSinDuracionUsaVideoNormalSinAfectarInstagram() {
+        var body = cliente().cuerpoVideo("perfil", REDES, TITULO, TODOS, PostFormat.REEL, null, null);
+        assertThat(body.getFirst("facebook_media_type")).isEqualTo("VIDEO");
+        assertThat(body.getFirst("media_type")).isNull();
+    }
+
 
     private static final String TITULO = "Mallas ciclónicas para predios industriales";
     private static final String DE_INSTAGRAM = "Texto de Instagram, el primero elegido ✨ #Seguridad";

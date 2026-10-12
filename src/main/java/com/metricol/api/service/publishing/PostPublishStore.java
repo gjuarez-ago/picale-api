@@ -271,6 +271,7 @@ public class PostPublishStore {
                 List.copyOf(post.getMediaUrls()),
                 post.esVideo(),
                 post.formatoEfectivo(),
+                post.getVideoDurationSeconds(),
                 // La música de TikTok se decide aquí, con los destinos que de
                 // verdad van a recibir el envío: una publicación a la que se
                 // le cayó TikTok por cuota no tiene por qué llevar el campo.
@@ -676,7 +677,7 @@ public class PostPublishStore {
      */
     private PublishPlan vacio(UUID postId, UUID workspaceId, PublishOutcome atajo) {
         return new PublishPlan(postId, workspaceId, null, null, null, List.of(), false,
-                PostFormat.PHOTO, false, null, com.metricol.api.service.social.Ubicacion.NINGUNA, false, List.of(),
+                PostFormat.PHOTO, null, false, null, com.metricol.api.service.social.Ubicacion.NINGUNA, false, List.of(),
                 atajo);
     }
 

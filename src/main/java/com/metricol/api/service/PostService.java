@@ -573,11 +573,15 @@ public class PostService {
         // la mide, pero un script no tiene por que, y la red sigue siendo
         // quien decide al final.
         Integer segundos = request.getVideoDurationSeconds();
-        if (hayVideo && segundos != null && regla.maxSegundos() != null
-                && (segundos < regla.minSegundos() || segundos > regla.maxSegundos())) {
-            throw new IllegalArgumentException(regla.label() + ": el video tiene que durar entre "
-                    + regla.minSegundos() + " y " + regla.maxSegundos()
-                    + " segundos, y el tuyo dura " + segundos + ".");
+        if (hayVideo && segundos != null) {
+            if (regla.minSegundos() != null && segundos < regla.minSegundos()) {
+                throw new IllegalArgumentException(regla.label() + ": el video necesita al menos "
+                        + regla.minSegundos() + " segundos, y el tuyo dura " + segundos + ".");
+            }
+            if (regla.maxSegundos() != null && segundos > regla.maxSegundos()) {
+                throw new IllegalArgumentException(regla.label() + ": el video admite hasta "
+                        + regla.maxSegundos() + " segundos, y el tuyo dura " + segundos + ".");
+            }
         }
     }
 
@@ -688,7 +692,8 @@ public class PostService {
 
         for (Platform red : redes) {
             if (hayVideo) {
-                if (videoLimits.excede(red, request.getVideoDurationSeconds())) {
+                if ((request.isPublishNow() || request.getScheduledAt() != null)
+                        && videoLimits.excede(red, request.getVideoDurationSeconds())) {
                     throw new IllegalArgumentException("El video dura "
                             + VideoLimitsProperties.legible(request.getVideoDurationSeconds())
                             + " y " + red.getLabel() + " acepta hasta "

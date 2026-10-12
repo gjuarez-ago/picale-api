@@ -42,6 +42,7 @@ public record PublishPlan(
          * —que es lo que hacía toda la aplicación antes—.
          */
         PostFormat formato,
+        Integer videoDurationSeconds,
 
         /**
          * Que TikTok le ponga música al carrusel de fotos (ver

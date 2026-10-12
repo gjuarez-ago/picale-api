@@ -51,13 +51,11 @@ class FormatRulesServiceTest {
     }
 
     @Test
-    @DisplayName("Un reel dura minuto y medio en todas, no lo que admita cada red")
-    void elReelDuraLoMismoEnTodas() {
+    @DisplayName("La duración del reel depende de cada red")
+    void elReelNoImponeUnTopeGlobal() {
         FormatRulesService.Regla reel = reglas.de(PostFormat.REEL);
 
-        // TikTok admitiria diez minutos y LinkedIn treinta. Da igual: el tope
-        // es de producto, no de red, y por eso hay un solo numero.
-        assertThat(reel.maxSegundos()).isEqualTo(90);
+        assertThat(reel.maxSegundos()).isNull();
         assertThat(reel.minSegundos()).isEqualTo(3);
         assertThat(reel.redes()).containsExactlyInAnyOrder(Platform.values());
         assertThat(reel.maxArchivos()).isEqualTo(1);

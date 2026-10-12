@@ -121,6 +121,9 @@ public class PublishingController {
             // cliente distinga "no hay tope" de "esta red no vino".
             entrada.put("maxVideoSeconds", tope);
             entrada.put("maxVideoLabel", tope == null ? null : VideoLimitsProperties.legible(tope));
+            entrada.put("reelMaxVideoSeconds", platform == Platform.FACEBOOK
+                    ? VideoLimitsProperties.FACEBOOK_REEL_MAX_SECONDS : null);
+            entrada.put("longVideoFallback", platform == Platform.FACEBOOK);
             video.add(entrada);
         }
         return video;

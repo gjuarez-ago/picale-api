@@ -18,6 +18,7 @@ import org.springframework.util.MultiValueMap;
 import org.springframework.web.client.RestClient;
 
 import com.metricol.api.config.UploadPostProperties;
+import com.metricol.api.config.VideoLimitsProperties;
 import com.metricol.api.enums.PostFormat;
 import com.metricol.api.service.media.PortadaDeVideo;
 
@@ -203,7 +204,15 @@ public class UploadPostClient {
     public Map<String, Object> publishVideo(String user, List<String> platforms, String titulo,
             Map<String, String> captionsPorRed, String videoUrl, PostFormat formato, Integer portadaMs,
             Ubicacion ubicacion, boolean hechaConIa) {
-        MultiValueMap<String, Object> body = cuerpoVideo(user, platforms, titulo, captionsPorRed, formato, portadaMs);
+        return publishVideo(user, platforms, titulo, captionsPorRed, videoUrl, formato, portadaMs,
+                ubicacion, hechaConIa, null);
+    }
+
+    @SuppressWarnings("unchecked")
+    public Map<String, Object> publishVideo(String user, List<String> platforms, String titulo,
+            Map<String, String> captionsPorRed, String videoUrl, PostFormat formato, Integer portadaMs,
+            Ubicacion ubicacion, boolean hechaConIa, Integer videoDurationSeconds) {
+        MultiValueMap<String, Object> body = cuerpoVideo(user, platforms, titulo, captionsPorRed, formato, portadaMs, videoDurationSeconds);
         ubicacion(body, platforms, ubicacion);
         etiquetaDeIa(body, hechaConIa);
         ByteArrayResource video = download(videoUrl);
@@ -513,9 +522,19 @@ public class UploadPostClient {
 
     MultiValueMap<String, Object> cuerpoVideo(String user, List<String> platforms, String titulo,
             Map<String, String> captionsPorRed, PostFormat formato, Integer portadaMs) {
+        return cuerpoVideo(user, platforms, titulo, captionsPorRed, formato, portadaMs, null);
+    }
+
+    MultiValueMap<String, Object> cuerpoVideo(String user, List<String> platforms, String titulo,
+            Map<String, String> captionsPorRed, PostFormat formato, Integer portadaMs, Integer segundos) {
         MultiValueMap<String, Object> body = baseFields(user, platforms);
         textosPorRed(body, platforms, titulo, captionsPorRed, true);
         formatoPorRed(body, platforms, formato);
+        if (platforms.contains("facebook") && formato != PostFormat.STORY
+                && (formato == PostFormat.VIDEO || segundos == null || segundos <= 0
+                    || segundos > VideoLimitsProperties.FACEBOOK_REEL_MAX_SECONDS)) {
+            body.set("facebook_media_type", "VIDEO");
+        }
         portadaDeTikTok(body, platforms, portadaMs);
         return body;
     }
