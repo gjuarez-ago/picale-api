@@ -287,6 +287,9 @@ class MediaAssetRepositoryTest {
     }
 
     private MediaAsset subirVideo(String nombre) {
+        // La base dev persiste: una URL repetida enlaza publicaciones de otras
+        // corridas y hace que un video reciente parezca publicado hace meses.
+        nombre = UUID.randomUUID() + "-" + nombre;
         return mediaAssets.save(MediaAsset.builder()
                 .fileName(nombre)
                 .url("https://cdn.test/media/" + WS + "/" + nombre)
