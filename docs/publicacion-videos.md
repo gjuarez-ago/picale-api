@@ -34,3 +34,18 @@ entorno: prevalece sobre los nuevos valores predeterminados. La antigua variable
 
 Fuente verificada el 10 de octubre de 2026:
 https://docs.upload-post.com/api/video-requirements/
+
+## Video horizontal y el formato Video
+
+El formato **Video** ya se ofrece (`PostFormat.VIDEO`). Estuvo apagado mientras
+faltaba decidir su máximo; la respuesta es la de este documento: ninguno global,
+el de cada red. Aparece en el compositor de la web y de la app en cuanto la API
+lo dice, sin desplegarlas, porque ambas piden los formatos a
+`GET /publishing/formats` y pintan lo que reciben.
+
+El agente sigue sin proponer por su cuenta un video horizontal: Reels, TikTok e
+historias piden vertical. Pero si la persona dice que va desde Observación, ya
+no vuelve al mismo sitio con el mismo aviso —antes el botón contestaba que sí y
+no pasaba nada—: sale como Video, entero, a las redes que publican esa forma.
+Instagram queda fuera, porque ahí todo video se publica como Reel y saldría con
+bandas o recortado.

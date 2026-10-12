@@ -230,6 +230,39 @@ class AgenteServiceTest {
         });
     }
 
+    @Test
+    @DisplayName("un video horizontal al que se le dice que va sale como video normal, y sin Instagram")
+    void videoHorizontalRescatado() {
+        enElWorkspace(() -> {
+            conInstagram();
+            cuentasCreadas.add(cuentas.save(SocialAccount.builder().platform(Platform.TIKTOK).accountName("vivento_tt")
+                    .status(SocialAccountStatus.CONNECTED).build()).getId());
+            agente.encender(ws.getId(), true);
+            MediaAsset v = video("horizontal.mp4");
+            when(medidor.medir(any())).thenReturn(new com.metricol.api.service.media.FfmpegImagen.MedidasVideo(1920, 1080, 15));
+            agente.vuelta(ws.getId());
+            assertThat(assets.findById(v.getId())).get().extracting(MediaAsset::getAgenteEtapa)
+                    .isEqualTo(EtapaAgente.OBSERVACION);
+
+            when(analista.analizar(any(), org.mockito.ArgumentMatchers.anyDouble(), any(), anyBoolean()))
+                    .thenReturn(new com.metricol.api.service.agente.video.AnalisisDeVideo(RevisorDeMarca.Veredicto.VA,
+                            "va", "Un evento en el salón", "Presumir el evento", "EVENTO", 4, "", true, false, false,
+                            DecisorDelAgente.Intencion.VENDER, 5, List.of(), 0, 15, ""));
+
+            agente.decidir(v.getId(), true, ws.getId());
+
+            Post p = posts.propuestasDelAgente().get(0);
+            assertThat(p.getFormat()).isEqualTo(com.metricol.api.enums.PostFormat.VIDEO);
+            assertThat(p.getVideoDurationSeconds()).isEqualTo(15);
+            assertThat(p.getPortadaMs()).isNull();
+            assertThat(p.getAgenteMotivo()).startsWith("Me dijiste que va.")
+                    .contains("Es horizontal: va como video normal")
+                    .contains("Instagram no");
+            assertThat(assets.findById(v.getId())).get().extracting(MediaAsset::getAgenteEtapa)
+                    .isEqualTo(EtapaAgente.PROPUESTA);
+        });
+    }
+
     private Workspace ws;
     private final List<UUID> assetsCreados = new ArrayList<>();
     private final List<UUID> cuentasCreadas = new ArrayList<>();

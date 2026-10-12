@@ -98,11 +98,10 @@ public class FormatRulesService {
                         EnumSet.of(Platform.FACEBOOK, Platform.INSTAGRAM),
                         1, true, true, MIN_SEGUNDOS_VIDEO, MAX_SEGUNDOS_HISTORIA, true),
 
-                // Video largo: previsto, no ofrecido. Sin vertical obligatorio
-                // —un video de feed se ve bien apaisado— y sin tope propio
-                // todavía, porque el tope es justo lo que hay que decidir
-                // cuando se lance.
-                new Regla(PostFormat.VIDEO, PostFormat.VIDEO.getLabel(), false,
+                // Video largo, para el feed. Sin vertical obligatorio —uno de
+                // feed se ve bien apaisado— y sin tope propio: el máximo lo
+                // pone cada red, y se valida al guardar y al enviar.
+                new Regla(PostFormat.VIDEO, PostFormat.VIDEO.getLabel(), true,
                         EnumSet.of(Platform.FACEBOOK, Platform.INSTAGRAM,
                                 Platform.TIKTOK, Platform.LINKEDIN, Platform.YOUTUBE),
                         1, false, true, MIN_SEGUNDOS_VIDEO, null, false));

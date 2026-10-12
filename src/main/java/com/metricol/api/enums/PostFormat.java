@@ -27,17 +27,12 @@ public enum PostFormat {
     /**
      * Video largo, para el feed y no como reel.
      *
-     * <p><b>Todavía no se ofrece</b> ({@code ofrecido} en false): está aquí
-     * porque es la siguiente categoría prevista y porque tenerlo en el modelo
-     * desde el principio convierte lanzarlo en encender un booleano, en vez de
-     * en volver a tocar la app, la web, el servidor y la base.
-     *
-     * <p>Que no se ofrezca no lo borra de las reglas: {@link #ofrecido()} dice
-     * qué se le puede proponer a alguien, y el resto del enum sigue sabiendo
-     * nombrarlo. Es lo mismo que hace el catálogo de redes del frontend con
-     * las que no están disponibles.
+     * <p>Estuvo previsto y apagado hasta que hubiera una respuesta para su
+     * máximo. Ya la hay: no hay tope global, cada red valida el suyo (ver
+     * {@code VideoLimitsProperties}), así que se encendió. Es lo que admite un
+     * video horizontal, que en Reels e historias saldría con bandas.
      */
-    VIDEO("Video", false);
+    VIDEO("Video", true);
 
     private final String label;
     private final boolean ofrecido;

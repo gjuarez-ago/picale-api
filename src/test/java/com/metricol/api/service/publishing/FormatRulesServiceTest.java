@@ -76,15 +76,16 @@ class FormatRulesServiceTest {
     }
 
     @Test
-    @DisplayName("El video largo esta previsto pero no se ofrece todavia")
-    void elVideoLargoNoSeOfrece() {
-        // Esta en la tabla —para que lanzarlo sea encender un booleano— pero
-        // fuera de lo que se le puede proponer a alguien. Si esto se rompe, es
-        // que se solto sin querer.
-        assertThat(reglas.de(PostFormat.VIDEO).ofrecido()).isFalse();
+    @DisplayName("El video largo ya se ofrece: sin vertical obligatorio y sin tope propio")
+    void elVideoLargoSeOfrece() {
+        // Estuvo apagado hasta que hubo respuesta para su maximo. Ya la hay:
+        // ninguna global, la de cada red. Es lo que admite un video horizontal.
+        assertThat(reglas.de(PostFormat.VIDEO).ofrecido()).isTrue();
+        assertThat(reglas.de(PostFormat.VIDEO).exigeVertical()).isFalse();
+        assertThat(reglas.de(PostFormat.VIDEO).maxSegundos()).isNull();
         assertThat(reglas.ofrecidas())
                 .extracting(FormatRulesService.Regla::formato)
-                .containsExactlyInAnyOrder(PostFormat.PHOTO, PostFormat.REEL, PostFormat.STORY);
+                .containsExactlyInAnyOrder(PostFormat.PHOTO, PostFormat.REEL, PostFormat.STORY, PostFormat.VIDEO);
     }
 
     @Test

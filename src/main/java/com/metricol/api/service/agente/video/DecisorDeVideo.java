@@ -64,6 +64,16 @@ public final class DecisorDeVideo {
      */
     public static Decision decidir(AnalisisDeVideo a, double segundos, boolean hayRedesDeHistoria,
             boolean editorPuedeRecortar) {
+        return decidir(a, segundos, hayRedesDeHistoria, editorPuedeRecortar, true);
+    }
+
+    /**
+     * @param vertical si está grabado en vertical. Uno horizontal solo llega
+     *                 aquí cuando la persona dijo que va: entonces sale como
+     *                 video normal, que es lo que admite esa forma.
+     */
+    public static Decision decidir(AnalisisDeVideo a, double segundos, boolean hayRedesDeHistoria,
+            boolean editorPuedeRecortar, boolean vertical) {
         List<String> pasos = new ArrayList<>();
         String tipo = TIPOS.getOrDefault(a.tipo(), "un video");
         pasos.add("Lo vi completo" + (a.hayVoz() ? " y escuché lo que se dice" : "") + ": es " + tipo
@@ -76,7 +86,15 @@ public final class DecisorDeVideo {
             return new Decision(Tratamiento.OBSERVACION, null, 0, 0, segundos, pasos);
         }
 
-        // 2. Formato.
+        // 2. Formato. Uno horizontal no cabe en un Reel ni en una historia, que
+        // son verticales: va como video normal y entero, porque ahí el máximo lo
+        // pone cada red (ver VideoLimitsProperties) y se filtra al elegir destino.
+        if (!vertical) {
+            pasos.add("Es horizontal: va como video normal, no como Reel ni historia.");
+            pasos.add("Sin logo por ahora: en video llegará como marca de agua.");
+            return new Decision(Tratamiento.PUBLICAR, PostFormat.VIDEO, 0, 0, segundos, pasos);
+        }
+
         double tramo = a.tramoFin() - a.tramoInicio();
         boolean cabeEnHistoria = segundos <= MAX_HISTORIA || (editorPuedeRecortar && tramo <= MAX_HISTORIA);
         PostFormat formato;

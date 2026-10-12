@@ -941,19 +941,28 @@ public class AgenteService {
                     + " y en Pícale los videos son de hasta 10 minutos. Súbelo más corto.");
             return true;
         }
-        if (!m.vertical()) {
+        // Horizontal: por su cuenta no va, porque Reels e historias son
+        // verticales. Pero si la persona dijo que va, va: como video normal, a
+        // las redes que publican esa forma. Decirle que no dos veces seguidas
+        // —el boton contestaba que si y lo dejaba en el mismo sitio— no es una
+        // regla, es un callejon sin salida.
+        boolean vertical = m.vertical();
+        if (!vertical && !forzar) {
             marcar(video, EtapaAgente.OBSERVACION, "Es un video horizontal: Reels, TikTok e historias piden vertical. "
-                    + "Grábalo en vertical o publícalo a mano.");
+                    + "Grábalo en vertical, publícalo a mano, o dime que va y sale como video normal.");
             return true;
         }
-        FormatRulesService.Regla reel = formatos.de(PostFormat.REEL);
+        PostFormat formatoBase = vertical ? PostFormat.REEL : PostFormat.VIDEO;
+        FormatRulesService.Regla reel = formatos.de(formatoBase);
         if (reel.minSegundos() != null && duracion < reel.minSegundos()) {
-            marcar(video, EtapaAgente.OBSERVACION, "Dura " + Math.round(duracion) + " s y un Reel necesita al menos "
-                    + reel.minSegundos() + " s.");
+            marcar(video, EtapaAgente.OBSERVACION, "Dura " + Math.round(duracion) + " s y un "
+                    + (vertical ? "Reel" : "video") + " necesita al menos " + reel.minSegundos() + " s.");
             return true;
         }
-        if (cuentasPara(PostFormat.REEL).isEmpty()) {
-            marcar(video, EtapaAgente.OBSERVACION, "No tienes redes conectadas que publiquen video.");
+        if (cuentasParaVideo(formatoBase, vertical).isEmpty()) {
+            marcar(video, EtapaAgente.OBSERVACION, vertical
+                    ? "No tienes redes conectadas que publiquen video."
+                    : "No tienes redes conectadas que publiquen un video horizontal.");
             return true;
         }
 
@@ -985,7 +994,7 @@ public class AgenteService {
 
         // El Decisor: formato, recorte y portada.
         DecisorDeVideo.Decision decision = DecisorDeVideo.decidir(analisis, duracion,
-                !cuentasPara(PostFormat.STORY).isEmpty(), editor.puedeRecortar());
+                !cuentasPara(PostFormat.STORY).isEmpty(), editor.puedeRecortar(), vertical);
         if (decision.tratamiento() == DecisorDeVideo.Tratamiento.OBSERVACION) {
             marcar(video, EtapaAgente.OBSERVACION, decision.explicacion());
             return true;
@@ -1006,7 +1015,7 @@ public class AgenteService {
             int segundos = (int) Math.round(decision.fin() - decision.inicio());
 
             // Solo las redes que publican ese formato y aceptan esa duración.
-            List<SocialAccount> todas = cuentasPara(decision.formato());
+            List<SocialAccount> todas = cuentasParaVideo(decision.formato(), vertical);
             List<SocialAccount> destino = todas.stream()
                     .filter(c -> !videoLimites.excede(c.getPlatform(), segundos)).toList();
             if (destino.isEmpty()) {
@@ -1048,11 +1057,18 @@ public class AgenteService {
             pedido.setConUbicacion(lugar.va());
 
             String porQue = forzar ? "Me dijiste que va." : "Va con tu marca: " + sinPunto(analisis.motivo()) + ".";
+            // Por qué falta Instagram: no se filtró por duración, se quedó fuera
+            // desde el principio, así que el aviso de abajo no lo explicaría.
+            String sinInstagram = !vertical && cuentasPara(PostFormat.VIDEO).stream()
+                    .anyMatch(c -> c.getPlatform() == Platform.INSTAGRAM)
+                            ? " Instagram no: ahí todo video sale como Reel, y lo quiere vertical."
+                            : "";
             String fuera = todas.size() > destino.size()
                     ? " " + todas.stream().filter(c -> !destino.contains(c)).map(c -> c.getPlatform().getLabel())
                             .distinct().collect(Collectors.joining(" y ")) + " no: dura más de lo que acepta."
                     : "";
-            String motivo = porQue + " " + decision.explicacion() + fuera + lugar.frase() + " " + cuandoYDonde(redes, hueco);
+            String motivo = porQue + " " + decision.explicacion() + sinInstagram + fuera + lugar.frase() + " "
+                    + cuandoYDonde(redes, hueco);
             Post propuesta = postService.crearPropuesta(pedido, hueco.cuando(), motivo, video.getUrl(),
                     decision.tratamiento() == DecisorDeVideo.Tratamiento.RECORTAR ? "RECORTE"
                             : DecisorDelAgente.Tratamiento.TAL_CUAL.name(),
@@ -2294,6 +2310,17 @@ public class AgenteService {
     /** Las cuentas a las que puede ir una foto: conectadas, encendidas, con página y que acepten fotos. */
     private List<SocialAccount> cuentasParaFotos() {
         return cuentasPara(PostFormat.PHOTO);
+    }
+
+    /**
+     * Las cuentas para un video. Las mismas de {@link #cuentasPara(PostFormat)},
+     * salvo que sea horizontal: entonces Instagram queda fuera, porque ahí todo
+     * video se publica como Reel y saldría con barras o recortado.
+     */
+    private List<SocialAccount> cuentasParaVideo(PostFormat formato, boolean vertical) {
+        List<SocialAccount> todas = cuentasPara(formato);
+        return vertical ? todas
+                : todas.stream().filter(c -> c.getPlatform() != Platform.INSTAGRAM).toList();
     }
 
     /** Las cuentas que pueden recibir ese formato: conectadas, encendidas y con página. */

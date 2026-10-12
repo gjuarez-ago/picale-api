@@ -76,4 +76,24 @@ class DecisorDeVideoTest {
         var d = DecisorDeVideo.decidir(video("PRODUCTO", 4, true, false, 200, 0, 30, ""), 30, true, false);
         assertThat(d.portadaMs()).isEqualTo(1000);
     }
+
+    @Test
+    @DisplayName("horizontal: va como video normal, entero y sin portada, nunca de historia")
+    void horizontal() {
+        var delMomento = video("DETRAS_DE_CAMARAS", 4, true, true, 5, 0, 25, "");
+        var d = DecisorDeVideo.decidir(delMomento, 25, true, false, false);
+        assertThat(d.tratamiento()).isEqualTo(Tratamiento.PUBLICAR);
+        assertThat(d.formato()).isEqualTo(PostFormat.VIDEO);
+        assertThat(d.portadaMs()).isZero();
+        assertThat(d.explicacion()).contains("Es horizontal: va como video normal");
+    }
+
+    @Test
+    @DisplayName("horizontal y largo: va entero, porque el máximo lo pone cada red")
+    void horizontalLargo() {
+        var d = DecisorDeVideo.decidir(video("RECORRIDO", 4, true, false, 70, 42, 125, ""), 300, true, false, false);
+        assertThat(d.tratamiento()).isEqualTo(Tratamiento.PUBLICAR);
+        assertThat(d.fin()).isEqualTo(300);
+        assertThat(d.explicacion()).doesNotContain("recórtalo");
+    }
 }
