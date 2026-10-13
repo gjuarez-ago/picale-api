@@ -86,7 +86,11 @@ class DecisorConDireccionTest {
         assertThat(DecisorDelAgente.conLogo("PRODUCTO", tienda)).isTrue();
         assertThat(DecisorDelAgente.conLogo("PRODUCTO", proyecto)).isTrue();
         assertThat(DecisorDelAgente.conLogo("PROMOCION", tienda)).isTrue();
-        assertThat(DecisorDelAgente.conLogo("LUGAR", tienda)).isFalse();
+        assertThat(DecisorDelAgente.conLogo("LUGAR", tienda)).isTrue();
+        assertThat(DecisorDelAgente.conLogo("EQUIPO", tienda)).isTrue();
+        assertThat(DecisorDelAgente.conLogo("EVENTO", tienda)).isTrue();
+        assertThat(DecisorDelAgente.conLogo("TESTIMONIO", tienda)).isTrue();
+        assertThat(DecisorDelAgente.conLogo("OTRO", tienda)).isTrue();
         // Sin perfil todavía: la lista de siempre.
         assertThat(DecisorDelAgente.conLogo("OBRA", null)).isTrue();
     }
@@ -114,12 +118,16 @@ class DecisorConDireccionTest {
     }
 
     @Test
-    @DisplayName("frase: se pide con palabras, se quita igual, y con la cuenta harta de adornos va limpia")
+    @DisplayName("frase: se pide con palabras y se quita igual, pero no la apaga el hartazgo de adornos")
     void fraseAprendida() {
         assertThat(Cambio.de("ponle una frase motivadora").acabado()).isEqualTo("FRASE");
         assertThat(Cambio.de("quítale la frase").acabado()).isEqualTo("LIMPIO");
-        assertThat(DecisorDelAgente.acabado("FRASE", 2, null).estilo()).isEqualTo("LIMPIO");
+        // Quitar franjas y marcos dice que no se quieren adornos de marca; no
+        // dice nada sobre contar algo en la foto, que es lo que hace la frase.
+        // La frase se pide con el pilar Motivación y se quita quitándolo.
+        assertThat(DecisorDelAgente.acabado("FRASE", 2, null).estilo()).isEqualTo("FRASE");
         assertThat(DecisorDelAgente.acabado("FRASE", 1, null).estilo()).isEqualTo("FRASE");
         assertThat(DecisorDelAgente.acabado("LIMPIO", 2, "FRASE").paso()).contains("una frase");
+        assertThat(DecisorDelAgente.acabado("FRASE", 2, "LIMPIO").estilo()).isEqualTo("LIMPIO");
     }
 }

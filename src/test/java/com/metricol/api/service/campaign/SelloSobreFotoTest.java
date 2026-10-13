@@ -113,10 +113,12 @@ class SelloSobreFotoTest {
     @Test
     @DisplayName("del tamaño que pidió el director")
     void tamano() throws Exception {
+        // Los anchos de TamanoLogo: CHICO y GRANDE. Son de marca de agua, para
+        // que el logo firme la foto en vez de competir con ella.
         BufferedImage chico = leer(SelloDeLogo.colocarSobreFoto(foto(new Color(200, 196, 188)), logo(MARINO),
-                Posicion.BOTTOM_LEFT, 0.22, false).imagen());
+                Posicion.BOTTOM_LEFT, 0.12, false).imagen());
         BufferedImage grande = leer(SelloDeLogo.colocarSobreFoto(foto(new Color(200, 196, 188)), logo(MARINO),
-                Posicion.BOTTOM_LEFT, 0.38, false).imagen());
+                Posicion.BOTTOM_LEFT, 0.22, false).imagen());
         assertThat(contar(grande, rgb -> luz(rgb) < 60)).isGreaterThan(2 * contar(chico, rgb -> luz(rgb) < 60));
     }
 }

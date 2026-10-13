@@ -90,9 +90,9 @@ final class SelloDeLogo {
     }
 
     /** Lo más ancho que puede ser el logo, sin contar el borde, respecto al ancho de la imagen. */
-    private static final double ANCHO_MAX = 0.34;
+    private static final double ANCHO_MAX = 0.24;
     /** Y lo más alto, respecto al alto de la imagen. */
-    private static final double ALTO_MAX = 0.09;
+    private static final double ALTO_MAX = 0.07;
     private static final double MARGEN_X = 0.04;
     private static final double MARGEN_Y = 0.035;
     /**
@@ -181,8 +181,12 @@ final class SelloDeLogo {
         return new Colocado(aJpeg(salida), posicion);
     }
 
-    /** Lo más alto que puede ser el logo sobre una foto, respecto a su alto. */
-    private static final double ALTO_MAX_FOTO = 0.16;
+    /**
+     * Lo más alto que puede ser el logo sobre una foto, respecto a su alto.
+     * Es el que manda en un logo cuadrado, que es lo normal en una marca
+     * personal: con 0.16 ocupaba una sexta parte de la foto.
+     */
+    private static final double ALTO_MAX_FOTO = 0.10;
 
     /** Diferencia de luz (0-255) entre logo y fondo para que se lea sin placa. */
     static final double CONTRASTE_MINIMO = 60;

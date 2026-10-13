@@ -174,8 +174,8 @@ class SelloDeLogoTest {
 
         Mancha m = azules(salida, H / 2, H);
         // El dibujo ocupa solo 600 de 1600 px del archivo; sin recorte saldría
-        // en un tercio de este tamaño.
-        assertThat(m.maxX() - m.minX()).isGreaterThan((int) (W * 0.25));
+        // en un tercio de este tamaño (menos del 8 % del ancho).
+        assertThat(m.maxX() - m.minX()).isGreaterThan((int) (W * 0.18));
     }
 
     @Test

@@ -103,10 +103,11 @@ class DecisorDelAgenteTest {
     }
 
     @Test
-    @DisplayName("una foto del equipo no lleva logo")
-    void equipoSinLogo() {
+    @DisplayName("una foto del equipo lleva logo")
+    void equipoConLogo() {
         Decision d = DecisorDelAgente.decidir(foto(4, true, 4, false, false, Intencion.COMUNIDAD, "EQUIPO"), CON_CREDITOS);
-        assertThat(d.logo()).isFalse();
+        assertThat(d.logo()).isTrue();
         assertThat(d.tratamiento()).isEqualTo(Tratamiento.TAL_CUAL);
+        assertThat(d.explicacion()).contains("Lleva tu logo porque muestra a tu equipo");
     }
 }

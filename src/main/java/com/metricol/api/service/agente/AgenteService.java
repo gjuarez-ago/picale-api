@@ -1397,10 +1397,15 @@ public class AgenteService {
         return w.getAgenteAjusteAcabado() == null ? 0 : w.getAgenteAjusteAcabado();
     }
 
-    /** Un acabado con adorno (franja o marco): de lo que se aprende. */
+    /**
+     * Un acabado con adorno de marca (franja o marco): de lo que se aprende.
+     *
+     * <p>La frase no cuenta. Se descarta una propuesta por lo que dice, no por
+     * llevar frase, y tomarlo como un "no quiero adornos" apagaba las frases de
+     * alguien que sí las quiere (las pide con el pilar Motivación).
+     */
     private static boolean conAdorno(Post p) {
-        return "FRANJA".equals(p.getAgenteAcabado()) || "MARCO".equals(p.getAgenteAcabado())
-                || "FRASE".equals(p.getAgenteAcabado());
+        return "FRANJA".equals(p.getAgenteAcabado()) || "MARCO".equals(p.getAgenteAcabado());
     }
 
     /** Mueve cuánto adorno quiere la cuenta, entre 0 y 2. */

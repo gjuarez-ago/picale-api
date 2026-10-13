@@ -596,7 +596,7 @@ class AgenteServiceTest {
 
             Post p = posts.propuestasDelAgente().get(0);
             assertThat(p.getMediaUrls()).containsExactly(sellada);
-            assertThat(p.getAgenteMotivo()).contains("Lleva tu logo: es producto");
+            assertThat(p.getAgenteMotivo()).contains("Lleva tu logo porque es tu producto");
             assertThat(p.getAgenteTratamiento()).isEqualTo("TAL_CUAL");
 
             agente.descartar(p.getId());
@@ -1200,7 +1200,10 @@ class AgenteServiceTest {
                     .filter(x -> oscura.getUrl().equals(x.getAgenteFotoUrl())).findFirst().orElseThrow();
             assertThat(p.getMediaUrls()).containsExactly(retocada.getUrl());
             assertThat(p.getAgenteTratamiento()).isEqualTo("RETOQUE");
-            assertThat(p.getAgenteMotivo()).contains("está oscura, pero se corrige").contains("Sin logo");
+            // Un lugar del negocio sí se firma: en servicios profesionales la
+            // marca es la persona y su local también la lleva.
+            assertThat(p.getAgenteMotivo()).contains("está oscura, pero se corrige")
+                    .contains("Lleva tu logo porque muestra un lugar de tu negocio");
         });
     }
 

@@ -26,8 +26,8 @@ import java.util.Set;
  * (media). Baja, candidata (baja).</li>
  * <li>Presupuesto: una candidata se diseña si alcanza el ritmo de créditos de
  * la semana; las de prioridad media y baja dejan uno libre para una alta.</li>
- * <li>Logo: en lo que se comparte fuera de la cuenta (producto, promoción,
- * un trabajo terminado del negocio); nunca en un arte terminado.</li>
+ * <li>Logo: en toda foto publicable, porque asocia la imagen con la marca;
+ * nunca en un arte terminado, que ya trae lo suyo.</li>
  * </ol>
  *
  * <p>Después, el director de foto mira la foto en alta resolución
@@ -96,8 +96,16 @@ public final class DecisorDelAgente {
         }
     }
 
-    /** OBRA: lo que hizo el negocio (una construcción, una instalación, un servicio terminado) es su portafolio. */
-    private static final Set<String> CON_LOGO = Set.of("PRODUCTO", "PROMOCION", "OBRA");
+    /**
+     * Lo que se firma con la marca: todo lo publicable.
+     *
+     * <p>En un negocio de servicios profesionales la marca es la persona, así
+     * que su lugar de trabajo, su equipo o una conferencia suya también la
+     * llevan. Lo único que nunca se firma es un arte terminado, que ya trae lo
+     * suyo. OBRA, además, solo firma a quien trabaja por proyecto.
+     */
+    private static final Set<String> CON_LOGO = Set.of("PRODUCTO", "PROMOCION", "OBRA", "LUGAR", "EQUIPO",
+            "EVENTO", "TESTIMONIO", "OTRO");
 
     private DecisorDelAgente() {
     }
@@ -122,17 +130,19 @@ public final class DecisorDelAgente {
                         default -> "el marco";
                     } + ": se la pongo.");
         }
-        if ("MARCO".equals(propuesto) && ajuste >= 1
-                || ("FRANJA".equals(propuesto) || "FRASE".equals(propuesto)) && ajuste >= 2) {
+        // La frase no entra aquí. Un marco y una franja son adorno de marca, y
+        // quien los quita está diciendo que no los quiere; una frase es lo que
+        // la foto dice, y ya tiene su propio interruptor: el pilar Motivación.
+        // Mezclarlas hacía que quitar dos franjas apagara también las frases.
+        if ("MARCO".equals(propuesto) && ajuste >= 1 || "FRANJA".equals(propuesto) && ajuste >= 2) {
             return new Acabado("LIMPIO", "En tu cuenta prefieres las fotos sin adornos: va limpia.");
         }
         return new Acabado(propuesto, null);
     }
 
     /**
-     * Si el tipo de foto lleva logo. Producto y promoción, siempre. Una obra
-     * firma el portafolio de quien trabaja por proyecto: si ya se sabe cómo
-     * trabaja el negocio y no es por proyecto, no lleva.
+        * El tipo de foto lleva logo. Una obra firma el portafolio de quien trabaja
+        * por proyecto; las demás fotos publicables asocian la imagen con la marca.
      */
     static boolean conLogo(String tipo, Set<com.metricol.api.enums.RasgoDelNegocio> rasgos) {
         if (!CON_LOGO.contains(tipo)) {
@@ -210,12 +220,18 @@ public final class DecisorDelAgente {
 
         // 6. Logo.
         boolean logo = conLogo(d.tipo(), c.rasgos());
-        pasos.add(logo ? "Lleva tu logo: es " + switch (d.tipo()) {
-                    case "PROMOCION" -> "una promoción";
-                    case "OBRA" -> "un trabajo tuyo";
-                    default -> "producto";
+        pasos.add(logo ? "Lleva tu logo porque " + switch (d.tipo()) {
+                    case "LUGAR" -> "muestra un lugar de tu negocio";
+                    case "EQUIPO" -> "muestra a tu equipo";
+                    case "EVENTO" -> "muestra una actividad de tu negocio";
+                    case "TESTIMONIO" -> "muestra un testimonio de tu negocio";
+                    case "PROMOCION" -> "anuncia una promoción";
+                    case "OBRA" -> "es un trabajo tuyo";
+                    default -> "es tu producto";
                 } + "."
-                : "Sin logo: no es producto, promoción ni un trabajo tuyo.");
+                // Con la lista de arriba, lo único que llega aquí es una obra
+                // de un negocio que no trabaja por proyecto: no es portafolio.
+                : "Sin logo: no es una foto que convenga firmar con tu marca.");
 
         return new Decision(tratamiento, logo, candidata, pasos);
     }

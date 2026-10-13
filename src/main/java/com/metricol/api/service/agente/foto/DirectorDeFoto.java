@@ -47,8 +47,13 @@ public class DirectorDeFoto {
     static final Set<String> ZONAS = Set.of("TOP_LEFT", "TOP_CENTER", "TOP_RIGHT", "BOTTOM_LEFT", "BOTTOM_CENTER",
             "BOTTOM_RIGHT");
 
+    /**
+     * Cuánto ocupa el logo sobre la foto. Son anchos de marca de agua, no de
+     * cartel: la foto es la protagonista y el logo solo firma. Antes el mediano
+     * era un tercio del ancho y se comía la imagen, sobre todo en un retrato.
+     */
     public enum TamanoLogo {
-        CHICO(0.22), MEDIANO(0.30), GRANDE(0.38);
+        CHICO(0.12), MEDIANO(0.16), GRANDE(0.22);
 
         /** Ancho del logo respecto al ancho de la foto. */
         public final double ancho;

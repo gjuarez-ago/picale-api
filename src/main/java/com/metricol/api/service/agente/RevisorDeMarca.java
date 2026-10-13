@@ -163,6 +163,11 @@ public class RevisorDeMarca {
             - tipo OBRA: un trabajo que hizo el negocio, terminado o en proceso:
               una construccion, una instalacion, una remodelacion, una
               reparacion, un jardin, un mueble hecho a medida. Es su portafolio.
+            - tipo LUGAR: un paisaje, una fachada, un local o un espacio que
+              aparece en la foto.
+            - tipo EQUIPO: personas que trabajan en el negocio o prestan el
+              servicio. TESTIMONIO: una persona contando su experiencia.
+              EVENTO: una actividad, celebracion o momento del negocio.
             - intencion: para que serviria publicarla.
             - orientacion: como esta tomada la foto (vertical = mas alta que ancha).
             - efimero: es del momento y pierde sentido en unos dias: la promocion
