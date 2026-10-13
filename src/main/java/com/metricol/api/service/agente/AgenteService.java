@@ -704,6 +704,8 @@ public class AgenteService {
         List<String> pasos = new ArrayList<>();
         // Lo que ya dijo una foto del carrusel no lo repite la siguiente.
         List<String> dichas = new ArrayList<>();
+        // Lo que el director vio en cada una, para quien escribe el texto.
+        List<String> escenas = new ArrayList<>();
         int retocadas = 0;
         int mejoradas = 0;
         boolean conLogo = false;
@@ -725,6 +727,7 @@ public class AgenteService {
             conLogo |= lista.conLogo();
             quedan.add(f);
             urls.add(lista.url());
+            escenas.add(lista.escena() == null ? "" : lista.escena());
         }
         if (quedan.size() < 2) {
             boolean alguna = false;
@@ -754,6 +757,12 @@ public class AgenteService {
         List<String> queSeVe = new ArrayList<>();
         for (int i = 0; i < quedan.size(); i++) {
             String d = quedan.get(i).revision().descripcion();
+            // Las dos miradas de cada foto: la del revisor y la del director,
+            // que la vio en alta resolución mientras la dirigía.
+            String escena = i < escenas.size() ? escenas.get(i) : "";
+            if (!escena.isBlank() && !escena.equalsIgnoreCase(d)) {
+                d = d.isBlank() ? escena : d + " " + escena;
+            }
             if (!d.isBlank()) {
                 queSeVe.add("Foto " + (i + 1) + ": " + d);
             }
@@ -868,16 +877,19 @@ public class AgenteService {
                         decision.prioridad(), conPaso(decision.pasos(), "El diseño no salió; va tal cual."));
             }
 
-            Redactor.Borrador borrador = redactor.redactar(encargo,
-                    revision.descripcion().isBlank() ? List.of() : List.of(revision.descripcion()),
-                    redes, negocio);
+            // Mejora, retoque y logo sobre copias: la original no se toca. Lo que
+            // no se pueda (la IA, ffmpeg, un logo ilegible) se salta sin perder la propuesta.
+            //
+            // Va ANTES de escribir a propósito: aquí es donde el director mira
+            // la foto en alta resolución. Escribir primero dejaba ese análisis
+            // en la basura y el texto salía de una sola frase, que es como se
+            // escriben los folletos.
+            FotoLista lista = prepararFoto(asset, w, revision, decision, historia, decision.logo(), cambio);
+
+            Redactor.Borrador borrador = redactor.redactar(encargo, loQueSeVe(revision, lista), redes, negocio);
 
             CalendarioDelAgente.Hueco hueco = historia ? huecoDeHistoria(w) : hueco(w, categoria(revision.diagnostico()));
             LocalDateTime fecha = hueco.cuando();
-
-            // Mejora, retoque y logo sobre copias: la original no se toca. Lo que
-            // no se pueda (la IA, ffmpeg, un logo ilegible) se salta sin perder la propuesta.
-            FotoLista lista = prepararFoto(asset, w, revision, decision, historia, decision.logo(), cambio);
             decision = lista.decision();
             List<String> pasos = lista.pasos();
             String publicar = lista.url();
@@ -1384,8 +1396,31 @@ public class AgenteService {
     }
 
     /** La foto lista para publicar, lo que se decidió al final y cada paso en palabras. */
+    /**
+     * Lo que se ve en la foto, para quien escribe el texto: lo que vio el
+     * revisor y lo que vio el director.
+     *
+     * <p>Son dos miradas distintas y las dos hacen falta. El revisor juzga si
+     * la foto va con la marca; el director la mira en alta resolución para
+     * dirigirla, y por eso ve el detalle —la máquina, la herramienta, la hora
+     * del día— que vuelve un texto concreto en vez de un folleto. Antes solo
+     * viajaba la del revisor, y encima recortada a dos frases.
+     */
+    private static List<String> loQueSeVe(RevisorDeMarca.Revision revision, FotoLista lista) {
+        List<String> visto = new ArrayList<>();
+        if (!revision.descripcion().isBlank()) {
+            visto.add(revision.descripcion());
+        }
+        if (lista != null && lista.escena() != null && !lista.escena().isBlank()
+                && !lista.escena().equalsIgnoreCase(revision.descripcion())) {
+            visto.add(lista.escena());
+        }
+        return visto;
+    }
+
+    /** @param escena lo que el director vio en la foto, para quien escribe el texto */
     record FotoLista(String url, DecisorDelAgente.Decision decision, List<String> pasos, boolean conLogo,
-            String acabado, String mejoraSugerida, String direccion) {
+            String acabado, String mejoraSugerida, String direccion, String escena) {
     }
 
     /** La dirección, para mejorar después sin volver a mirar la foto. Nulo si no hay qué mejorar. */
@@ -1550,7 +1585,7 @@ public class AgenteService {
                 }
                 return new FotoLista(url, decision, pasos, sellada,
                         historia && ("FRANJA".equals(estilo) || "FRASE".equals(estilo)) ? "LIMPIO" : estilo, sugerencia,
-                        guardarDireccion(direccion, conLogo, historia));
+                        guardarDireccion(direccion, conLogo, historia), direccion.escena());
             }
         }
         if (conLogo) {
@@ -1570,7 +1605,7 @@ public class AgenteService {
             }
         }
         return new FotoLista(url, decision, pasos, sellada, null, sugerencia,
-                guardarDireccion(direccion, conLogo, historia));
+                guardarDireccion(direccion, conLogo, historia), direccion == null ? "" : direccion.escena());
     }
 
     private static String dondeVa(String zona) {

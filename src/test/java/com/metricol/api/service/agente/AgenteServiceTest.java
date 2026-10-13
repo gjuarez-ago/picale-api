@@ -459,7 +459,13 @@ class AgenteServiceTest {
     void soloLoNuevo() {
         enElWorkspace(() -> {
             conInstagram();
-            foto("vieja.jpg");
+            // Vieja de verdad: subida y encendido ocurren con microsegundos de
+            // diferencia, y con la marca de tiempo empatada la foto caía de un
+            // lado o del otro. Lo que se prueba es la regla, no el reloj.
+            MediaAsset vieja = assets.findById(foto("vieja.jpg").getId()).orElseThrow();
+            vieja.setCreatedAt(LocalDateTime.now().minusDays(1));
+            assets.save(vieja);
+
             agente.encender(ws.getId(), true);
             revisaComo(RevisorDeMarca.Veredicto.VA, "va");
             assertThat(agente.vuelta(ws.getId())).isZero();
@@ -1286,6 +1292,32 @@ class AgenteServiceTest {
                     org.mockito.ArgumentMatchers.contains("menciona Cancún"), any(), any(), any());
             // Sin logo: no se pidió la copia sellada para la nueva.
             assertThat(nuevas.get(0).getMediaUrls()).containsExactly(depa.getUrl());
+        });
+    }
+
+    @Test
+    @DisplayName("quien escribe el texto recibe las dos miradas: la del revisor y la del director")
+    void elTextoVeLaFoto() {
+        enElWorkspace(() -> {
+            conInstagram();
+            agente.encender(ws.getId(), true);
+            foto("obra.jpg");
+            when(revisor.revisar(anyString(), any(), anyBoolean())).thenReturn(new RevisorDeMarca.Revision(
+                    RevisorDeMarca.Veredicto.VA, "es tu obra", "Un trabajador corta una losa de concreto",
+                    "Presumir el trabajo", "OBRA"));
+            when(directorDeFoto.dirigir(anyString(), any(), any(), any())).thenReturn(
+                    new com.metricol.api.service.agente.foto.DirectorDeFoto.Direccion(false, List.of(), "", List.of(),
+                            "BOTTOM_LEFT", com.metricol.api.service.agente.foto.DirectorDeFoto.TamanoLogo.CHICO, "",
+                            List.of(), null, "LIMPIO", "",
+                            "Lleva casco amarillo y chaleco naranja; usa una cortadora de disco y levanta polvo."));
+
+            agente.vuelta(ws.getId());
+
+            // Sin esto el texto se escribía con una sola frase y salía un folleto.
+            org.mockito.Mockito.verify(redactor).redactar(anyString(),
+                    org.mockito.ArgumentMatchers.argThat(visto -> visto.stream().anyMatch(s -> s.contains("losa"))
+                            && visto.stream().anyMatch(s -> s.contains("cortadora de disco"))),
+                    any(), any());
         });
     }
 

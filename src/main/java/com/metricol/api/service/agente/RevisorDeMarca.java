@@ -130,7 +130,7 @@ public class RevisorDeMarca {
             Contestas SOLO un JSON:
             {"veredicto": "VA" | "OBSERVACION" | "DESCARTADA",
              "motivo": "una frase para el dueno, en espanol, diciendo por que",
-             "descripcion": "que se ve, concreto, una o dos frases",
+             "descripcion": "que se ve, concreto: que esta pasando, quien o que aparece, donde, y el detalle que distingue esta foto de otra parecida. 2 a 4 frases",
              "idea": "que comunicarias con esta foto, en una frase, como encargo para quien escribe",
              "tipo": "PRODUCTO" | "OBRA" | "LUGAR" | "EQUIPO" | "EVENTO" | "PROMOCION" | "TESTIMONIO" | "PERSONAL" | "OTRO",
              "calidad": 1-5,
@@ -149,6 +149,13 @@ public class RevisorDeMarca {
              "lugarDelNegocio": true | false}
 
             Como calificar:
+            - descripcion: es lo UNICO que vera quien escribe el texto, asi que
+              no resumas: cuenta la escena. Que hace la gente, que objetos o
+              maquinas hay, como es el lugar, la hora o el clima si se nota, y
+              el detalle concreto que hace a esta foto esta y no cualquier otra
+              del mismo negocio. Nombra las cosas por su nombre. Nada de
+              adjetivos de folleto ("profesional", "de calidad", "excelente"):
+              eso no es lo que se ve, es lo que alguien quisiera decir.
             - calidad: luz, nitidez, encuadre y resolucion. 5 = foto profesional,
               3 = buena foto de telefono, 1 = casi inservible.
             - arreglable: true si lo que falla es luz, color, contraste o recorte

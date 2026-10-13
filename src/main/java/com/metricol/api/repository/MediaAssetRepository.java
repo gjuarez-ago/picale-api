@@ -248,6 +248,15 @@ public interface MediaAssetRepository extends JpaRepository<MediaAsset, UUID> {
      *
      * <p>Fotos, y videos que ya tienen portada: la IA mira el video por su
      * fotograma, así que uno recién subido espera unos segundos a tenerlo.
+     *
+     * <p>El id es el último criterio de orden: dos archivos subidos en el mismo
+     * instante salían en cualquier orden, y eso hacía fallar las pruebas una de
+     * cada tantas veces sin que nada hubiera cambiado.
+     *
+     * <p>El límite es {@code >=} y no {@code >} a propósito: con el estricto, lo
+     * que se sube en el mismo instante en que se enciende el agente se pierde
+     * para siempre, que es peor que revisar de más. Dos marcas de tiempo iguales
+     * no se pueden distinguir, así que se elige el lado que no tira trabajo.
      */
     @Query("""
             select m from MediaAsset m
@@ -262,7 +271,7 @@ public interface MediaAssetRepository extends JpaRepository<MediaAsset, UUID> {
               and (m.storageKey is null or m.storageKey not like 'logos/%')
               and not exists (select 1 from Workspace w where w.logoUrl = m.url)
               and not exists (select 1 from Post p join p.mediaUrls u where u = m.url and p.deletedAt is null)
-            order by coalesce(m.agenteIntentos, 0) asc, m.createdAt asc
+            order by coalesce(m.agenteIntentos, 0) asc, m.createdAt asc, m.id asc
             """)
     // Las que ya fallaron van al final: si no, cuatro que fallan siempre taparían todo lo nuevo.
     List<MediaAsset> paraElAgente(LocalDateTime desde, LocalDateTime vencido,

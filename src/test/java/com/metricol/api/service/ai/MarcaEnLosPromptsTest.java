@@ -71,7 +71,9 @@ class MarcaEnLosPromptsTest {
         ArgumentCaptor<String> prompt = ArgumentCaptor.forClass(String.class);
         verify(client).completeJson(any(), anyString(), prompt.capture());
         assertThat(prompt.getValue())
-                .contains("Que vende o que destaca: Tacos al pastor y aguas frescas")
+                // Con su etiqueta: es contexto del negocio, no una lista para copiar al texto.
+                .contains("NO material para el texto")
+                .contains("Tacos al pastor y aguas frescas")
                 .contains("A quien le habla: Familias y oficinistas")
                 .contains("Como suena su marca (escribe asi): cercano y amable, divertido y con humor")
                 .contains("Nunca digas ni hagas esto: No hablar de precios")

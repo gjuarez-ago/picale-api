@@ -18,6 +18,15 @@ public class OpenAiProperties {
 
     private String model;
 
+    /**
+     * Cuánto razona el modelo de texto, cuando es uno que razona (gpt-5 en
+     * adelante): {@code minimal}, {@code low}, {@code medium} o {@code high}.
+     * Solo se manda a esos; los demás lo rechazan. En {@code low} porque
+     * escribir un pie de publicación no pide pensar diez segundos, y hay
+     * pantallas esperando la respuesta.
+     */
+    private String reasoningEffort = "low";
+
     /** El modelo que genera las imágenes de campaña. Tiene que estar permitido en el proyecto de OpenAI. */
     private String imageModel = "gpt-image-1.5";
 

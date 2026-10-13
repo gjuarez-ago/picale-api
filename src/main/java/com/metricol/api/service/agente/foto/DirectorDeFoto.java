@@ -76,7 +76,15 @@ public class DirectorDeFoto {
      */
     public record Direccion(boolean mejorar, List<String> deficiencias, String encargo, List<String> conservar,
             String logoZona, TamanoLogo logoTamano, String porque, List<String> quitar, double[] encuadre,
-            String estilo, String rotulo) {
+            String estilo, String rotulo, String escena) {
+
+        /** Compatibilidad: una dirección sin escena (la de las pruebas viejas). */
+        public Direccion(boolean mejorar, List<String> deficiencias, String encargo, List<String> conservar,
+                String logoZona, TamanoLogo logoTamano, String porque, List<String> quitar, double[] encuadre,
+                String estilo, String rotulo) {
+            this(mejorar, deficiencias, encargo, conservar, logoZona, logoTamano, porque, quitar, encuadre,
+                    estilo, rotulo, "");
+        }
 
         /** Hay algo que hacerle además del logo: limpiarla, encuadrarla o vestirla. */
         public boolean diseno() {
@@ -102,7 +110,8 @@ public class DirectorDeFoto {
             shot WITHOUT losing realism, and where the business logo should go.
 
             Answer ONLY a JSON object:
-            {"mejorar": true | false,
+            {"escena": "IN SPANISH, 2 to 4 sentences: what is actually happening in this photo. Who is doing what, with which tools or machines, what the place looks like, time of day or weather if visible, and the one concrete detail that makes THIS photo this one and not any other from the same business. Name things by their name. No brochure adjectives (profesional, de calidad, excelente): that is not what is seen.",
+             "mejorar": true | false,
              "deficiencias": ["2 to 4 short items IN SPANISH for the owner, e.g. lineas chuecas, sombras muy oscuras, cielo quemado, color amarillento, poca nitidez"],
              "encargo": "the editing instructions IN ENGLISH for an image-editing model (see below)",
              "conservar": ["IN ENGLISH: the concrete things that must stay identical in THIS photo"],
@@ -351,7 +360,7 @@ public class DirectorDeFoto {
         }
         return new Direccion(mejorar, lista(n.path("deficiencias"), 4, 60), mejorar ? encargo : "",
                 lista(n.path("conservar"), 10, 160), zona, tamano, recortar(logo.path("porque").asText(""), 200),
-                quitar, encuadre, estilo, rotulo);
+                quitar, encuadre, estilo, rotulo, recortar(n.path("escena").asText(""), 600));
     }
 
     private static List<String> lista(JsonNode nodo, int maximo, int largo) {

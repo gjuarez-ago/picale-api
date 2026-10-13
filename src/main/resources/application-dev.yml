@@ -158,7 +158,10 @@ uploadpost:
 # Si se cambia de modelo hay que cambiar tambien su precio.
 openai:
   api-key: ${OPENAI_API_KEY:}
-  model: ${OPENAI_API_MODEL:gpt-4.1-mini}
+  model: ${OPENAI_API_MODEL:gpt-5-mini}
+  # Solo se manda a los modelos que razonan (gpt-5 en adelante); los demas lo
+  # rechazan, igual que ellos rechazan la temperatura.
+  reasoning-effort: ${OPENAI_REASONING_EFFORT:low}
   pricing:
     input-usd-per-million: ${OPENAI_PRICING_INPUT_PER_1M_USD:0}
     output-usd-per-million: ${OPENAI_PRICING_OUTPUT_PER_1M_USD:0}

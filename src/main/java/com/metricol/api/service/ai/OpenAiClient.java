@@ -264,6 +264,10 @@ public class OpenAiClient {
         body.put("model", props.getModel());
         if (admiteTemperatura(props.getModel())) {
             body.put("temperature", temperatura);
+        } else if (props.getReasoningEffort() != null && !props.getReasoningEffort().isBlank()) {
+            // Un modelo que razona y nadie le dice cuánto se pone a pensar de
+            // más: aquí se escribe un pie de publicación, no se resuelve nada.
+            body.put("reasoning_effort", props.getReasoningEffort().trim());
         }
         body.put("messages", List.of(
                 Map.of("role", "system", "content", systemPrompt),

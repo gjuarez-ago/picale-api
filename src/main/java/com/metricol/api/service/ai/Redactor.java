@@ -72,6 +72,18 @@ public class Redactor {
 
             Tambien recibes que se ve en las imagenes y en que redes se publica.
 
+            ESCRIBE SOBRE ESTA FOTO, no sobre el negocio en general. Lo que se
+            ve es el material: el trabajo que se esta haciendo, la herramienta,
+            el lugar, la hora, lo que esa escena tiene de propio. De ahi sale el
+            texto. Los datos del negocio son el contexto que te dice a quien le
+            hablas y con que tono, no una lista para copiar.
+
+            Dos textos para dos fotos distintas del mismo negocio tienen que
+            poder distinguirse: si lo que escribiste serviria igual para
+            cualquier otra foto suya, no has escrito nada. Nada de "calidad y
+            compromiso en cada proyecto" ni "soluciones a tu medida": eso no
+            dice nada y se nota.
+
             Devuelves UN JSON con esta forma:
             {"titulo": "...", "guion": "...", "textos": {"INSTAGRAM": "...", "TIKTOK": "..."}}
 
@@ -445,7 +457,12 @@ public class Redactor {
         }
 
         MarcaDelNegocio marca = negocio.marca() == null ? MarcaDelNegocio.VACIA : negocio.marca();
-        agregar(sb, "Que vende o que destaca", marca.queVende());
+        // Con su etiqueta pegada: sin esto, el modelo copiaba la lista de
+        // servicios como si fuera el texto, y toda publicacion acababa siendo
+        // el mismo folleto con otra foto encima.
+        agregar(sb, "Que vende o que destaca (CONTEXTO para saber de que va el negocio, NO material"
+                + " para el texto: no enumeres sus servicios salvo que se vean en la imagen o la persona"
+                + " los haya dicho)", marca.queVende());
         agregar(sb, "A quien le habla", marca.publico());
         agregar(sb, "Como suena su marca (escribe asi)", marca.personalidadEs());
         agregar(sb, "Nunca digas ni hagas esto", marca.evitar());
