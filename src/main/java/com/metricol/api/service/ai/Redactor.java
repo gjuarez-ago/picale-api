@@ -72,11 +72,21 @@ public class Redactor {
 
             Tambien recibes que se ve en las imagenes y en que redes se publica.
 
-            ESCRIBE SOBRE ESTA FOTO, no sobre el negocio en general. Lo que se
-            ve es el material: el trabajo que se esta haciendo, la herramienta,
-            el lugar, la hora, lo que esa escena tiene de propio. De ahi sale el
-            texto. Los datos del negocio son el contexto que te dice a quien le
-            hablas y con que tono, no una lista para copiar.
+            QUIEN MANDA SOBRE QUE, en este orden:
+
+            1. Lo que dijo la persona. Nadie lo contradice.
+            2. Lo que se ve en la foto: decide DE QUE habla la publicacion. El
+               trabajo que se esta haciendo, la herramienta, el lugar, la hora,
+               lo que esa escena tiene de propio.
+            3. Su voz —historia, frases, valores, de que quiere hablar—: decide
+               COMO suena y que se puede decir. Una foto igual en dos negocios
+               distintos tiene que dar dos textos distintos, y la diferencia
+               sale de aqui.
+            4. Lo que vende: contexto, lo ultimo. Nunca es el texto.
+
+            Un texto que podria firmar cualquier negocio de su giro esta mal
+            aunque este bien escrito: si quitas el nombre y podria ser de otra
+            cuenta, reescribelo.
 
             Dos textos para dos fotos distintas del mismo negocio tienen que
             poder distinguirse: si lo que escribiste serviria igual para
@@ -457,21 +467,29 @@ public class Redactor {
         }
 
         MarcaDelNegocio marca = negocio.marca() == null ? MarcaDelNegocio.VACIA : negocio.marca();
-        // Con su etiqueta pegada: sin esto, el modelo copiaba la lista de
-        // servicios como si fuera el texto, y toda publicacion acababa siendo
-        // el mismo folleto con otra foto encima.
-        agregar(sb, "Que vende o que destaca (CONTEXTO para saber de que va el negocio, NO material"
-                + " para el texto: no enumeres sus servicios salvo que se vean en la imagen o la persona"
-                + " los haya dicho)", marca.queVende());
-        agregar(sb, "A quien le habla", marca.publico());
-        agregar(sb, "Como suena su marca (escribe asi)", marca.personalidadEs());
-        agregar(sb, "Nunca digas ni hagas esto", marca.evitar());
-        agregar(sb, "Como trabaja (respetalo al escribir)", marca.comoTrabajaEs());
+
+        // Primero quien es, al final que vende. El orden importa: lo que va
+        // arriba es lo que el modelo toma como el centro del texto, y con el
+        // catalogo arriba toda publicacion acababa siendo el mismo folleto con
+        // otra foto encima.
+        // Solo si hay voz que anunciar: con el negocio desconocido no se abre
+        // una cabecera vacia, que es invitar al modelo a rellenar el hueco.
+        if (hayAlguno(marca.historia(), marca.valores(), marca.frases(), marca.personalidadEs(), marca.pilaresEs())) {
+            sb.append("- SU VOZ manda sobre cualquier forma 'correcta' de escribir."
+                    + " Esto es lo que lo hace el y no otro negocio del mismo giro:\n");
+        }
         agregar(sb, "Su historia (quien esta detras, por que existe)", marca.historia());
         agregar(sb, "Sus valores", marca.valores());
         agregar(sb, "Sus frases (usalas tal cual o inspirate en su estilo; no le atribuyas frases inventadas)",
                 marca.frases() == null ? null : marca.frases().replace('\n', '|'));
+        agregar(sb, "Como suena su marca (escribe asi)", marca.personalidadEs());
         agregar(sb, "De que quiere hablar en redes", marca.pilaresEs());
+        agregar(sb, "A quien le habla", marca.publico());
+        agregar(sb, "Nunca digas ni hagas esto", marca.evitar());
+        agregar(sb, "Como trabaja (respetalo al escribir)", marca.comoTrabajaEs());
+        agregar(sb, "Que vende o que destaca (CONTEXTO para saber de que va el negocio, NO material"
+                + " para el texto: no enumeres sus servicios salvo que se vean en la imagen o la persona"
+                + " los haya dicho)", marca.queVende());
         if (marca.hayContacto()) {
             // Los datos van con su limite pegado: se usan cuando la publicacion invita a escribir o visitar, y
             // no se inventan otros.
@@ -481,6 +499,16 @@ public class Redactor {
         // Sale de cómo les fue a sus publicaciones, no de una suposición: pesa más que la intuición.
         agregar(sb, "Lo que le ha funcionado en sus redes", negocio.aprendido());
         return sb.toString();
+    }
+
+    /** Si alguno de esos campos trae algo. */
+    private static boolean hayAlguno(String... valores) {
+        for (String v : valores) {
+            if (v != null && !v.isBlank()) {
+                return true;
+            }
+        }
+        return false;
     }
 
     private static void agregar(StringBuilder sb, String etiqueta, String valor) {

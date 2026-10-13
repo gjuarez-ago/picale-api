@@ -79,6 +79,13 @@ class MarcaEnLosPromptsTest {
                 .contains("Nunca digas ni hagas esto: No hablar de precios")
                 .contains("WhatsApp +529991234567")
                 .contains("solo si el texto invita a escribir o visitar");
+
+        // Quien es va ANTES de que vende. Con el catálogo arriba, el modelo lo
+        // tomaba como el centro del texto y salía el mismo folleto cada vez.
+        assertThat(prompt.getValue().indexOf("SU VOZ manda"))
+                .isLessThan(prompt.getValue().indexOf("Que vende o que destaca"));
+        assertThat(prompt.getValue().indexOf("Sus frases"))
+                .isLessThan(prompt.getValue().indexOf("Que vende o que destaca"));
     }
 
     @Test
