@@ -555,7 +555,9 @@ class AgenteServiceTest {
             agente.encender(ws.getId(), true);
             when(revisor.revisar(anyString(), any(), anyBoolean())).thenReturn(new RevisorDeMarca.Revision(
                     RevisorDeMarca.Veredicto.VA, "es tu obra", "Una obra", "Presumir la obra", "PRODUCTO"));
-            when(directorDeFoto.dirigir(anyString(), any(), any())).thenReturn(
+            // Cuatro argumentos: el último son las frases que ya lleva el
+            // carrusel, para que la siguiente foto no las repita.
+            when(directorDeFoto.dirigir(anyString(), any(), any(), any())).thenReturn(
                     new com.metricol.api.service.agente.foto.DirectorDeFoto.Direccion(false, List.of(), "", List.of(),
                             "BOTTOM_LEFT", com.metricol.api.service.agente.foto.DirectorDeFoto.TamanoLogo.MEDIANO, "",
                             List.of(), null, "FRANJA", "Obra terminada"));

@@ -32,4 +32,16 @@ class OpenAiClientTest {
         assertThat(OpenAiClient.Uso.de(Map.of("choices", List.of()))).isEqualTo(new OpenAiClient.Uso(0, 0));
         assertThat(OpenAiClient.Uso.de(null)).isEqualTo(new OpenAiClient.Uso(0, 0));
     }
+
+    @Test
+    @DisplayName("a un modelo que razona no se le manda temperatura: la rechaza con un 400")
+    void temperaturaSoloDondeSeAdmite() {
+        assertThat(OpenAiClient.admiteTemperatura("gpt-4.1-mini")).isTrue();
+        assertThat(OpenAiClient.admiteTemperatura("gpt-4o")).isTrue();
+        assertThat(OpenAiClient.admiteTemperatura("gpt-5-mini")).isFalse();
+        assertThat(OpenAiClient.admiteTemperatura("GPT-5.1-mini")).isFalse();
+        assertThat(OpenAiClient.admiteTemperatura("o3-mini")).isFalse();
+        // Sin modelo configurado se manda como siempre: no se rompe nada.
+        assertThat(OpenAiClient.admiteTemperatura(null)).isTrue();
+    }
 }

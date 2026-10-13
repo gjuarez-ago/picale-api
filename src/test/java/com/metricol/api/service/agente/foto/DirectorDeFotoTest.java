@@ -132,4 +132,17 @@ class DirectorDeFotoTest {
         assertThat(director.interpretar("{\"acabado\": {\"estilo\": \"FRASE\", \"rotulo\": \"\"}}").estilo())
                 .isEqualTo("LIMPIO");
     }
+
+    @Test
+    @DisplayName("en un carrusel se le dicen las frases que ya llevan las otras fotos, para que no las repita")
+    void noRepiteEnCarrusel() {
+        String solo = DirectorDeFoto.pedido(null, "una grúa montando postes");
+        assertThat(solo).doesNotContain("carousel");
+
+        String enCarrusel = DirectorDeFoto.pedido(null, "una grúa montando postes",
+                java.util.List.of("Cumplir la fecha también es parte del trabajo."));
+        assertThat(enCarrusel).contains("carousel")
+                .contains("Cumplir la fecha también es parte del trabajo.")
+                .contains("Do NOT repeat");
+    }
 }

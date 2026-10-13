@@ -218,6 +218,17 @@ public class DirectorDeFoto {
      * @return la dirección, o {@code null} si no se pudo
      */
     public Direccion dirigir(String url, Redactor.Negocio negocio, String descripcion) {
+        return dirigir(url, negocio, descripcion, List.of());
+    }
+
+    /**
+     * @param yaDichas las frases que ya llevan las otras fotos de este carrusel.
+     *                 Cada foto se dirige por separado, así que sin esto la
+     *                 segunda no sabe lo que dijo la primera y elige la misma
+     *                 frase de la marca: un carrusel repitiendo el mismo
+     *                 letrero tres veces.
+     */
+    public Direccion dirigir(String url, Redactor.Negocio negocio, String descripcion, List<String> yaDichas) {
         if (!disponible() || url == null) {
             return null;
         }
@@ -225,7 +236,8 @@ public class DirectorDeFoto {
             String modelo = hay(props.getPhotoDirectorModel()) ? props.getPhotoDirectorModel()
                     : props.getDirectorModel();
             String respuesta = client.mirar(AiOperacion.AGENTE_DIRIGIR_FOTO, modelo,
-                    props.getPhotoDirectorReasoningEffort(), SISTEMA, pedido(negocio, descripcion), List.of(url),
+                    props.getPhotoDirectorReasoningEffort(), SISTEMA, pedido(negocio, descripcion, yaDichas),
+                    List.of(url),
                     "high", props.getDirectorPricing());
             return interpretar(respuesta);
         } catch (Exception ex) {
@@ -235,6 +247,10 @@ public class DirectorDeFoto {
     }
 
     static String pedido(Redactor.Negocio n, String descripcion) {
+        return pedido(n, descripcion, List.of());
+    }
+
+    static String pedido(Redactor.Negocio n, String descripcion, List<String> yaDichas) {
         StringBuilder t = new StringBuilder();
         if (n != null) {
             t.append("Business: ").append(hay(n.nombre()) ? n.nombre().strip() : "a local business");
@@ -267,6 +283,12 @@ public class DirectorDeFoto {
                     + "(a portrait, a landscape, a moment of their day) can use FRASE, "
                     + "and its logo goes small, just signing a corner.\n");
             }
+        }
+        if (yaDichas != null && !yaDichas.isEmpty()) {
+            t.append("This photo goes in a carousel. These phrases are already on the other photos (Spanish): ")
+                    .append(String.join(" | ", yaDichas))
+                    .append(". Do NOT repeat them or say the same thing in other words: write a different one, "
+                            + "about something else of this photo, or use LIMPIO if there is nothing new to say.\n");
         }
         t.append("Direct this photo.");
         return t.toString();

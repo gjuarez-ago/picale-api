@@ -702,6 +702,8 @@ public class AgenteService {
         List<EnTanda> quedan = new ArrayList<>();
         List<String> urls = new ArrayList<>();
         List<String> pasos = new ArrayList<>();
+        // Lo que ya dijo una foto del carrusel no lo repite la siguiente.
+        List<String> dichas = new ArrayList<>();
         int retocadas = 0;
         int mejoradas = 0;
         boolean conLogo = false;
@@ -713,7 +715,8 @@ public class AgenteService {
                 marcar(f.asset(), EtapaAgente.OBSERVACION, d.explicacion());
                 continue;
             }
-            FotoLista lista = prepararFoto(f.asset(), w, f.revision(), d, false, urls.isEmpty() && d.logo());
+            FotoLista lista = prepararFoto(f.asset(), w, f.revision(), d, false, urls.isEmpty() && d.logo(),
+                    null, dichas);
             if (lista.decision().tratamiento() == DecisorDelAgente.Tratamiento.MEJORA) {
                 mejoradas++;
             } else if (lista.decision().tratamiento() == DecisorDelAgente.Tratamiento.RETOQUE) {
@@ -1456,11 +1459,23 @@ public class AgenteService {
     /** @param cambio lo que pidió la persona ("sin franja", "con marco"), o nulo */
     FotoLista prepararFoto(MediaAsset asset, Workspace w, RevisorDeMarca.Revision revision,
             DecisorDelAgente.Decision decision, boolean historia, boolean conLogo, Cambio cambio) {
+        return prepararFoto(asset, w, revision, decision, historia, conLogo, cambio, null);
+    }
+
+    /**
+     * @param dichas las frases que ya llevan las otras fotos del carrusel. Se
+     *               le pasan al director para que no repita, y se le agrega la
+     *               que elija esta. Nulo cuando la foto va sola.
+     */
+    FotoLista prepararFoto(MediaAsset asset, Workspace w, RevisorDeMarca.Revision revision,
+            DecisorDelAgente.Decision decision, boolean historia, boolean conLogo, Cambio cambio,
+            List<String> dichas) {
         com.metricol.api.service.agente.foto.DirectorDeFoto.Direccion direccion = null;
         boolean fotoTalCual = decision.tratamiento() == DecisorDelAgente.Tratamiento.TAL_CUAL
                 || decision.tratamiento() == DecisorDelAgente.Tratamiento.RETOQUE;
         if (fotoTalCual && !revision.diagnostico().esArte()) {
-            direccion = director.dirigir(asset.getUrl(), negocio(w), revision.descripcion());
+            direccion = director.dirigir(asset.getUrl(), negocio(w), revision.descripcion(),
+                    dichas == null ? List.of() : List.copyOf(dichas));
         }
         // Mejorar con IA cuesta créditos: se ofrece en la propuesta, no se hace solo.
         String sugerencia = null;
@@ -1505,6 +1520,11 @@ public class AgenteService {
             }
             if (vestido.paso() != null) {
                 pasos.add(vestido.paso());
+            }
+            // Lo que dice esta foto, para que la siguiente del carrusel no lo repita.
+            if (dichas != null && ("FRASE".equals(estilo) || "FRANJA".equals(estilo))
+                    && !direccion.rotulo().isBlank()) {
+                dichas.add(direccion.rotulo());
             }
             String acabada = logo.acabar(base, logoDeMarca, w.getId(),
                     new com.metricol.api.service.campaign.LogoSobreFoto.Acabado(estilo,

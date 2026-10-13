@@ -216,6 +216,22 @@ public class OpenAiClient {
         return String.valueOf(contenido).trim();
     }
 
+    /**
+     * Si al modelo se le puede pedir una temperatura.
+     *
+     * <p>Los que razonan —la familia gpt-5 y los o1/o3/o4— solo aceptan la de
+     * fábrica y rechazan la petición entera con un 400 si se les manda otra.
+     * Mandarla igual era lo que impedía subir el modelo de texto: la variable
+     * se cambiaba y dejaba de escribirse una sola publicación.
+     */
+    static boolean admiteTemperatura(String modelo) {
+        if (modelo == null || modelo.isBlank()) {
+            return true;
+        }
+        String m = modelo.trim().toLowerCase(java.util.Locale.ROOT);
+        return !m.startsWith("gpt-5") && !m.startsWith("o1") && !m.startsWith("o3") && !m.startsWith("o4");
+    }
+
     /** Sin temperature: los modelos que razonan solo aceptan la de fábrica. */
     private static Map<String, Object> cuerpoParaMirar(String modelo, String esfuerzo, String sistema,
             List<Map<String, Object>> partes) {
@@ -246,7 +262,9 @@ public class OpenAiClient {
         // Map.of no admite construir un mapa a medias.
         Map<String, Object> body = new LinkedHashMap<>();
         body.put("model", props.getModel());
-        body.put("temperature", temperatura);
+        if (admiteTemperatura(props.getModel())) {
+            body.put("temperature", temperatura);
+        }
         body.put("messages", List.of(
                 Map.of("role", "system", "content", systemPrompt),
                 Map.of("role", "user", "content", contenidoUsuario)));
