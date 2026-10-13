@@ -105,7 +105,16 @@ public final class DecisorDelAgente {
      * suyo. OBRA, además, solo firma a quien trabaja por proyecto.
      */
     private static final Set<String> CON_LOGO = Set.of("PRODUCTO", "PROMOCION", "OBRA", "LUGAR", "EQUIPO",
-            "EVENTO", "TESTIMONIO", "OTRO");
+            "EVENTO", "TESTIMONIO", "PERSONAL", "OTRO");
+
+    /**
+     * Donde el logo va siempre del tamaño más chico: una foto personal (y una
+     * con frase, que es lo que suele llevar). La marca está, pero firmando una
+     * esquina; un logo grande sobre un retrato lo convierte en un anuncio.
+     */
+    public static boolean logoDiscreto(String tipo, String acabado) {
+        return "PERSONAL".equals(tipo) || "FRASE".equals(acabado);
+    }
 
     private DecisorDelAgente() {
     }
@@ -221,6 +230,7 @@ public final class DecisorDelAgente {
         // 6. Logo.
         boolean logo = conLogo(d.tipo(), c.rasgos());
         pasos.add(logo ? "Lleva tu logo porque " + switch (d.tipo()) {
+                    case "PERSONAL" -> "tu marca eres tú (va chico, firmando)";
                     case "LUGAR" -> "muestra un lugar de tu negocio";
                     case "EQUIPO" -> "muestra a tu equipo";
                     case "EVENTO" -> "muestra una actividad de tu negocio";

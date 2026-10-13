@@ -132,7 +132,7 @@ public class RevisorDeMarca {
              "motivo": "una frase para el dueno, en espanol, diciendo por que",
              "descripcion": "que se ve, concreto, una o dos frases",
              "idea": "que comunicarias con esta foto, en una frase, como encargo para quien escribe",
-             "tipo": "PRODUCTO" | "OBRA" | "LUGAR" | "EQUIPO" | "EVENTO" | "PROMOCION" | "TESTIMONIO" | "OTRO",
+             "tipo": "PRODUCTO" | "OBRA" | "LUGAR" | "EQUIPO" | "EVENTO" | "PROMOCION" | "TESTIMONIO" | "PERSONAL" | "OTRO",
              "calidad": 1-5,
              "queFalla": "si la calidad es baja, que le falta en dos o tres palabras: oscura, borrosa, torcida, mal recortada",
              "arreglable": true | false,
@@ -168,6 +168,12 @@ public class RevisorDeMarca {
             - tipo EQUIPO: personas que trabajan en el negocio o prestan el
               servicio. TESTIMONIO: una persona contando su experiencia.
               EVENTO: una actividad, celebracion o momento del negocio.
+            - tipo PERSONAL: el dueno en su vida, no trabajando: un retrato
+              suyo, un paisaje o un viaje, su familia, su entrenamiento, un
+              momento del dia a dia. La diferencia con LUGAR y EVENTO es de
+              quien es la escena: "mi oficina" y "mi conferencia" son del
+              negocio; "yo en el malecon" es personal, aunque la publique para
+              su marca. Ante la duda entre PERSONAL y otro tipo, elige el otro.
             - intencion: para que serviria publicarla.
             - orientacion: como esta tomada la foto (vertical = mas alta que ancha).
             - efimero: es del momento y pierde sentido en unos dias: la promocion

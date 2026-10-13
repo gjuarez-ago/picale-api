@@ -263,7 +263,9 @@ public class DirectorDeFoto {
                 t.append("The brand's own phrases (Spanish): ").append(n.marca().frases().replace('\n', '|')).append('\n');
             }
             if (n.marca().conVidaPersonal()) {
-                t.append("The owner wants to tell their story and motivate: a personal photo can use FRASE.\n");
+                t.append("The owner wants to tell their story and motivate: a personal photo "
+                    + "(a portrait, a landscape, a moment of their day) can use FRASE, "
+                    + "and its logo goes small, just signing a corner.\n");
             }
         }
         t.append("Direct this photo.");

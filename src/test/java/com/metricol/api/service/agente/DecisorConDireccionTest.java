@@ -91,6 +91,12 @@ class DecisorConDireccionTest {
         assertThat(DecisorDelAgente.conLogo("EVENTO", tienda)).isTrue();
         assertThat(DecisorDelAgente.conLogo("TESTIMONIO", tienda)).isTrue();
         assertThat(DecisorDelAgente.conLogo("OTRO", tienda)).isTrue();
+        // Lo personal también se firma —la marca es la persona—, pero chico.
+        assertThat(DecisorDelAgente.conLogo("PERSONAL", tienda)).isTrue();
+        assertThat(DecisorDelAgente.logoDiscreto("PERSONAL", "LIMPIO")).isTrue();
+        assertThat(DecisorDelAgente.logoDiscreto("LUGAR", "FRASE")).isTrue();
+        assertThat(DecisorDelAgente.logoDiscreto("LUGAR", "LIMPIO")).isFalse();
+        assertThat(DecisorDelAgente.logoDiscreto("PRODUCTO", null)).isFalse();
         // Sin perfil todavía: la lista de siempre.
         assertThat(DecisorDelAgente.conLogo("OBRA", null)).isTrue();
     }

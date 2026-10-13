@@ -1441,6 +1441,18 @@ public class AgenteService {
         return prepararFoto(asset, w, revision, decision, historia, conLogo, null);
     }
 
+    /**
+     * Cuánto ocupa el logo: lo que eligió el director, salvo donde conviene que
+     * firme y nada más (una foto personal, o una con frase, que ya tiene un
+     * elemento gráfico abajo).
+     */
+    private static double anchoDeLogo(com.metricol.api.service.agente.foto.DirectorDeFoto.Direccion direccion,
+            String tipo, String acabado) {
+        return DecisorDelAgente.logoDiscreto(tipo, acabado)
+                ? com.metricol.api.service.agente.foto.DirectorDeFoto.TamanoLogo.CHICO.ancho
+                : direccion.logoTamano().ancho;
+    }
+
     /** @param cambio lo que pidió la persona ("sin franja", "con marco"), o nulo */
     FotoLista prepararFoto(MediaAsset asset, Workspace w, RevisorDeMarca.Revision revision,
             DecisorDelAgente.Decision decision, boolean historia, boolean conLogo, Cambio cambio) {
@@ -1496,7 +1508,8 @@ public class AgenteService {
             }
             String acabada = logo.acabar(base, logoDeMarca, w.getId(),
                     new com.metricol.api.service.campaign.LogoSobreFoto.Acabado(estilo,
-                            direccion.logoZona(), direccion.logoTamano().ancho, direccion.encuadre(),
+                            direccion.logoZona(),
+                            anchoDeLogo(direccion, revision.diagnostico().tipo(), estilo), direccion.encuadre(),
                             direccion.rotulo(), w.getName(), historia),
                     conLogo);
             if (acabada != null) {
@@ -1523,7 +1536,7 @@ public class AgenteService {
         if (conLogo) {
             String conSello = direccion == null ? logo.sellar(base, logoDeMarca, w.getId())
                     : logo.sellar(base, logoDeMarca, w.getId(), direccion.logoZona(),
-                            direccion.logoTamano().ancho, historia);
+                            anchoDeLogo(direccion, revision.diagnostico().tipo(), null), historia);
             if (conSello != null) {
                 url = conSello;
                 sellada = true;
