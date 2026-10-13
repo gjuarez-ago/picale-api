@@ -137,7 +137,11 @@ public class HilosDeImagen {
         }
 
         FichaDeImagen ficha = leer(hilo).conFotos(fotos);
-        guardar(hilo.getId(), "PERSONA", dicho, List.of(), null, null);
+        // Las fotos que mandó quedan EN su turno: decir "te mando una foto" sin
+        // enseñarla deja a la persona sin saber cuál mandó, y al volver al chat
+        // de ayer no queda rastro de con qué se trabajó.
+        guardar(hilo.getId(), "PERSONA", dicho, List.of(), null, null,
+                fotos == null ? List.of() : fotos);
 
         Workspace espacio = user.getWorkspace();
         AsistenteDeImagenes.Respuesta r = asistente.hablar(
