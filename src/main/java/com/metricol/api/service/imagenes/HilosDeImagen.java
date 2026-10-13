@@ -307,6 +307,24 @@ public class HilosDeImagen {
     }
 
     /**
+     * Quitar una conversación del historial.
+     *
+     * <p>Se marca, no se borra: las imágenes que salieron de ahí viven en
+     * Contenido y se pagaron con créditos, así que tirar el chat no puede
+     * llevárselas por delante. Lo que desaparece es la conversación de la
+     * lista, que es lo que la persona pidió.
+     */
+    @Transactional
+    public void borrar(User user, UUID hiloId) {
+        HiloDeImagen hilo = mio(user, hiloId);
+        if (hilo.getBorradoEn() != null) {
+            return;
+        }
+        hilo.setBorradoEn(LocalDateTime.now());
+        hilos.save(hilo);
+    }
+
+    /**
      * El título de una conversación, para la lista.
      *
      * <p>Sale de lo que se estaba anunciando, que es como la recuerda quien la

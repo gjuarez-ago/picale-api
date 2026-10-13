@@ -8,6 +8,7 @@ import java.util.UUID;
 
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.core.annotation.AuthenticationPrincipal;
+import org.springframework.web.bind.annotation.DeleteMapping;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
@@ -75,6 +76,19 @@ public class AsistenteImagenesController {
             @AuthenticationPrincipal User currentUser, @PathVariable UUID id) {
         permisos.exigir(currentUser, Permission.POST_CREATE);
         return ResponseEntity.ok(ApiResponse.success(cuerpo(hilos.ver(currentUser, id))));
+    }
+
+    /**
+     * Quitar una conversación del historial.
+     *
+     * <p>No se lleva lo creado: esas imágenes están en Contenido y se pagaron.
+     */
+    @DeleteMapping("/{id}")
+    public ResponseEntity<ApiResponse<Void>> borrar(
+            @AuthenticationPrincipal User currentUser, @PathVariable UUID id) {
+        permisos.exigir(currentUser, Permission.POST_CREATE);
+        hilos.borrar(currentUser, id);
+        return ResponseEntity.ok(ApiResponse.success(null));
     }
 
     /** Un turno: lo que dice la persona, y lo que contesta el asistente. */

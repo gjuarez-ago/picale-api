@@ -17,7 +17,7 @@ public interface HiloDeImagenRepository extends JpaRepository<HiloDeImagen, UUID
     /** El hilo abierto más reciente de esa persona en ese espacio, si lo hay. */
     @Query("""
             select h from HiloDeImagen h
-            where h.workspaceId = :workspace and h.userId = :user and h.cerradoEn is null
+            where h.workspaceId = :workspace and h.userId = :user and h.cerradoEn is null and h.borradoEn is null
             order by h.actualizadoEn desc
             """)
     List<HiloDeImagen> abiertosDe(@Param("workspace") UUID workspace, @Param("user") UUID user);
@@ -34,7 +34,7 @@ public interface HiloDeImagenRepository extends JpaRepository<HiloDeImagen, UUID
      */
     @Query("""
             select h from HiloDeImagen h
-            where h.workspaceId = :workspace and h.userId = :user
+            where h.workspaceId = :workspace and h.userId = :user and h.borradoEn is null
             order by h.actualizadoEn desc
             """)
     List<HiloDeImagen> deLaPersona(@Param("workspace") UUID workspace, @Param("user") UUID user);

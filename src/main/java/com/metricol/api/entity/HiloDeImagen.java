@@ -82,4 +82,13 @@ public class HiloDeImagen {
 
     /** Se cerró al usar una imagen o al abandonarlo. Null = sigue abierto. */
     private LocalDateTime cerradoEn;
+
+    /**
+     * La persona la quitó de su historial. Null = sigue ahí.
+     *
+     * <p>No se borra de verdad: lo que se creó en esa conversación vive en
+     * Contenido y se pagó con créditos, así que quitar el chat no puede
+     * llevarse las imágenes por delante. Esto solo la saca de la lista.
+     */
+    private LocalDateTime borradoEn;
 }
