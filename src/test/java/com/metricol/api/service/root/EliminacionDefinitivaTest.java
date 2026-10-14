@@ -346,7 +346,9 @@ class EliminacionDefinitivaTest {
         Set<String> conocidas = Set.of(
                 "posts.tenant_id", "post_targets.post_id", "post_media.post_id", "publish_jobs.workspace_id",
                 "publish_jobs.post_id", "social_accounts.tenant_id", "social_connection_checks.tenant_id",
-                "media_assets.tenant_id", "ai_usage.workspace_id", "acciones_ia.workspace_id", "acciones_ia.user_id",
+                "media_assets.tenant_id", "reel_render_jobs.workspace_id",
+                "creative_batch_jobs.workspace_id", "creative_proposals.workspace_id",
+                "ai_usage.workspace_id", "acciones_ia.workspace_id", "acciones_ia.user_id",
                 "conexiones_ia.user_id", "dispositivos.user_id",
                 // Los comentarios se van con el espacio; de la persona solo se
                 // olvida quién atendió (ver borrarPersona).

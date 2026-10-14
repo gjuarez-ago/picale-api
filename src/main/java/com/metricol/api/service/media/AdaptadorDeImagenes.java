@@ -91,8 +91,26 @@ public class AdaptadorDeImagenes {
      */
     public Adaptacion adaptar(UUID workspaceId, List<String> urls, Collection<Platform> platforms,
             PostFormat formato) {
-        if (!props.isEnabled() || urls == null || urls.isEmpty()) {
-            return new Adaptacion(urls, false);
+        return adaptar(workspaceId, urls, platforms, formato, false);
+    }
+
+    /**
+     * Para una vista previa que se aprobará: si no se puede comprobar o crear
+     * el derivado, lo informa como fallo en vez de hacer pasar el original por
+     * una pieza ya preparada. La publicación conserva su fallback tolerante.
+     */
+    public Adaptacion adaptarParaPreview(UUID workspaceId, List<String> urls, Collection<Platform> platforms,
+            PostFormat formato) {
+        return adaptar(workspaceId, urls, platforms, formato, true);
+    }
+
+    private Adaptacion adaptar(UUID workspaceId, List<String> urls, Collection<Platform> platforms,
+            PostFormat formato, boolean estricto) {
+        if (urls == null || urls.isEmpty()) {
+            return new Adaptacion(urls, estricto);
+        }
+        if (!props.isEnabled()) {
+            return new Adaptacion(urls, estricto);
         }
 
         EspecImagen espec = exigeVertical(formato)
@@ -104,7 +122,7 @@ public class AdaptadorDeImagenes {
         for (String url : urls) {
             String adaptada = null;
             try {
-                adaptada = adaptarUna(workspaceId, url, espec);
+                adaptada = adaptarUna(workspaceId, url, espec, estricto);
             } catch (Exception ex) {
                 // Ancho a proposito: cualquier cosa que salga mal aqui es un
                 // motivo para publicar la original, no para perder el post.
@@ -136,25 +154,25 @@ public class AdaptadorDeImagenes {
     public record Adaptacion(List<String> urls, boolean huboFallo) {
     }
 
-    private String adaptarUna(UUID workspaceId, String url, EspecImagen espec) throws IOException {
+    private String adaptarUna(UUID workspaceId, String url, EspecImagen espec, boolean estricto) throws IOException {
         String clave = storage.claveDe(url);
         if (clave == null) {
             // No es nuestra: ni se descarga ni se toca.
-            return null;
+            return falloOOriginal(estricto, "La imagen no pertenece al almacenamiento esperado.");
         }
         if (esVideo(clave)) {
             // De momento solo imágenes. Un video mal encajado no se arregla
             // reescalándolo, y sí se rompe reencodándolo a ciegas.
-            return null;
+            return falloOOriginal(estricto, "El archivo no es una imagen.");
         }
 
         R2StorageService.Consulta original = storage.consultar(clave);
         if (original == null) {
-            return null;
+            return falloOOriginal(estricto, "La imagen original no está disponible.");
         }
         if (original.sizeBytes() > props.getMaxBytesEntrada()) {
             log.warn("La imagen {} pesa {} bytes y no se adapta", clave, original.sizeBytes());
-            return null;
+            return falloOOriginal(estricto, "La imagen excede el tamaño permitido.");
         }
 
         String claveDerivada = claveDerivada(workspaceId, clave, espec);
@@ -169,12 +187,12 @@ public class AdaptadorDeImagenes {
         Path temporal = Files.createTempFile("picale-origen-", extensionDe(clave));
         try {
             if (!storage.descargar(clave, temporal)) {
-                return null;
+                return falloOOriginal(estricto, "No se pudo descargar la imagen.");
             }
 
             FfmpegImagen.Medidas medidas = ffmpeg.medir(temporal);
             if (medidas == null) {
-                return null;
+                return falloOOriginal(estricto, "No se pudieron verificar las medidas.");
             }
 
             // Medir no basta: las medidas viven en la cabecera y la cabecera
@@ -188,7 +206,7 @@ public class AdaptadorDeImagenes {
                 // Ni se pudo decodificar. Se publica la original: que la red
                 // la rechace es un motivo para avisar, no para perder el post.
                 log.warn("La imagen {} no se pudo decodificar; se publica tal cual", clave);
-                return null;
+                return falloOOriginal(estricto, "No se pudo decodificar la imagen.");
             }
             boolean danada = !errores.isBlank();
             if (danada) {
@@ -205,7 +223,7 @@ public class AdaptadorDeImagenes {
 
             byte[] adaptada = convertir(temporal, medidas, espec);
             if (adaptada == null) {
-                return null;
+                return falloOOriginal(estricto, "No se pudo convertir la imagen.");
             }
 
             log.info("Imagen adaptada: {}x{} ({} bytes) -> {} bytes, para {}",
@@ -215,6 +233,11 @@ public class AdaptadorDeImagenes {
         } finally {
             FfmpegImagen.borrar(temporal);
         }
+    }
+
+    private static String falloOOriginal(boolean estricto, String message) {
+        if (estricto) throw new IllegalStateException(message);
+        return null;
     }
 
     /**

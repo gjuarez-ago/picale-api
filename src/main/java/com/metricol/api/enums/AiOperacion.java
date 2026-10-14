@@ -48,6 +48,9 @@ public enum AiOperacion {
     /** Organizar una tanda de fotos en carruseles, posts e historias (una llamada de texto por tanda). */
     AGENTE_ORGANIZAR,
 
+    /** Elegir las piezas complementarias que salen de una tanda de medios. */
+    DIRECTOR_CREATIVO,
+
     /** El director de foto: mira la foto en detalle y escribe cómo mejorarla y dónde va el logo. */
     AGENTE_DIRIGIR_FOTO,
 

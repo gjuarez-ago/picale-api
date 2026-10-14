@@ -133,4 +133,18 @@ class AdaptadorDeImagenesVerticalTest {
         int[] lienzo = lienzoPedido();
         assertThat((double) lienzo[0] / lienzo[1]).isBetween(0.79, 0.81);
     }
+
+    @Test
+    @DisplayName("el preview estricto informa fallo si el adaptador esta apagado")
+    void previewEstrictoSinAdaptador() {
+        MediaAdaptProperties apagado = new MediaAdaptProperties();
+        apagado.setEnabled(false);
+        AdaptadorDeImagenes estricto = new AdaptadorDeImagenes(apagado, ffmpeg, storage);
+
+        var resultado = estricto.adaptarParaPreview(WORKSPACE, List.of(URL), List.of(Platform.INSTAGRAM),
+                PostFormat.STORY);
+
+        assertThat(resultado.huboFallo()).isTrue();
+        assertThat(resultado.urls()).containsExactly(URL);
+    }
 }

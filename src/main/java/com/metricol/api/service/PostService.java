@@ -29,6 +29,7 @@ import com.metricol.api.models.response.PostStatusResponse;
 import com.metricol.api.models.response.PostTargetResponse;
 import com.metricol.api.repository.MediaAssetRepository;
 import com.metricol.api.repository.PostRepository;
+import com.metricol.api.repository.ReelRenderJobRepository;
 import com.metricol.api.repository.SocialAccountRepository;
 import com.metricol.api.service.media.EspecImagen;
 import com.metricol.api.service.publishing.CuotaComprometida;
@@ -48,6 +49,7 @@ public class PostService {
     private final FormatRulesService formatRules;
     private final R2StorageService storage;
     private final CuotaComprometida cupo;
+    private final ReelRenderJobRepository reelJobs;
 
     public PostService(
             PostRepository postRepository,
@@ -58,7 +60,8 @@ public class PostService {
             VideoLimitsProperties videoLimits,
             FormatRulesService formatRules,
             R2StorageService storage,
-            CuotaComprometida cupo) {
+            CuotaComprometida cupo,
+            ReelRenderJobRepository reelJobs) {
         this.postRepository = postRepository;
         this.socialAccountRepository = socialAccountRepository;
         this.mediaAssetRepository = mediaAssetRepository;
@@ -68,6 +71,7 @@ public class PostService {
         this.formatRules = formatRules;
         this.storage = storage;
         this.cupo = cupo;
+        this.reelJobs = reelJobs;
     }
 
     /**
@@ -616,7 +620,9 @@ public class PostService {
             }
         }
 
-        boolean hayVideo = hayVideo(medios);
+        List<MediaAsset> activos = mediaAssetRepository.findByUrlIn(medios);
+        exigirAprobacionDeReels(activos);
+        boolean hayVideo = hayVideo(medios, activos);
         if (hayVideo && medios.size() > 1) {
             throw new IllegalArgumentException(
                     "Un video se publica solo: quita las demas fotos o quita el video.");
@@ -735,8 +741,16 @@ public class PostService {
      * —{@code POST /posts} las acepta— no está en nuestra base, y ahí el
      * parecido es todo lo que hay.
      */
-    private boolean hayVideo(List<String> medios) {
-        Map<String, MediaType> tipos = mediaAssetRepository.findByUrlIn(medios).stream()
+    private void exigirAprobacionDeReels(List<MediaAsset> activos) {
+        List<UUID> ids = activos.stream().map(MediaAsset::getId).filter(java.util.Objects::nonNull).toList();
+        if (!ids.isEmpty() && reelJobs.existsByResultAssetIdInAndApprovedAtIsNull(ids)) {
+            throw new IllegalArgumentException(
+                    "Revisa y aprueba el reel generado antes de usarlo en una publicacion.");
+        }
+    }
+
+    private boolean hayVideo(List<String> medios, List<MediaAsset> activos) {
+        Map<String, MediaType> tipos = activos.stream()
                 .filter(asset -> asset.getUrl() != null && asset.getType() != null)
                 .collect(Collectors.toMap(
                         MediaAsset::getUrl,

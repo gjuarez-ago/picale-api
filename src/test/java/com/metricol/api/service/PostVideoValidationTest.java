@@ -7,23 +7,29 @@ import static org.mockito.Mockito.when;
 
 import java.util.List;
 import java.util.Map;
+import java.util.UUID;
 import org.junit.jupiter.api.Test;
 import org.springframework.test.util.ReflectionTestUtils;
 import com.metricol.api.config.MediaLimitsProperties;
 import com.metricol.api.config.VideoLimitsProperties;
 import com.metricol.api.entity.SocialAccount;
+import com.metricol.api.entity.MediaAsset;
+import com.metricol.api.enums.MediaType;
 import com.metricol.api.enums.Platform;
 import com.metricol.api.enums.PostFormat;
 import com.metricol.api.models.request.PostSaveRequest;
 import com.metricol.api.service.publishing.FormatRulesService;
 import com.metricol.api.service.storage.R2StorageService;
 import com.metricol.api.repository.MediaAssetRepository;
+import com.metricol.api.repository.ReelRenderJobRepository;
 
 class PostVideoValidationTest {
     private final VideoLimitsProperties limits = new VideoLimitsProperties();
     private final R2StorageService storage = mock(R2StorageService.class);
-    private final PostService service = new PostService(null, null, mock(MediaAssetRepository.class), null,
-            new MediaLimitsProperties(), limits, new FormatRulesService(), storage, null);
+    private final MediaAssetRepository assets = mock(MediaAssetRepository.class);
+    private final ReelRenderJobRepository reelJobs = mock(ReelRenderJobRepository.class);
+    private final PostService service = new PostService(null, null, assets, null,
+            new MediaLimitsProperties(), limits, new FormatRulesService(), storage, null, reelJobs);
 
     private void validar(int seconds, PostFormat format, boolean publicar) {
         limits.setMaxSeconds(Map.of(Platform.FACEBOOK, 14400, Platform.INSTAGRAM, 900,
@@ -51,5 +57,24 @@ class PostVideoValidationTest {
     @Test void unVideoDemasiadoLargoSePuedeGuardarComoBorrador() {
         assertThatCode(() -> validar(601, PostFormat.REEL, false)).doesNotThrowAnyException();
         assertThatThrownBy(() -> validar(601, PostFormat.REEL, true)).hasMessageContaining("TikTok");
+    }
+
+    @Test void exigeAprobacionHumanaParaUnReelGenerado() {
+        String url = "https://media.example/generated.mp4";
+        UUID id = UUID.randomUUID();
+        MediaAsset asset = new MediaAsset();
+        asset.setId(id);
+        asset.setUrl(url);
+        asset.setType(MediaType.VIDEO);
+        when(storage.esNuestra(url)).thenReturn(true);
+        when(assets.findByUrlIn(List.of(url))).thenReturn(List.of(asset));
+        when(reelJobs.existsByResultAssetIdInAndApprovedAtIsNull(List.of(id))).thenReturn(true);
+
+        var request = new PostSaveRequest();
+        request.setMediaUrls(List.of(url));
+
+        assertThatThrownBy(() -> ReflectionTestUtils.invokeMethod(
+                service, "validarMedios", request, List.of(), PostFormat.REEL))
+                .hasMessageContaining("aprueba el reel");
     }
 }

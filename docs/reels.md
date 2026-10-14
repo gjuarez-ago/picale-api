@@ -1,197 +1,261 @@
-# Reels automáticos con lo que ya se sube
+# Reels verticales derivados de fotografías
 
-Plan para que de las tandas de fotos y videos que sube la gente salgan reels
-verticales que se vean profesionales, hechos en nuestra propia VM.
+Estado: MVP implementado detrás de `app.reels.enabled`, apagado de forma
+predeterminada. Este documento describe lo que existe en este repositorio, no
+lo que se espera construir en fases futuras.
 
-## Lo que ya tenemos (y es más de lo que parece)
+## Resultado de producto
 
-Esto no se empieza de cero. Antes de proponer nada, lo que hay:
+Una persona elige, en orden, entre 4 y 8 fotografías de su workspace y solicita
+un reel. La API responde sin esperar el render, un worker produce el MP4 y la
+persona consulta el trabajo hasta ver la propuesta. El resultado no se publica
+ni se programa automáticamente. Aprobarlo es una acción explícita y tampoco lo
+publica: deja constancia de la revisión humana y habilita usar ese activo al
+crear una publicación. Mientras no esté aprobado, `PostService` lo rechaza.
 
-| Pieza | Dónde | Qué nos da |
+El MVP resuelve la generación y revisión desde la API. Las pantallas web y
+móvil están fuera de este alcance y deberán consumir estos endpoints antes de
+encender la función en producción.
+
+### Criterios de éxito iniciales
+
+| Indicador | Umbral para habilitar gradualmente |
+|---|---:|
+| Renders técnicamente válidos | >= 98 % |
+| Tiempo de render p95 en `api-videos-prod` | <= 120 s |
+| Trabajos duplicados para la misma receta | 0 |
+| Originales modificados | 0 |
+| Publicaciones automáticas | 0 |
+| Temporales encontrados después de terminar | 0 |
+| Reels aprobados sin regenerar | Hipótesis a medir; sin umbral todavía |
+
+No existen datos propios todavía para afirmar que una duración, transición,
+titular o ritmo produzca más alcance. Esas afirmaciones son hipótesis de
+producto y deberán compararse con publicaciones reales después de integrar la
+interfaz.
+
+## Alcance implementado
+
+- 4 a 8 `MediaAsset` de tipo `IMAGE`, estado `READY`, pertenecientes al mismo
+  workspace y con orden explícito.
+- Duración editorial configurable entre 15 y 30 segundos; 20 segundos por
+  defecto.
+- Lienzo vertical de 1080x1920.
+- Movimiento Ken Burns suave y cortes directos.
+- La fotografía se conserva completa. Si su proporción no es 9:16, el espacio
+  restante usa una copia ampliada y desenfocada. No existe recorte inteligente.
+- Titular opcional, máximo tres líneas, mostrado durante los primeros tres
+  segundos dentro de la zona superior segura.
+- Portada JPEG tomada del reel ya renderizado.
+- Nuevo `MediaAsset` de video; los originales nunca se escriben ni reemplazan.
+- Receta JSON versionada, hash idempotente, fuentes y orden persistidos.
+- Estados `PENDING`, `RUNNING`, `READY`, `FAILED` y `CANCELLED` con error
+  legible, intentos y marcas de tiempo.
+- Aprobación humana persistida mediante una acción separada y exigida por el
+  servidor antes de aceptar el reel en cualquier borrador o publicación.
+
+### Fuera de alcance
+
+- Selección automática de fotografías.
+- Publicación o programación automática.
+- Música, biblioteca de audio y mezcla.
+- Subtítulos.
+- Videos de entrada, detección de escenas o montaje de varias tomas.
+- Cambios en web o app móvil.
+- Servicios externos de edición.
+
+## Duración editorial y límites de publicación
+
+Los 15–30 segundos son una decisión editorial de este generador, no un límite
+global de publicación. Los videos que la persona sube conservan los límites y
+fallbacks por red descritos en [publicacion-videos.md](publicacion-videos.md).
+El generador no modifica `DecisorDeVideo`, `FormatRulesService` ni la publicación
+existente.
+
+Si cambian los límites de una red, se actualiza la configuración de publicación;
+no se cambia por ello la receta editorial del generador. La referencia actual
+del proveedor es:
+
+https://docs.upload-post.com/api/video-requirements/
+
+## API
+
+Todos los endpoints exigen una sesión del workspace activo. Crear, cancelar y
+aprobar requieren `POST_CREATE`.
+
+| Método | Ruta | Resultado |
 |---|---|---|
-| **ffmpeg 8.1.2** con `libx264` y `aac` | ya en la imagen (`Dockerfile`) | cortar, escalar, concatenar y codificar video |
-| **Fuentes** (`fontconfig`, `ttf-dejavu`) | ya en la imagen | texto quemado en pantalla (`drawtext`) sin instalar nada |
-| **La VM** | `api-videos-prod` | 4 vCPU, 16 GB RAM, **carga 0.04**: está ociosa |
-| **`EditorDeVideo`** | `service/agente/video/` | **la interfaz ya está diseñada y sin implementar**: hoy solo existe `SinEditor`, que dice "no puedo" |
-| **`AnalisisDeVideo`** | `service/agente/video/` | por cada video ya pagado: tomas con nota 1–5, el mejor tramo, el segundo de la portada y la transcripción |
-| **`OrganizadorDeContenido`** | `service/agente/` | ya agrupa una tanda en carrusel / post / historia; falta un formato más |
-| **`FfmpegImagen`** | `service/media/` | ya mide, encaja, saca cuadros y extrae audio |
-| **`MiniaturasEnSegundoPlano`** | `service/media/` | el patrón de trabajo pesado en segundo plano, ya probado |
-| **Carga masiva** | web, `utils/carga-masiva.ts` | 20 archivos por tanda, 5 videos |
+| `POST` | `/api/v1/reels` | Valida las fuentes y devuelve `202` con el trabajo nuevo o el existente para la misma receta. |
+| `GET` | `/api/v1/reels` | Lista los trabajos del workspace actual. |
+| `GET` | `/api/v1/reels/{id}` | Devuelve estado, error, fuentes, URL, portada y aprobación. |
+| `POST` | `/api/v1/reels/{id}/cancel` | Cancela un trabajo pendiente o en curso. |
+| `POST` | `/api/v1/reels/{id}/approve` | Registra aprobación humana de un trabajo `READY` y permite usar su activo en una publicación; no publica. |
 
-**El hueco está dibujado y vacío.** `EditorDeVideo` existe precisamente para
-esto: *"el agente que algún día saque las mejores tomas, las edite, recorte lo
-que sobra y le agregue audio"*. Quien lo escribió dejó el enchufe puesto. El
-plan es enchufarse ahí, no inventar una arquitectura nueva.
+Ejemplo de solicitud:
 
-## La restricción que manda sobre todo lo demás: el audio
+```json
+{
+  "assetIds": [
+    "11111111-1111-1111-1111-111111111111",
+    "22222222-2222-2222-2222-222222222222",
+    "33333333-3333-3333-3333-333333333333",
+    "44444444-4444-4444-4444-444444444444"
+  ],
+  "durationSeconds": 20,
+  "title": "Café recién tostado"
+}
+```
 
-**No podemos ponerle música comercial a un reel.** Un reel se publica por API
-con su audio dentro; no es como el carrusel de TikTok, donde la propia red
-elige la canción (`auto_add_music`). Si le metemos una pista con derechos, la
-red la silencia, limita el alcance o tumba la cuenta — y el daño no lo pagamos
-nosotros, lo paga el negocio del cliente.
+## Arquitectura y recuperación
 
-Tres salidas, y conviene decidirlo antes de escribir una línea:
+La cola verdadera es `reel_render_jobs`; no hay trabajos esperando únicamente
+en memoria. `reel_render_sources` conserva los IDs y su orden. La combinación
+de workspace, fuentes ordenadas, duración, titular y versión genera un SHA-256
+único. Repetir la misma solicitud devuelve el mismo trabajo.
 
-1. **Audio original del video** (lo que se grabó). Gratis, legal, y en
-   testimonios y demostraciones es lo que hay que oír. No sirve para fotos.
-2. **Sin música, con texto en pantalla.** La mayoría ve los reels en silencio:
-   un reel mudo con texto grande funciona. Es la opción honesta para fotos.
-3. **Biblioteca propia libre de regalías.** Diez o quince pistas compradas una
-   vez, guardadas en R2, elegidas por tipo de contenido. Es lo que lo hace
-   sonar "profesional" de verdad, pero cuesta dinero y hay que elegirlas.
+El despachador reclama filas mediante un `UPDATE` condicional. El executor tiene
+capacidad de cola cero: reclama únicamente lo que puede ejecutar. El valor
+inicial es un worker y puede cambiarse con `REELS_WORKERS`.
 
-**Recomendación:** arrancar con 1 y 2, y dejar la 3 para cuando el resto
-funcione. Sin audio no se bloquea nada; con audio equivocado se bloquea la
-cuenta del cliente.
+```text
+POST /reels
+    -> PENDING persistente
+    -> RUNNING (reclamo atómico)
+    -> READY + MediaAsset + portada
+       o PENDING con backoff
+       o FAILED al agotar intentos
+       o CANCELLED por la persona
+```
 
-## Qué es "que se vea profesional", en concreto
+Un `RUNNING` cuyo candado vence vuelve a `PENDING`. Esto permite recuperar un
+trabajo después de reiniciar o perder una instancia. Cada receta tiene una
+clave de almacenamiento determinista: un reintento sobrescribe el mismo objeto
+y el `MediaAsset` nace únicamente cuando video y portada quedaron confirmados.
+Un render cancelado comprueba el estado antes de subir y de nuevo al confirmar;
+una subida parcial se elimina en el mismo intento.
 
-No es un adjetivo. Es esta lista, y cada punto se puede comprobar:
+`READY` significa que el archivo pasó la validación técnica, no que esté
+aprobado. El vínculo `resultAssetId` permite que la validación normal de
+publicaciones bloquee ese video hasta que el trabajo tenga `approvedAt`.
 
-- **1080×1920, 9:16 exacto.** Nada de barras negras: lo que no encaja se
-  recorta al centro de interés, no se encoge.
-- **De 15 a 30 segundos.** Más corto de 15 no se siente reel; más de 30 se
-  abandona.
-- **Cortes cada 2–4 segundos.** Un plano fijo de ocho segundos es una foto con
-  pretensiones.
-- **El primer segundo es el gancho.** Nada de intro, logo ni fundido de
-  entrada: ahí es donde se pierde a la gente.
-- **Texto grande, arriba, con contraste.** Que se lea en un teléfono al sol y
-  sin sonido. Nunca en los bordes: la interfaz de la red se los come.
-- **Nada tiembla.** Si la toma está movida, no entra — para eso están las notas
-  del Analista.
-- **30 fps, H.264, AAC, `-movflags +faststart`.** Lo que las redes aceptan sin
-  recodificar.
-- **Portada elegida**, no el primer cuadro (que suele salir negro o movido).
+Cada worker impone el workspace con `TenantIdentifierResolver.comoTenant` antes
+de consultar las fotografías o guardar el resultado. La API busca cada trabajo
+por `id` y `workspaceId`; conocer un UUID de otro espacio no permite leerlo.
 
-## El plan, por fases
+## Contrato del archivo
 
-Cada fase entrega algo que sirve sola. Si se para después de cualquiera de
-ellas, lo hecho ya vale.
+El render se considera exitoso solo después de que `ffprobe` confirme:
 
-### Fase 0 — Medir antes de prometer (medio día)
+- MP4 con `moov` antes de `mdat` (`faststart`).
+- 1080x1920, relación 9:16 y píxeles pares.
+- H.264 High Profile, nivel 4.0.
+- `yuv420p` con rango limitado.
+- Escaneo progresivo.
+- 30 fps.
+- GOP cerrado de 60 cuadros.
+- Sin audio en este MVP. Cuando exista audio en otra fase deberá ser AAC-LC a
+  48 kHz; esa fase no forma parte de esta implementación.
 
-Antes de diseñar nada, saber cuánto tarda la VM en renderizar un reel de 30 s
-a 1080×1920. Un script a mano, con material real, midiendo tiempo y pico de
-CPU y RAM.
+El primer ensayo real detectó que JPEG de rango completo podía producir
+`yuvj420p` aunque se indicara `-pix_fmt yuv420p`. La receta convierte el rango de
+forma explícita antes de codificar y la prueba de integración impide que esa
+regresión vuelva a pasar.
 
-Esto decide todo lo demás: si un reel tarda 40 segundos, se puede hacer al
-vuelo; si tarda cuatro minutos, tiene que ser una cola con aviso al terminar.
-**Mi apuesta** es 20–60 s para 30 s de salida en 4 vCPU con `-preset veryfast`,
-pero una apuesta no es un dato.
+## Operación y configuración
 
-También hay que mirar el disco: **quedan 19 GB libres de 77**. Un render toca
-el archivo original, los intermedios y la salida; con varios a la vez eso se
-llena. La fase 0 fija el tope y la limpieza.
+La función permanece apagada hasta que exista una interfaz de revisión:
 
-### Fase 1 — Recortar el mejor tramo (`EditorFfmpeg`)
+```properties
+REELS_ENABLED=false
+REELS_WORKERS=1
+REELS_TIMEOUT_SECONDS=240
+REELS_MAX_ATTEMPTS=3
+REELS_DEFAULT_DURATION_SECONDS=20
+```
 
-Implementar `EditorDeVideo` de verdad. Es lo más barato que hay porque **todo
-el flujo ya está escrito esperando esto**: `DecisorDeVideo` ya pide "recorta de
-tal a tal segundo", y hoy recibe "no puedo" y manda el video a Observación.
+También son configurables el sondeo, rescate, lote y backoff. El render usa un
+directorio temporal exclusivo y lo recorre y elimina en `finally`. El timeout
+mata el proceso de FFmpeg. El video se sube desde archivo, no se carga completo
+en el heap de Java.
 
-- Entrada: el `AnalisisDeVideo` ya pagado (`tramoInicio`, `tramoFin`).
-- Salida: un `MediaAsset` nuevo, vertical, recortado. **El original nunca se
-  toca** (ya lo dice la interfaz).
-- Se gana de inmediato: los videos largos dejan de atascarse en Observación.
+No se reutiliza `mediaExecutor`: ese pool puede descartar miniaturas, mientras
+que un reel solicitado por una persona debe conservarse y recuperarse.
 
-**Listo cuando:** un video de 3 minutos entra y sale un vertical de 30 s con el
-mejor tramo, y el original sigue intacto.
+## Pruebas y benchmark
 
-### Fase 2 — Reel de fotos, de las tandas masivas
+Pruebas añadidas:
 
-Aquí está lo que pediste: **mucho contenido subido de golpe que se convierte
-solo en reels**. Y es la fase que más rinde, porque la mayoría de lo que sube
-la gente son fotos.
+- Receta estable y sensibilidad al orden.
+- Validación de cantidad, duración, titular y contrato técnico.
+- Idempotencia.
+- Aislamiento entre workspaces.
+- Reintentos limitados.
+- Recuperación de un worker interrumpido.
+- Fotografías vertical, horizontal y cuadrada.
+- Nombre y titular con acentos.
+- Reel sin pista de audio.
+- Portada válida.
+- Creación del activo derivado solo después de confirmar video y portada.
+- Aprobación explícita y rechazo del activo no aprobado al crear publicaciones.
+- Eliminación definitiva del workspace incluyendo su cola de reels.
+- Render real y verificación con `ffprobe`.
 
-- `OrganizadorDeContenido` gana un formato: **REEL**, cuando una tanda trae
-  4 o más fotos del mismo tema con nota alta.
-- Cada foto, 2.5 s, con un *Ken Burns* suave (un zoom lento del 100 % al 108 %):
-  es lo que separa un pase de diapositivas de algo que parece grabado.
-- Cortes secos entre fotos, no fundidos: los fundidos envejecen mal.
-- Encuadre a 9:16 recortando al centro de interés, reusando lo que ya hace
-  `AdaptadorDeImagenes`.
-- Texto en pantalla con el titular que ya escribe el `Redactor`.
+Comandos utilizados:
 
-**Listo cuando:** se suben 8 fotos de un producto y sale un reel de 20 s
-vertical, con el título en pantalla, sin tocar nada.
+```powershell
+mvn '-Dtest=PostVideoValidationTest,ReelRecipeTest,FfmpegReelRendererTest,ReelResultStoreTest,ReelRenderPersistenceTest' test
+mvn -Dtest=FfmpegReelRendererIntegrationTest test
+& './tools/reel-benchmark.ps1'
+mvn test
+mvn -DskipTests package
+```
 
-### Fase 3 — Reel de varias tomas de video
+Resultado final: suite completa con 968 pruebas, 0 fallos, 0 errores y 0
+omitidas; JAR de Spring Boot empaquetado correctamente.
 
-Juntar los mejores momentos de uno o varios videos: el `AnalisisDeVideo` ya
-trae cada toma con su nota del 1 al 5.
+### Resultado medido el 13 de octubre de 2026
 
-- Se eligen las tomas de nota 4–5, en orden cronológico, 2–4 s cada una.
-- Se normaliza todo a 1080×1920/30 fps **antes** de concatenar: concatenar
-  cosas con distinto tamaño o fps es de donde salen los saltos y los audios
-  desincronizados.
-- Si hay voz (`hayVoz()`), ese tramo manda y se respeta entero: cortar a
-  alguien a media frase es peor que un reel más largo.
+Entrada sintética: cuatro JPEG de proporciones vertical, horizontal, cuadrada y
+vertical; salida de 15 segundos con titular. Máquina de desarrollo Windows; no
+es todavía una medición de la VM de producción.
 
-**Listo cuando:** de tres videos de un evento sale uno de 25 s con lo mejor de
-cada uno.
+| Medida | Resultado observado |
+|---|---:|
+| Tiempo exclusivo de render y validación | 14.6 s |
+| CPU acumulada de procesos FFmpeg | 51.6 s |
+| Memoria residente pico observada de FFmpeg | 775,073,792 bytes (~739 MiB) |
+| Entradas JPEG | 85,207 bytes |
+| Tamaño del MP4 | 132,264 bytes |
+| Disco temporal aproximado al terminar | 231,387 bytes |
+| Salida | 1080x1920, H.264, yuv420p, 30 fps, progresivo, faststart |
+| Audio | 0 pistas |
 
-### Fase 4 — Texto en pantalla con la marca
+`tools/reel-benchmark.ps1` repite el ensayo y escribe evidencia en
+`target/reels-smoke/`. El tamaño bajo del archivo se debe a que las imágenes de
+prueba son formas planas; no representa el bitrate ni el uso de disco de
+fotografías reales. La medida de disco suma los archivos presentes en el
+directorio exclusivo de la prueba y es aproximada, no un pico muestreado por el
+sistema operativo.
 
-`drawtext` con las fuentes que ya están en la imagen, usando los colores de
-marca que ya guarda `BrandProfile`.
+### Decisión antes de producción
 
-- Titular en los primeros 3 s, arriba, con fondo semitransparente para que se
-  lea sobre cualquier imagen.
-- Zona segura: 12 % de margen arriba y abajo. Lo que se sale de ahí lo tapa la
-  interfaz de Instagram o TikTok.
-- Subtítulos de la transcripción cuando hay voz. **Esto es lo que más sube el
-  alcance** y ya tenemos la transcripción pagada; es el mejor retorno de las
-  cuatro fases.
+Ejecutar el mismo benchmark en `api-videos-prod`, con 4 y 8 fotografías reales,
+mientras se mide la latencia de la API. Habilitar primero en un workspace
+interno y mantener un solo worker. El go/no-go inicial es p95 <= 120 segundos y
+sin degradación apreciable de las solicitudes web. Hasta tener esa medición,
+la capacidad y el costo por reel en producción siguen siendo hipótesis.
 
-### Fase 5 — Audio (solo si se decidió la biblioteca)
+## Riesgos y decisiones pendientes
 
-Pista de fondo a −18 dB bajo la voz, con `ducking` si hay transcripción.
-Depende de la decisión de arriba.
-
-## Dónde y cómo corre, para no tumbar nada
-
-Esto es lo que hace que la idea sea viable o que se lleve el servicio por
-delante:
-
-- **Cola propia, UN render a la vez.** Con 4 vCPU, dos renders simultáneos
-  dejan la API sin aire. `-threads 3` y uno en curso.
-- **`nice`/baja prioridad**: publicar siempre va antes. Que un reel tarde cinco
-  minutos más no se lo nota nadie; que una publicación no salga a su hora, sí.
-- **Tope de duración por trabajo** (4 minutos) y se mata: un ffmpeg colgado
-  retiene CPU y disco para siempre.
-- **Carpeta temporal propia, borrada siempre**, pase lo que pase. Con 19 GB
-  libres, dos reels huérfanos al día llenan el disco en un mes.
-- **El original nunca se toca.** El reel es un `MediaAsset` nuevo, con
-  `generadaPorIa` puesto.
-- **Apagable por configuración** (`app.reels.enabled`), como el resto.
-- Se reusa el patrón de `MiniaturasEnSegundoPlano`, que ya hace trabajo pesado
-  fuera de la petición web.
-
-## Qué cuesta
-
-- **El render no cuesta nada**: es nuestra CPU, y hoy está al 1 %.
-- **La IA ya está pagada**: el análisis de video y las notas de las fotos se
-  cobran una vez al subir, y el reel las reutiliza. Un reel de fotos ya
-  analizadas **no gasta un crédito nuevo**.
-- Lo único que costaría dinero es la biblioteca de música, si se decide.
-
-## Lo que NO hay que hacer
-
-- **Nada de servicios externos de edición.** Tenemos ffmpeg y una VM ociosa;
-  mandar el video a un tercero es pagar, esperar y entregarle el contenido del
-  cliente a alguien más.
-- **Nada de reels de una sola foto.** Eso es una historia, y ya existe.
-- **Nada de publicar un reel sin que lo apruebe una persona**, al menos al
-  principio. Un reel malo con la marca encima se queda en la red para siempre.
-- **Nada de música con derechos.** Ver arriba.
-
-## Por dónde empezaría
-
-Fase 0 y Fase 1 primero: medir, y después implementar `EditorFfmpeg`, que es
-media tarde de trabajo porque el enchufe ya está puesto y desatasca algo que
-hoy ya molesta. Con eso se aprende cómo se porta la VM de verdad, y la Fase 2
-—la que convierte las tandas de fotos en reels, que es lo que de verdad
-pediste— se construye sobre terreno medido en vez de sobre una apuesta.
+- La memoria pico local fue mayor de lo anticipado. No aumentar workers sin
+  medir en la VM.
+- `ddl-auto=update` crea las tablas nuevas, como el resto del proyecto. Una
+  migración formal sigue siendo deuda transversal del repositorio.
+- Falta la experiencia de interfaz para seleccionar, reordenar, esperar,
+  previsualizar, cancelar y aprobar.
+- Falta medir el tamaño con fotografías reales y verificar la cuota antes de
+  habilitarlo a clientes.
+- Una aprobación habilita el activo, pero no crea una publicación. Integrar una
+  pantalla que lo lleve al compositor requerirá otro cambio explícito.
+- La duración, el ritmo y el estilo visual iniciales son hipótesis; deben
+  versionarse, no sobrescribirse, cuando haya evidencia para cambiarlos.

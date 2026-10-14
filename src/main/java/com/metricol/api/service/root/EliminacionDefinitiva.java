@@ -290,6 +290,35 @@ public class EliminacionDefinitiva {
         sql.update("delete from posts where tenant_id = :t", t);
         sql.update("delete from social_connection_checks where tenant_id = :t", t);
         sql.update("delete from social_accounts where tenant_id = :t", t);
+        // La cola de reels no usa @TenantId porque debe rescatar trabajos de
+        // todos los espacios. Por eso se elimina de forma explicita, antes de
+        // los MediaAsset fuente y resultado que referencia por UUID.
+        if (existe("reel_render_jobs")) {
+            if (existe("reel_render_sources")) {
+                sql.update("delete from reel_render_sources where job_id in "
+                        + "(select id from reel_render_jobs where workspace_id = :ws)", ws);
+            }
+            sql.update("delete from reel_render_jobs where workspace_id = :ws", ws);
+        }
+        // El plan creativo también es global para que su worker pueda reclamarlo.
+        if (existe("creative_batch_jobs")) {
+            if (existe("creative_proposal_previews")) {
+                sql.update("delete from creative_proposal_previews where proposal_id in "
+                        + "(select id from creative_proposals where workspace_id = :ws)", ws);
+            }
+            if (existe("creative_proposal_sources")) {
+                sql.update("delete from creative_proposal_sources where proposal_id in "
+                        + "(select id from creative_proposals where workspace_id = :ws)", ws);
+            }
+            if (existe("creative_proposals")) {
+                sql.update("delete from creative_proposals where workspace_id = :ws", ws);
+            }
+            if (existe("creative_batch_sources")) {
+                sql.update("delete from creative_batch_sources where job_id in "
+                        + "(select id from creative_batch_jobs where workspace_id = :ws)", ws);
+            }
+            sql.update("delete from creative_batch_jobs where workspace_id = :ws", ws);
+        }
         sql.update("delete from media_assets where tenant_id = :t", t);
         sql.update("delete from ai_usage where workspace_id = :ws", ws);
         // La bitácora de lo que hicieron las IA en ese espacio se va con él.
@@ -327,6 +356,9 @@ public class EliminacionDefinitiva {
         // siguen vivos, pero ya sin nombrarla.
         if (existe("comentarios")) {
             sql.update("update comentarios set atendido_por = null where atendido_por = :u", u);
+        }
+        if (existe("creative_proposals")) {
+            sql.update("update creative_proposals set approved_by = null where approved_by = :u", u);
         }
         sql.update("delete from email_verification_codes where lower(email) = lower(:e)",
                 new MapSqlParameterSource("e", correo == null ? "" : correo));

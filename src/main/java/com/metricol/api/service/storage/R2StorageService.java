@@ -279,6 +279,23 @@ public class R2StorageService {
         return urlDe(key);
     }
 
+    /**
+     * Sube un archivo generado sin cargar el video completo en el heap.
+     */
+    public String subirArchivo(String key, Path archivo, String contentType) {
+        exigirConfiguracion();
+        try {
+            s3Client.putObject(PutObjectRequest.builder()
+                    .bucket(props.getBucket())
+                    .key(key)
+                    .contentType(contentType)
+                    .build(), RequestBody.fromFile(archivo));
+            return urlDe(key);
+        } catch (RuntimeException ex) {
+            throw new IllegalStateException("No se pudo subir el archivo generado a R2.", ex);
+        }
+    }
+
     private String prefijoPublico() {
         return props.getPublicUrl().replaceAll("/$", "") + "/";
     }
