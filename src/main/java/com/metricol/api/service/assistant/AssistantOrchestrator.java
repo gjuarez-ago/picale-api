@@ -387,6 +387,9 @@ public class AssistantOrchestrator {
         ArrayNode artifacts = json.createArrayNode();
         for (AssistantToolCall call : calls.findByRunIdOrderByCreatedAtAsc(runId)) {
             if (call.getStatus() != AssistantToolCallStatus.COMPLETED) continue;
+            // Las consultas de lectura alimentan la respuesta redactada por el asistente.
+            // Mostrar además su recibo técnico duplica la información y expone el formato MCP.
+            if (call.getRiskLevel() == 0) continue;
             JsonNode definition = findTool(tools, call.getToolName());
             ObjectNode card = artifacts.addObject();
             card.put("type", "result");
@@ -428,10 +431,26 @@ public class AssistantOrchestrator {
         call.setStatus(AssistantToolCallStatus.COMPLETED);
         call.setDurationMs((System.nanoTime() - started) / 1_000_000);
         JsonNode safeResult = sanitize(result);
-        call.setResultSummary(truncate(safeResult.path("content").isMissingNode() ? safeResult.toString()
-                : safeResult.path("content").toString(), 1000));
+        call.setResultSummary(truncate(resultSummary(safeResult), 1000));
         calls.save(call);
         events.emit(run, "tool.completed", payload("toolCallId", call.getId().toString()));
+    }
+
+    /** Convierte la envoltura MCP en texto legible para recibos y auditoría. */
+    private String resultSummary(JsonNode result) {
+        JsonNode content = result.path("content");
+        if (content.isTextual()) return content.asText();
+        if (content.isArray()) {
+            StringBuilder text = new StringBuilder();
+            for (JsonNode item : content) {
+                String value = item.path("text").asText("").strip();
+                if (value.isEmpty()) continue;
+                if (!text.isEmpty()) text.append('\n');
+                text.append(value);
+            }
+            if (!text.isEmpty()) return text.toString();
+        }
+        return result.toString();
     }
 
     private void fail(AssistantRun run, String safeMessage) {

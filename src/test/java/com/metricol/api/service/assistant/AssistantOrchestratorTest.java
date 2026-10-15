@@ -100,7 +100,7 @@ class AssistantOrchestratorTest {
     }
 
     @Test
-    void ejecutaLecturaYEntregaRespuestaConRecibo() throws Exception {
+    void ejecutaLecturaYEntregaRespuestaSinReciboTecnico() throws Exception {
         when(session.tools()).thenReturn(json.readTree("""
                 [{"name":"panel","description":"Consulta el panel","inputSchema":{"type":"object"},
                   "_meta":{"picale/policy":{"riskLevel":0,"permission":"MEMBERSHIP",
@@ -127,7 +127,12 @@ class AssistantOrchestratorTest {
                 call.getStatus() == AssistantToolCallStatus.COMPLETED && call.getDurationMs() != null));
         verify(runs, atLeastOnce()).save(org.mockito.ArgumentMatchers.argThat(run ->
                 run.getStatus() == AssistantRunStatus.COMPLETED));
-        assertThat(history).anyMatch(message -> "Tus publicaciones mejoraron.".equals(message.getContent()));
+        AssistantMessage answer = history.stream()
+                .filter(message -> "Tus publicaciones mejoraron.".equals(message.getContent()))
+                .findFirst().orElseThrow();
+        assertThat(answer.getArtifactsJson()).isNull();
+        assertThat(savedCalls).singleElement().satisfies(call ->
+                assertThat(call.getResultSummary()).isEqualTo("resultado real"));
     }
 
     @Test
@@ -165,6 +170,8 @@ class AssistantOrchestratorTest {
 
         verify(session).call(eq("publicar_ahora"), any());
         assertThat(savedRun.getStatus()).isEqualTo(AssistantRunStatus.COMPLETED);
+        assertThat(history.get(history.size() - 1).getArtifactsJson())
+                .contains("result").contains("publicada").doesNotContain("\\\"type\\\":\\\"text\\\"");
         assertThatThrownBy(() -> service.confirm(user, result.runId(), renewed.confirmationToken()))
                 .isInstanceOf(IllegalArgumentException.class).hasMessageContaining("ya no espera");
     }
