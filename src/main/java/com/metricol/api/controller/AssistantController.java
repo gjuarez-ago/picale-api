@@ -21,6 +21,7 @@ import com.metricol.api.entity.AssistantToolCall;
 import com.metricol.api.entity.User;
 import com.metricol.api.models.response.ApiResponse;
 import com.metricol.api.service.assistant.AssistantThreads;
+import com.metricol.api.service.assistant.AssistantOrchestrator;
 
 /** API publica de conversaciones; la ejecucion y el SSE se agregan sobre estos IDs durables. */
 @RestController
@@ -28,6 +29,13 @@ import com.metricol.api.service.assistant.AssistantThreads;
 public class AssistantController {
 
     public record CreateThreadRequest(String title) {
+    }
+
+    public record SendMessageRequest(String content, List<UUID> attachmentIds, String currentPath,
+            String idempotencyKey) {
+    }
+
+    public record ConfirmRequest(String token) {
     }
 
     public record ThreadSummary(UUID id, String title, LocalDateTime updatedAt, boolean closed) {
@@ -48,13 +56,15 @@ public class AssistantController {
 
     public record ThreadDetail(UUID id, String title, String summary, UUID campaignId, LocalDateTime createdAt,
             LocalDateTime updatedAt, LocalDateTime closedAt, List<MessageView> messages, List<RunView> runs,
-            List<ToolCallView> toolCalls) {
+            List<ToolCallView> toolCalls, String pendingConfirmationToken) {
     }
 
     private final AssistantThreads threads;
+    private final AssistantOrchestrator orchestrator;
 
-    public AssistantController(AssistantThreads threads) {
+    public AssistantController(AssistantThreads threads, AssistantOrchestrator orchestrator) {
         this.threads = threads;
+        this.orchestrator = orchestrator;
     }
 
     @PostMapping("/threads")
@@ -86,6 +96,35 @@ public class AssistantController {
         return ResponseEntity.ok(ApiResponse.success(view(threads.resume(user, id))));
     }
 
+    @PostMapping("/threads/{id}/messages")
+    public ResponseEntity<ApiResponse<ThreadDetail>> send(@AuthenticationPrincipal User user,
+            @PathVariable UUID id, @RequestBody SendMessageRequest request) {
+        AssistantOrchestrator.Result result = orchestrator.send(user, id,
+                new AssistantOrchestrator.Send(request.content(), request.attachmentIds(), request.currentPath(),
+                        request.idempotencyKey()));
+        return ResponseEntity.ok(ApiResponse.success(view(result.detail(), result.confirmationToken())));
+    }
+
+    @PostMapping("/runs/{id}/confirm")
+    public ResponseEntity<ApiResponse<ThreadDetail>> confirm(@AuthenticationPrincipal User user,
+            @PathVariable UUID id, @RequestBody ConfirmRequest request) {
+        AssistantOrchestrator.Result result = orchestrator.confirm(user, id, request.token());
+        return ResponseEntity.ok(ApiResponse.success(view(result.detail(), result.confirmationToken())));
+    }
+
+    @PostMapping("/runs/{id}/confirmation-token")
+    public ResponseEntity<ApiResponse<ThreadDetail>> renewConfirmation(@AuthenticationPrincipal User user,
+            @PathVariable UUID id) {
+        AssistantOrchestrator.Result result = orchestrator.renewConfirmation(user, id);
+        return ResponseEntity.ok(ApiResponse.success(view(result.detail(), result.confirmationToken())));
+    }
+
+    @PostMapping("/runs/{id}/cancel")
+    public ResponseEntity<ApiResponse<ThreadDetail>> cancel(@AuthenticationPrincipal User user,
+            @PathVariable UUID id) {
+        return ResponseEntity.ok(ApiResponse.success(view(orchestrator.cancel(user, id))));
+    }
+
     @DeleteMapping("/threads/{id}")
     public ResponseEntity<ApiResponse<Void>> delete(@AuthenticationPrincipal User user, @PathVariable UUID id) {
         threads.delete(user, id);
@@ -97,12 +136,16 @@ public class AssistantController {
     }
 
     private ThreadDetail view(AssistantThreads.Detail detail) {
+        return view(detail, null);
+    }
+
+    private ThreadDetail view(AssistantThreads.Detail detail, String confirmationToken) {
         AssistantThread thread = detail.thread();
         return new ThreadDetail(thread.getId(), thread.getTitle(), thread.getSummary(), thread.getCampaignId(),
                 thread.getCreatedAt(), thread.getUpdatedAt(), thread.getClosedAt(),
                 detail.messages().stream().map(this::message).toList(),
                 detail.runs().stream().map(this::run).toList(),
-                detail.toolCalls().stream().map(this::toolCall).toList());
+                detail.toolCalls().stream().map(this::toolCall).toList(), confirmationToken);
     }
 
     private MessageView message(AssistantMessage message) {

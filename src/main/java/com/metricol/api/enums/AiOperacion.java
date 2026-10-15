@@ -79,5 +79,8 @@ public enum AiOperacion {
      * crear la imagen. Se anota igual para saber cuánto cuesta de verdad
      * conversar, que es el número con el que se defiende esa decisión.
      */
-    ASISTENTE_IMAGEN
+    ASISTENTE_IMAGEN,
+
+    /** Conversacion operativa con herramientas MCP dentro del panel. */
+    ASISTENTE_OPERATIVO
 }
