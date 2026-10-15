@@ -63,6 +63,41 @@ class AssistantThreadsTest {
     }
 
     @Test
+    void renombraRecortandoAlLargoQueCabeEnLaLista() {
+        UUID threadId = UUID.randomUUID();
+        AssistantThread thread = AssistantThread.builder().id(threadId).workspaceId(workspaceId)
+                .createdBy(userId).title(AssistantThreads.NUEVA).build();
+        when(threads.findById(threadId)).thenReturn(Optional.of(thread));
+        when(threads.save(any())).thenAnswer(invocation -> invocation.getArgument(0));
+
+        service.rename(user, threadId, "  Campaña   de   diciembre  ");
+        assertThat(thread.getTitle()).isEqualTo("Campaña de diciembre");
+
+        service.rename(user, threadId, "x".repeat(AssistantThreads.MAX_TITULO + 40));
+        assertThat(thread.getTitle()).hasSize(AssistantThreads.MAX_TITULO);
+    }
+
+    @Test
+    void noAceptaUnNombreVacio() {
+        UUID threadId = UUID.randomUUID();
+        when(threads.findById(threadId)).thenReturn(Optional.of(AssistantThread.builder()
+                .id(threadId).workspaceId(workspaceId).createdBy(userId).title("Algo").build()));
+
+        assertThatThrownBy(() -> service.rename(user, threadId, "   "))
+                .isInstanceOf(IllegalArgumentException.class).hasMessageContaining("Escribe un nombre");
+    }
+
+    @Test
+    void noRenombraUnHiloDeOtroWorkspace() {
+        UUID threadId = UUID.randomUUID();
+        when(threads.findById(threadId)).thenReturn(Optional.of(AssistantThread.builder()
+                .id(threadId).workspaceId(UUID.randomUUID()).createdBy(userId).title("Ajeno").build()));
+
+        assertThatThrownBy(() -> service.rename(user, threadId, "Mio"))
+                .isInstanceOf(ResourceNotFoundException.class);
+    }
+
+    @Test
     void noExponeUnHiloDeOtroWorkspace() {
         UUID threadId = UUID.randomUUID();
         when(threads.findById(threadId)).thenReturn(Optional.of(AssistantThread.builder()

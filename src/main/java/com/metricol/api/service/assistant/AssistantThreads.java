@@ -22,6 +22,15 @@ import com.metricol.api.repository.AssistantToolCallRepository;
 @Service
 public class AssistantThreads {
 
+    /** Lo que se lee mientras la conversacion no tiene nombre propio. */
+    public static final String NUEVA = "Nueva conversacion";
+
+    /**
+     * Un titulo mas largo no cabe en la lista lateral: se corta igual al dibujarse, asi
+     * que dejar escribir de mas solo enganaria sobre lo que se va a ver.
+     */
+    public static final int MAX_TITULO = 80;
+
     public static final String WELCOME =
             "Estoy listo. Puedo revisar tu cuenta, preparar contenido y ayudarte a decidir que hacer despues.";
 
@@ -77,6 +86,23 @@ public class AssistantThreads {
         return new Detail(thread, messages.findByThreadIdOrderByCreatedAtAsc(threadId), threadRuns, calls);
     }
 
+    /**
+     * Renombra la conversacion. El titulo automatico sale del primer mensaje y rara vez
+     * dice de que iba, asi que ponerle nombre es lo que hace util la lista con el tiempo.
+     */
+    @Transactional
+    public Detail rename(User user, UUID threadId, String requestedTitle) {
+        AssistantThread thread = owned(user, threadId);
+        String clean = title(requestedTitle);
+        if (NUEVA.equals(clean)) {
+            throw new IllegalArgumentException("Escribe un nombre para la conversacion.");
+        }
+        thread.setTitle(clean);
+        thread.setUpdatedAt(LocalDateTime.now());
+        threads.save(thread);
+        return detail(user, threadId);
+    }
+
     @Transactional
     public Detail close(User user, UUID threadId) {
         AssistantThread thread = owned(user, threadId);
@@ -126,8 +152,8 @@ public class AssistantThreads {
     private static String title(String value) {
         String clean = value == null ? "" : value.replaceAll("[\\p{Cntrl}]", " ").replaceAll("\\s+", " ").strip();
         if (clean.isEmpty()) {
-            return "Nueva conversacion";
+            return NUEVA;
         }
-        return clean.length() <= 120 ? clean : clean.substring(0, 120);
+        return clean.length() <= MAX_TITULO ? clean : clean.substring(0, MAX_TITULO);
     }
 }

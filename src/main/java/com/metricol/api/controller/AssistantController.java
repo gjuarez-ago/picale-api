@@ -98,6 +98,13 @@ public class AssistantController {
         return ResponseEntity.ok(ApiResponse.success(view(threads.detail(user, id))));
     }
 
+    @PostMapping("/threads/{id}/rename")
+    public ResponseEntity<ApiResponse<ThreadDetail>> rename(@AuthenticationPrincipal User user,
+            @PathVariable UUID id, @RequestBody CreateThreadRequest request) {
+        return ResponseEntity.ok(ApiResponse.success(
+                view(threads.rename(user, id, request == null ? null : request.title()))));
+    }
+
     @PostMapping("/threads/{id}/close")
     public ResponseEntity<ApiResponse<ThreadDetail>> close(@AuthenticationPrincipal User user,
             @PathVariable UUID id) {

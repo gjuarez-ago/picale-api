@@ -682,8 +682,8 @@ public class AssistantOrchestrator {
     }
 
     private void updateThread(AssistantThread thread, String content, LocalDateTime now) {
-        if ("Nueva conversacion".equals(thread.getTitle())) {
-            thread.setTitle(truncate(content.replaceAll("\\s+", " ").strip(), 80));
+        if (AssistantThreads.NUEVA.equals(thread.getTitle())) {
+            thread.setTitle(truncate(content.replaceAll("\\s+", " ").strip(), AssistantThreads.MAX_TITULO));
         }
         thread.setUpdatedAt(now);
         threads.save(thread);
