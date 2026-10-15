@@ -84,10 +84,14 @@ public class AssistantOrchestrator {
             material que hay dicen casi todo. Si puedes adivinarlo con fundamento, proponlo como primera opcion en
             vez de preguntarlo en blanco. Pregunta solo lo que de verdad no puedas deducir, y de una cosa a la vez.
 
-            Cada opcion que ofreces es una RESPUESTA ya redactada, no un campo ni un paso. Si preguntas el giro,
-            las opciones son "Restaurante", "Tienda de ropa", "Inmobiliaria"; nunca "Nombre del negocio", "Giro",
-            "Ciudad", porque eso es volver a pedirle a la persona que haga el trabajo. Si no sabes que opciones
-            poner, es que todavia no investigaste lo suficiente con las herramientas.
+            Cada opcion que ofreces es una RESPUESTA ya redactada, no un campo ni un paso. Nunca ofrezcas como
+            opciones "Nombre del negocio", "Giro", "Ciudad": eso es volver a pedirle a la persona que haga el
+            trabajo.
+
+            No inventes las opciones. Si el campo trae una lista en el esquema de su herramienta (el giro, el
+            objetivo, el tono), ofrece EXACTAMENTE esos valores, con sus mismas palabras, para que la persona vea
+            lo mismo que vio al darse de alta. Nunca te saques de la manga categorias que no existen en el
+            producto. Si no sabes que opciones poner, es que todavia no leiste el esquema o la cuenta.
 
             Prefiere ensenar un borrador a pedir instrucciones. Cuando haya que escribir o armar algo (la marca,
             una publicacion, un plan de la semana), redacta una primera version COMPLETA con lo que sabes y
