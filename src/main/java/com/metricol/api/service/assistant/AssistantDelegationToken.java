@@ -46,8 +46,9 @@ public class AssistantDelegationToken {
         Map<String, Object> apiClaims = new LinkedHashMap<>();
         apiClaims.put("assistant", true);
         apiClaims.put("workspaceId", workspaceId.toString());
-        apiClaims.put("assistantThreadId", threadId.toString());
-        apiClaims.put("assistantRunId", runId.toString());
+        // Listar el catalogo no pertenece a ningun turno: la delegacion viaja sin hilo ni ejecucion.
+        if (threadId != null) apiClaims.put("assistantThreadId", threadId.toString());
+        if (runId != null) apiClaims.put("assistantRunId", runId.toString());
         String apiToken = jwt.generateToken(apiClaims, user, LIFETIME);
 
         Map<String, Object> payload = new LinkedHashMap<>();
@@ -55,8 +56,8 @@ public class AssistantDelegationToken {
         payload.put("email", user.getEmail());
         payload.put("userId", user.getId().toString());
         payload.put("workspaceId", workspaceId.toString());
-        payload.put("threadId", threadId.toString());
-        payload.put("runId", runId.toString());
+        if (threadId != null) payload.put("threadId", threadId.toString());
+        if (runId != null) payload.put("runId", runId.toString());
         payload.put("permissions", permissions.stream().map(Enum::name).sorted().toList());
         payload.put("exp", Instant.now().plus(LIFETIME).getEpochSecond());
         try {

@@ -62,6 +62,49 @@ public class AssistantMcpClient {
             return send(request).path("tools");
         }
 
+        /** Los flujos expertos que el servidor ya mantiene; evita reescribirlos en la web. */
+        public JsonNode prompts() {
+            ObjectNode request = envelope("prompts/list");
+            request.set("params", json.createObjectNode());
+            return send(request).path("prompts");
+        }
+
+        /** El texto de un flujo, ya resuelto con sus argumentos. */
+        public String prompt(String name, JsonNode arguments) {
+            if (name == null || name.isBlank()) {
+                throw new IllegalArgumentException("Falta el nombre del flujo del asistente.");
+            }
+            ObjectNode params = json.createObjectNode();
+            params.put("name", name);
+            params.set("arguments", arguments == null ? json.createObjectNode() : arguments);
+            ObjectNode request = envelope("prompts/get");
+            request.set("params", params);
+            StringBuilder text = new StringBuilder();
+            for (JsonNode message : send(request).path("messages")) {
+                String value = message.path("content").path("text").asText("").strip();
+                if (value.isEmpty()) continue;
+                if (!text.isEmpty()) text.append("\n\n");
+                text.append(value);
+            }
+            return text.toString();
+        }
+
+        /** El texto de un recurso del catalogo, por ejemplo las reglas de publicacion. */
+        public String resource(String uri) {
+            ObjectNode params = json.createObjectNode();
+            params.put("uri", uri);
+            ObjectNode request = envelope("resources/read");
+            request.set("params", params);
+            StringBuilder text = new StringBuilder();
+            for (JsonNode item : send(request).path("contents")) {
+                String value = item.path("text").asText("").strip();
+                if (value.isEmpty()) continue;
+                if (!text.isEmpty()) text.append("\n\n");
+                text.append(value);
+            }
+            return text.toString();
+        }
+
         public JsonNode call(String name, JsonNode arguments) {
             if (name == null || name.isBlank()) {
                 throw new IllegalArgumentException("Falta el nombre de la herramienta MCP.");

@@ -45,14 +45,26 @@ import com.metricol.api.service.PermissionService;
 @Service
 public class AssistantOrchestrator {
 
-    public record Send(String content, List<UUID> attachmentIds, String currentPath, String idempotencyKey) {
+    public record Send(String content, List<UUID> attachmentIds, String currentPath, String idempotencyKey,
+            String promptName) {
+
+        public Send(String content, List<UUID> attachmentIds, String currentPath, String idempotencyKey) {
+            this(content, attachmentIds, currentPath, idempotencyKey, null);
+        }
+    }
+
+    /** Un flujo experto del catalogo MCP, tal como se le ofrece a la persona. */
+    public record Starter(String name, String title, String description) {
     }
 
     public record Result(AssistantThreads.Detail detail, UUID runId, String confirmationToken) {
     }
 
     private static final Logger log = LoggerFactory.getLogger(AssistantOrchestrator.class);
-    private static final int MAX_TOOL_STEPS = 6;
+    // Seis pasos alcanzaban para responder una pregunta, pero no para acompanar un alta:
+    // leer la marca, la cuenta y el contenido, guardar y verificar ya los agotaba.
+    private static final int MAX_TOOL_STEPS = 12;
+    private static final String REGLAS_URI = "picale://reglas";
     private static final SecureRandom RANDOM = new SecureRandom();
     private static final String SYSTEM_PROMPT = """
             Eres el Asistente Operativo de Picale. Ayudas a entender la cuenta, decidir y ejecutar trabajo real.
@@ -129,7 +141,9 @@ public class AssistantOrchestrator {
         AssistantRun run = runs.save(AssistantRun.builder()
                 .workspaceId(thread.getWorkspaceId()).threadId(threadId).userId(user.getId())
                 .status(AssistantRunStatus.QUEUED).idempotencyKey(key)
-                .contextPath(cleanPath(request == null ? null : request.currentPath())).createdAt(now).build());
+                .contextPath(cleanPath(request == null ? null : request.currentPath()))
+                .promptName(cleanPromptName(request == null ? null : request.promptName()))
+                .createdAt(now).build());
         messages.save(AssistantMessage.builder().threadId(threadId).runId(run.getId()).role("USER")
                 .content(content).attachmentsJson(attachments).createdAt(now).build());
         updateThread(thread, content, now);
@@ -159,7 +173,7 @@ public class AssistantOrchestrator {
             Set<Permission> allowed = permissions.permisosDe(user);
             AssistantMcpClient.Session session = mcp.open(user, run.getThreadId(), run.getId(), allowed);
             JsonNode tools = session.tools();
-            ArrayNode history = history(run.getThreadId(), run.getContextPath());
+            ArrayNode history = history(run.getThreadId(), run.getContextPath(), briefing(session, run));
             execute(user, thread, run, history, tools, session, 0);
         } catch (Exception error) {
             fail(run, safeError(error), error);
@@ -235,6 +249,29 @@ public class AssistantOrchestrator {
         call.setConfirmationExpiresAt(LocalDateTime.now().plus(15, ChronoUnit.MINUTES));
         calls.save(call);
         return new Result(threadService.detail(user, run.getThreadId()), runId, rawToken);
+    }
+
+    /**
+     * Los atajos que ve la persona salen del catalogo MCP, no de una lista escrita en la web:
+     * asi un flujo nuevo en el servidor aparece solo, sin tocar ni desplegar el front.
+     */
+    @Transactional(readOnly = true)
+    public List<Starter> starters(User user) {
+        try {
+            AssistantMcpClient.Session session = mcp.open(user, null, null, permissions.permisosDe(user));
+            List<Starter> result = new java.util.ArrayList<>();
+            for (JsonNode prompt : session.prompts()) {
+                String name = prompt.path("name").asText("");
+                if (name.isBlank()) continue;
+                result.add(new Starter(name, prompt.path("title").asText(name),
+                        prompt.path("description").asText("")));
+            }
+            return List.copyOf(result);
+        } catch (RuntimeException e) {
+            // Sin atajos el chat sigue siendo utilizable: se escribe a mano.
+            log.warn("No se pudo leer el catalogo de atajos del asistente", e);
+            return List.of();
+        }
     }
 
     @Transactional
@@ -324,9 +361,42 @@ public class AssistantOrchestrator {
     }
 
     private ArrayNode history(UUID threadId, String currentPath) {
+        return history(threadId, currentPath, "");
+    }
+
+    /**
+     * Las reglas de publicacion y los flujos expertos los mantiene el catalogo MCP. Traerlos
+     * aqui evita que la web y el modelo inventen su propia version de las mismas reglas.
+     */
+    private String briefing(AssistantMcpClient.Session session, AssistantRun run) {
+        StringBuilder extra = new StringBuilder();
+        try {
+            String reglas = session.resource(REGLAS_URI);
+            if (!reglas.isBlank()) {
+                extra.append("\n\nReglas de publicacion vigentes (no inventes otras):\n").append(reglas);
+            }
+        } catch (RuntimeException e) {
+            log.warn("No se pudieron leer las reglas del catalogo MCP para el turno {}", run.getId(), e);
+        }
+        if (run.getPromptName() != null && !run.getPromptName().isBlank()) {
+            try {
+                String flujo = session.prompt(run.getPromptName(), null);
+                if (!flujo.isBlank()) {
+                    extra.append("\n\nLa persona pidio este trabajo desde un atajo. Sigue estas instrucciones")
+                            .append(" sin recitarlas ni mencionar nombres internos:\n").append(flujo);
+                }
+            } catch (RuntimeException e) {
+                log.warn("No se pudo expandir el flujo '{}' del turno {}", run.getPromptName(), run.getId(), e);
+            }
+        }
+        return extra.toString();
+    }
+
+    private ArrayNode history(UUID threadId, String currentPath, String briefing) {
         ArrayNode result = json.createArrayNode();
         result.addObject().put("role", "system").put("content", SYSTEM_PROMPT
-                + ((currentPath == null || currentPath.isBlank()) ? "" : "\nLa persona esta en: " + currentPath));
+                + ((currentPath == null || currentPath.isBlank()) ? "" : "\nLa persona esta en: " + currentPath)
+                + (briefing == null ? "" : briefing));
         List<AssistantMessage> all = messages.findByThreadIdOrderByCreatedAtAsc(threadId);
         int start = Math.max(0, all.size() - 20);
         for (AssistantMessage message : all.subList(start, all.size())) {
@@ -574,6 +644,15 @@ public class AssistantOrchestrator {
             throw new IllegalArgumentException("Falta una clave de idempotencia valida.");
         }
         return result;
+    }
+
+    private static String cleanPromptName(String value) {
+        if (value == null || value.isBlank()) return null;
+        String clean = value.strip();
+        if (clean.length() > 100 || !clean.matches("[a-z0-9_]+")) {
+            throw new IllegalArgumentException("Ese atajo del asistente no existe.");
+        }
+        return clean;
     }
 
     private static String cleanPath(String value) {

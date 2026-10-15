@@ -177,6 +177,52 @@ class AssistantOrchestratorTest {
     }
 
     @Test
+    void expandeElAtajoDelCatalogoSinEnsenarleLasInstruccionesALaPersona() throws Exception {
+        when(session.tools()).thenReturn(json.readTree("[]"));
+        when(session.resource("picale://reglas")).thenReturn("Instagram: 2200 caracteres.");
+        when(session.prompt(eq("arranque_del_dia"), any()))
+                .thenReturn("Prepara el arranque del dia. Pasos: 1. `panel` con dias=2.");
+        when(llm.complete(any(), any()))
+                .thenReturn(new AssistantLlmClient.Turn("Esto es lo de hoy.", List.of(),
+                        json.createObjectNode().put("role", "assistant"), "gpt-test", 9, 3));
+
+        AssistantOrchestrator.Result result = service.send(user, threadId, new AssistantOrchestrator.Send(
+                "Arranque del día", List.of(), "/panel", "message-5", "arranque_del_dia"));
+        service.process(new AssistantRunDispatcher.Requested(result.runId(), userId, workspaceId));
+
+        var enviado = org.mockito.ArgumentCaptor.forClass(com.fasterxml.jackson.databind.node.ArrayNode.class);
+        verify(llm).complete(enviado.capture(), any());
+        String system = enviado.getValue().get(0).path("content").asText();
+        assertThat(system).contains("2200 caracteres").contains("`panel` con dias=2");
+        // Lo que ve la persona es el titulo del atajo, no los pasos internos.
+        assertThat(history.get(0).getContent()).isEqualTo("Arranque del día");
+        assertThat(savedRun.getStatus()).isEqualTo(AssistantRunStatus.COMPLETED);
+    }
+
+    @Test
+    void sigueRespondiendoSiElCatalogoNoDaReglasNiAtajo() throws Exception {
+        when(session.tools()).thenReturn(json.readTree("[]"));
+        when(session.resource(any())).thenThrow(new AssistantMcpClient.McpException(503, "sin catalogo"));
+        when(session.prompt(any(), any())).thenThrow(new AssistantMcpClient.McpException(503, "sin catalogo"));
+        when(llm.complete(any(), any()))
+                .thenReturn(new AssistantLlmClient.Turn("Listo.", List.of(),
+                        json.createObjectNode().put("role", "assistant"), "gpt-test", 4, 1));
+
+        AssistantOrchestrator.Result result = service.send(user, threadId, new AssistantOrchestrator.Send(
+                "Arranque del día", List.of(), "/panel", "message-6", "arranque_del_dia"));
+        service.process(new AssistantRunDispatcher.Requested(result.runId(), userId, workspaceId));
+
+        assertThat(savedRun.getStatus()).isEqualTo(AssistantRunStatus.COMPLETED);
+    }
+
+    @Test
+    void rechazaUnAtajoConNombreInvalido() {
+        assertThatThrownBy(() -> service.send(user, threadId, new AssistantOrchestrator.Send(
+                "hola", List.of(), "/panel", "message-7", "../otro")))
+                .isInstanceOf(IllegalArgumentException.class).hasMessageContaining("atajo");
+    }
+
+    @Test
     void cierraConRespuestaCuandoElModeloNoDejaDeConsultar() throws Exception {
         when(session.tools()).thenReturn(json.readTree("""
                 [{"name":"panel","description":"Consulta el panel","inputSchema":{"type":"object"},

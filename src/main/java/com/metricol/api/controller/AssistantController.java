@@ -36,7 +36,7 @@ public class AssistantController {
     }
 
     public record SendMessageRequest(String content, List<UUID> attachmentIds, String currentPath,
-            String idempotencyKey) {
+            String idempotencyKey, String promptName) {
     }
 
     public record ConfirmRequest(String token) {
@@ -80,6 +80,13 @@ public class AssistantController {
         return ResponseEntity.ok(ApiResponse.success(view(threads.create(user, request == null ? null : request.title()))));
     }
 
+    /** Los atajos que ofrece el chat; los define el catalogo MCP, no la web. */
+    @GetMapping("/starters")
+    public ResponseEntity<ApiResponse<List<AssistantOrchestrator.Starter>>> starters(
+            @AuthenticationPrincipal User user) {
+        return ResponseEntity.ok(ApiResponse.success(orchestrator.starters(user)));
+    }
+
     @GetMapping("/threads")
     public ResponseEntity<ApiResponse<List<ThreadSummary>>> list(@AuthenticationPrincipal User user) {
         return ResponseEntity.ok(ApiResponse.success(threads.list(user).stream().map(this::summary).toList()));
@@ -108,7 +115,7 @@ public class AssistantController {
             @PathVariable UUID id, @RequestBody SendMessageRequest request) {
         AssistantOrchestrator.Result result = orchestrator.send(user, id,
                 new AssistantOrchestrator.Send(request.content(), request.attachmentIds(), request.currentPath(),
-                        request.idempotencyKey()));
+                        request.idempotencyKey(), request.promptName()));
         return ResponseEntity.ok(ApiResponse.success(view(result.detail(), result.confirmationToken())));
     }
 

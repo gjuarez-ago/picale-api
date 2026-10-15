@@ -68,6 +68,10 @@ public class AssistantRun {
     @Column(name = "context_path", length = 300)
     private String contextPath;
 
+    /** Flujo experto del catalogo MCP que origino el turno, si la persona eligio uno. */
+    @Column(name = "prompt_name", length = 100)
+    private String promptName;
+
     @Column(name = "error_code", length = 50)
     private String errorCode;
 
