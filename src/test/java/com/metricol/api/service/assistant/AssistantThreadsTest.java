@@ -1,0 +1,74 @@
+package com.metricol.api.service.assistant;
+
+import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
+import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.verify;
+import static org.mockito.Mockito.when;
+
+import java.util.List;
+import java.util.Optional;
+import java.util.UUID;
+
+import org.junit.jupiter.api.BeforeEach;
+import org.junit.jupiter.api.Test;
+
+import com.metricol.api.entity.AssistantMessage;
+import com.metricol.api.entity.AssistantThread;
+import com.metricol.api.entity.User;
+import com.metricol.api.entity.Workspace;
+import com.metricol.api.exception.ResourceNotFoundException;
+import com.metricol.api.repository.AssistantMessageRepository;
+import com.metricol.api.repository.AssistantRunRepository;
+import com.metricol.api.repository.AssistantThreadRepository;
+import com.metricol.api.repository.AssistantToolCallRepository;
+
+class AssistantThreadsTest {
+
+    private final AssistantThreadRepository threads = mock(AssistantThreadRepository.class);
+    private final AssistantMessageRepository messages = mock(AssistantMessageRepository.class);
+    private final AssistantRunRepository runs = mock(AssistantRunRepository.class);
+    private final AssistantToolCallRepository calls = mock(AssistantToolCallRepository.class);
+    private final UUID workspaceId = UUID.randomUUID();
+    private final UUID userId = UUID.randomUUID();
+    private AssistantThreads service;
+    private User user;
+
+    @BeforeEach
+    void setUp() {
+        service = new AssistantThreads(threads, messages, runs, calls);
+        user = User.builder().id(userId).workspace(Workspace.builder().id(workspaceId).build()).build();
+        when(messages.findByThreadIdOrderByCreatedAtAsc(any())).thenReturn(List.of());
+        when(runs.findByThreadIdOrderByCreatedAtAsc(any())).thenReturn(List.of());
+    }
+
+    @Test
+    void creaElHiloEnElWorkspaceYGuardaLaBienvenida() {
+        when(threads.save(any())).thenAnswer(invocation -> {
+            AssistantThread thread = invocation.getArgument(0);
+            thread.setId(UUID.randomUUID());
+            return thread;
+        });
+        when(messages.save(any())).thenAnswer(invocation -> invocation.getArgument(0));
+        when(threads.findById(any())).thenAnswer(invocation -> Optional.of(AssistantThread.builder()
+                .id(invocation.getArgument(0)).workspaceId(workspaceId).createdBy(userId).title("Resultados")
+                .createdAt(java.time.LocalDateTime.now()).updatedAt(java.time.LocalDateTime.now()).build()));
+
+        AssistantThreads.Detail detail = service.create(user, "  Resultados  ");
+
+        assertThat(detail.thread().getWorkspaceId()).isEqualTo(workspaceId);
+        verify(messages).save(org.mockito.ArgumentMatchers.argThat(message ->
+                "ASSISTANT".equals(message.getRole()) && AssistantThreads.WELCOME.equals(message.getContent())));
+    }
+
+    @Test
+    void noExponeUnHiloDeOtroWorkspace() {
+        UUID threadId = UUID.randomUUID();
+        when(threads.findById(threadId)).thenReturn(Optional.of(AssistantThread.builder()
+                .id(threadId).workspaceId(UUID.randomUUID()).createdBy(userId).title("Ajeno").build()));
+
+        assertThatThrownBy(() -> service.detail(user, threadId))
+                .isInstanceOf(ResourceNotFoundException.class);
+    }
+}
