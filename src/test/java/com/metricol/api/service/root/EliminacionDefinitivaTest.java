@@ -348,6 +348,11 @@ class EliminacionDefinitivaTest {
                 "publish_jobs.post_id", "social_accounts.tenant_id", "social_connection_checks.tenant_id",
                 "media_assets.tenant_id", "reel_render_jobs.workspace_id",
                 "creative_batch_jobs.workspace_id", "creative_proposals.workspace_id",
+                "assistant_messages.tenant_id", "assistant_run_events.tenant_id",
+                "assistant_run_events.workspace_id", "assistant_runs.tenant_id",
+                "assistant_runs.user_id", "assistant_runs.workspace_id",
+                "assistant_threads.tenant_id", "assistant_threads.workspace_id",
+                "assistant_tool_calls.tenant_id",
                 "ai_usage.workspace_id", "acciones_ia.workspace_id", "acciones_ia.user_id",
                 "conexiones_ia.user_id", "dispositivos.user_id",
                 // Los comentarios se van con el espacio; de la persona solo se

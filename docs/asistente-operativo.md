@@ -626,3 +626,93 @@ global compartida entre negocios.
 4. Retención de conversaciones y opción de borrarlas/exportarlas.
 5. Proveedor y modelo inicial, con fallback y presupuesto máximo por workspace.
 6. Qué documentos podrán alimentar la primera base de conocimiento.
+
+## Implementación del MVP (rama `feature/asistente-operativo`)
+
+La implementación de las fases 0–2 se distribuye en los tres repositorios sin
+duplicar el catálogo ni las reglas de negocio:
+
+- `metricol.api` es propietario de hilos, mensajes, runs, eventos SSE,
+  confirmaciones, auditoría y orquestación.
+- `picale-mcp` sigue siendo el catálogo canónico. Cada herramienta publica en
+  `_meta["picale/policy"]` su riesgo, permiso, confirmación e idempotencia.
+- `metricol_web` ofrece `/panel/asistente`, subida directa a R2, estados en
+  tiempo real, tarjetas de resultados y confirmaciones.
+
+### Recorrido de un turno
+
+1. La web crea el mensaje con una clave de idempotencia y sólo envía IDs de
+   adjuntos ya confirmados como `READY` en R2.
+2. La API persiste mensaje y run `QUEUED`; después del commit lo entrega a un
+   pool acotado, imponiendo explícitamente el tenant en el hilo de trabajo.
+3. El orquestador emite un JWT delegado de cinco minutos, limitado a usuario,
+   workspace, hilo, run y permisos, y descubre `tools/list` en el MCP.
+4. Las lecturas se ejecutan y auditan. Las escrituras/costos se detienen en
+   `WAITING_CONFIRMATION`; el token crudo sólo vuelve al navegador, mientras la
+   base conserva un hash con vencimiento de 15 minutos.
+5. El navegador sigue `GET /api/v1/assistant/runs/{id}/events`. Guarda el último
+   ID, reconecta con `Last-Event-ID` y recupera eventos durables si perdió la red.
+6. Al terminar, el texto y sus tarjetas se guardan en el hilo. Un refresh nunca
+   depende de memoria del proceso.
+
+Los eventos implementados son `run.queued`, `run.started`, `tool.started`,
+`tool.completed`, `confirmation.required`, `message.delta`, `run.completed`,
+`run.cancelled` y `run.failed`. `message.delta` representa el bloque final del
+modelo; los pasos operativos sí se transmiten conforme ocurren.
+
+### Configuración
+
+La API requiere las variables existentes de OpenAI y dos valores del asistente:
+
+```dotenv
+OPENAI_API_KEY=...
+ASSISTANT_MCP_URL=https://mcp.picale.click/mcp
+ASSISTANT_DELEGATION_KEY=<valor-aleatorio-de-32-o-mas-caracteres>
+```
+
+El MCP debe recibir exactamente el mismo `ASSISTANT_DELEGATION_KEY`. Nunca se
+incluye esta llave en la web, en logs ni en Git. El cambio de esquema usa el
+mecanismo actual de Hibernate (`ddl-auto=update`) para crear las tablas
+`assistant_threads`, `assistant_messages`, `assistant_runs`,
+`assistant_tool_calls` y `assistant_run_events`.
+
+### Seguridad y operación
+
+- Todas las entidades operativas llevan `@TenantId`, y además cada acceso
+  valida workspace y actor.
+- Una confirmación toma bloqueo pesimista sobre el run; dos clics o reintentos
+  no ejecutan dos veces una acción externa.
+- Sólo se ejecutan nombres descubiertos en la sesión MCP. No existe una ruta
+  para que el modelo construya URLs o invoque endpoints arbitrarios.
+- Argumentos y resultados auditados se sanitizan; secretos, tokens y URLs
+  firmadas no se persisten.
+- Si el pool está lleno, el run termina con un error útil y durable. Si se
+  interrumpe SSE, la conversación se recupera desde la API y puede reconectar.
+
+### Verificación local
+
+```powershell
+# API
+mvn test
+
+# MCP
+mvn test
+
+# Web: tipos/build y recorrido principal en Chromium
+npm run build -- --configuration development
+npx playwright install chromium
+npm run test:e2e
+```
+
+La prueba E2E abre `/panel/asistente`, inicia un hilo, envía una consulta,
+consume SSE, comprueba una tarjeta de resultado y confirma una publicación. La
+API se simula dentro del navegador de prueba para no usar cuentas ni proveedores
+externos. El workflow `.github/workflows/assistant-e2e.yml` repite build y E2E
+en la rama y en pull requests.
+
+### Límites deliberados de esta entrega
+
+No se implementan todavía vectorización, RAG documental, campañas como entidad,
+voz ni publicación autónoma. El asistente ya puede preparar y ejecutar las
+acciones que existen en el MCP; campañas persistentes y conocimiento documental
+corresponden a las fases posteriores descritas arriba.

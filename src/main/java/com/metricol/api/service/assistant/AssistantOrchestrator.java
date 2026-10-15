@@ -13,6 +13,7 @@ import java.util.UUID;
 
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+import org.springframework.context.ApplicationEventPublisher;
 
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
@@ -34,6 +35,7 @@ import com.metricol.api.repository.AssistantRunRepository;
 import com.metricol.api.repository.AssistantThreadRepository;
 import com.metricol.api.repository.AssistantToolCallRepository;
 import com.metricol.api.repository.MediaAssetRepository;
+import com.metricol.api.repository.UserRepository;
 import com.metricol.api.service.PermissionService;
 
 /** Ejecuta un turno del asistente usando al MCP como unica superficie operativa. */
@@ -68,12 +70,15 @@ public class AssistantOrchestrator {
     private final AssistantMcpClient mcp;
     private final AssistantLlmClient llm;
     private final AssistantRunEvents events;
+    private final UserRepository users;
+    private final ApplicationEventPublisher publisher;
     private final ObjectMapper json;
 
     public AssistantOrchestrator(AssistantThreads threadService, AssistantThreadRepository threads,
             AssistantMessageRepository messages, AssistantRunRepository runs,
             AssistantToolCallRepository calls, MediaAssetRepository media, PermissionService permissions,
-            AssistantMcpClient mcp, AssistantLlmClient llm, AssistantRunEvents events, ObjectMapper json) {
+            AssistantMcpClient mcp, AssistantLlmClient llm, AssistantRunEvents events, UserRepository users,
+            ApplicationEventPublisher publisher, ObjectMapper json) {
         this.threadService = threadService;
         this.threads = threads;
         this.messages = messages;
@@ -84,6 +89,8 @@ public class AssistantOrchestrator {
         this.mcp = mcp;
         this.llm = llm;
         this.events = events;
+        this.users = users;
+        this.publisher = publisher;
         this.json = json;
     }
 
@@ -108,22 +115,51 @@ public class AssistantOrchestrator {
         LocalDateTime now = LocalDateTime.now();
         AssistantRun run = runs.save(AssistantRun.builder()
                 .workspaceId(thread.getWorkspaceId()).threadId(threadId).userId(user.getId())
-                .status(AssistantRunStatus.RUNNING).idempotencyKey(key).createdAt(now).startedAt(now).build());
+                .status(AssistantRunStatus.QUEUED).idempotencyKey(key)
+                .contextPath(cleanPath(request == null ? null : request.currentPath())).createdAt(now).build());
         messages.save(AssistantMessage.builder().threadId(threadId).runId(run.getId()).role("USER")
                 .content(content).attachmentsJson(attachments).createdAt(now).build());
         updateThread(thread, content, now);
-        events.emit(run, "run.started", payload("runId", run.getId().toString()));
+        events.emit(run, "run.queued", payload("runId", run.getId().toString()));
+        publisher.publishEvent(new AssistantRunDispatcher.Requested(run.getId(), user.getId(), thread.getWorkspaceId()));
+        return new Result(threadService.detail(user, threadId), run.getId(), null);
+    }
 
+    /** Trabajo pesado invocado por el dispatcher, ya dentro del tenant correcto. */
+    @Transactional
+    public void process(AssistantRunDispatcher.Requested requested) {
+        AssistantRun run = runs.findLockedById(requested.runId()).orElse(null);
+        if (run == null || run.getStatus() != AssistantRunStatus.QUEUED
+                || !requested.workspaceId().equals(run.getWorkspaceId())
+                || !requested.userId().equals(run.getUserId())) return;
+        run.setStatus(AssistantRunStatus.RUNNING);
+        run.setStartedAt(LocalDateTime.now());
+        runs.save(run);
+        events.emit(run, "run.started", payload("runId", run.getId().toString()));
         try {
+            User user = users.findById(requested.userId())
+                    .filter(item -> item.getWorkspace() != null
+                            && requested.workspaceId().equals(item.getWorkspace().getId()))
+                    .orElseThrow(() -> new ResourceNotFoundException(
+                            "La persona que inicio el turno ya no esta disponible."));
+            AssistantThread thread = threadService.detail(user, run.getThreadId()).thread();
             Set<Permission> allowed = permissions.permisosDe(user);
-            AssistantMcpClient.Session session = mcp.open(user, threadId, run.getId(), allowed);
+            AssistantMcpClient.Session session = mcp.open(user, run.getThreadId(), run.getId(), allowed);
             JsonNode tools = session.tools();
-            ArrayNode history = history(threadId, request == null ? null : request.currentPath());
-            return execute(user, thread, run, history, tools, session, 0);
+            ArrayNode history = history(run.getThreadId(), run.getContextPath());
+            execute(user, thread, run, history, tools, session, 0);
         } catch (Exception error) {
             fail(run, safeError(error));
-            return new Result(threadService.detail(user, threadId), run.getId(), null);
         }
+    }
+
+    @Transactional
+    public void dispatchFailed(AssistantRunDispatcher.Requested requested, String message) {
+        runs.findLockedById(requested.runId())
+                .filter(run -> run.getStatus() == AssistantRunStatus.QUEUED
+                        && requested.workspaceId().equals(run.getWorkspaceId())
+                        && requested.userId().equals(run.getUserId()))
+                .ifPresent(run -> fail(run, message));
     }
 
     @Transactional
@@ -225,6 +261,7 @@ public class AssistantOrchestrator {
                         .artifactsJson(resultArtifacts(run.getId(), tools))
                         .inputTokens(turn.inputTokens()).outputTokens(turn.outputTokens())
                         .createdAt(LocalDateTime.now()).build());
+                events.emit(run, "message.delta", payload("content", answer));
                 run.setStatus(AssistantRunStatus.COMPLETED);
                 run.setFinishedAt(LocalDateTime.now());
                 runs.save(run);
@@ -489,6 +526,12 @@ public class AssistantOrchestrator {
             throw new IllegalArgumentException("Falta una clave de idempotencia valida.");
         }
         return result;
+    }
+
+    private static String cleanPath(String value) {
+        if (value == null || value.isBlank()) return null;
+        String clean = value.replaceAll("[\\p{Cntrl}]", "").strip();
+        return truncate(clean, 300);
     }
 
     private static String safeError(Exception error) {

@@ -1,6 +1,7 @@
 package com.metricol.api.service.assistant;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.mock;
@@ -18,6 +19,7 @@ import java.util.UUID;
 
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
+import org.springframework.context.ApplicationEventPublisher;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.node.ObjectNode;
@@ -35,6 +37,7 @@ import com.metricol.api.repository.AssistantRunRepository;
 import com.metricol.api.repository.AssistantThreadRepository;
 import com.metricol.api.repository.AssistantToolCallRepository;
 import com.metricol.api.repository.MediaAssetRepository;
+import com.metricol.api.repository.UserRepository;
 import com.metricol.api.service.PermissionService;
 
 class AssistantOrchestratorTest {
@@ -49,28 +52,41 @@ class AssistantOrchestratorTest {
     private final AssistantMcpClient mcp = mock(AssistantMcpClient.class);
     private final AssistantLlmClient llm = mock(AssistantLlmClient.class);
     private final AssistantRunEvents events = mock(AssistantRunEvents.class);
+    private final UserRepository users = mock(UserRepository.class);
+    private final ApplicationEventPublisher publisher = mock(ApplicationEventPublisher.class);
     private final AssistantMcpClient.Session session = mock(AssistantMcpClient.Session.class);
     private final ObjectMapper json = new ObjectMapper();
     private final UUID workspaceId = UUID.randomUUID();
     private final UUID threadId = UUID.randomUUID();
     private final UUID userId = UUID.randomUUID();
     private final List<AssistantMessage> history = new ArrayList<>();
+    private final List<AssistantToolCall> savedCalls = new ArrayList<>();
     private AssistantOrchestrator service;
     private AssistantThread thread;
     private User user;
+    private AssistantRun savedRun;
 
     @BeforeEach
     void setUp() {
         service = new AssistantOrchestrator(threadService, threads, messages, runs, calls, media,
-                permissions, mcp, llm, events, json);
+                permissions, mcp, llm, events, users, publisher, json);
         thread = AssistantThread.builder().id(threadId).workspaceId(workspaceId).createdBy(userId)
                 .title("Nueva conversacion").createdAt(LocalDateTime.now()).updatedAt(LocalDateTime.now()).build();
         user = User.builder().id(userId).workspace(Workspace.builder().id(workspaceId).build()).build();
         var detail = new AssistantThreads.Detail(thread, history, List.of(), List.of());
         when(threadService.detail(user, threadId)).thenReturn(detail);
         when(runs.findByWorkspaceIdAndIdempotencyKey(eq(workspaceId), any())).thenReturn(Optional.empty());
-        when(runs.save(any())).thenAnswer(invocation -> withId((AssistantRun) invocation.getArgument(0)));
-        when(calls.save(any())).thenAnswer(invocation -> withId((AssistantToolCall) invocation.getArgument(0)));
+        when(runs.save(any())).thenAnswer(invocation -> {
+            savedRun = withId((AssistantRun) invocation.getArgument(0));
+            return savedRun;
+        });
+        when(runs.findLockedById(any())).thenAnswer(invocation -> Optional.ofNullable(savedRun));
+        when(calls.save(any())).thenAnswer(invocation -> {
+            AssistantToolCall call = withId((AssistantToolCall) invocation.getArgument(0));
+            if (!savedCalls.contains(call)) savedCalls.add(call);
+            return call;
+        });
+        when(calls.findByRunIdOrderByCreatedAtAsc(any())).thenAnswer(invocation -> List.copyOf(savedCalls));
         when(messages.save(any())).thenAnswer(invocation -> {
             AssistantMessage message = invocation.getArgument(0);
             if (message.getId() == null) message.setId(UUID.randomUUID());
@@ -80,6 +96,7 @@ class AssistantOrchestratorTest {
         when(messages.findByThreadIdOrderByCreatedAtAsc(threadId)).thenAnswer(invocation -> List.copyOf(history));
         when(permissions.permisosDe(user)).thenReturn(EnumSet.allOf(Permission.class));
         when(mcp.open(eq(user), eq(threadId), any(), any())).thenReturn(session);
+        when(users.findById(userId)).thenReturn(Optional.of(user));
     }
 
     @Test
@@ -102,6 +119,7 @@ class AssistantOrchestratorTest {
 
         AssistantOrchestrator.Result result = service.send(user, threadId,
                 new AssistantOrchestrator.Send("Como vamos?", List.of(), "/panel", "message-1"));
+        service.process(new AssistantRunDispatcher.Requested(result.runId(), userId, workspaceId));
 
         assertThat(result.confirmationToken()).isNull();
         verify(session).call(eq("panel"), any());
@@ -122,18 +140,33 @@ class AssistantOrchestratorTest {
         when(llm.complete(any(), any())).thenReturn(new AssistantLlmClient.Turn("", List.of(
                 new AssistantLlmClient.ToolCall("call-1", "publicar_ahora",
                         json.createObjectNode().put("postId", "abc"))),
-                json.createObjectNode().put("role", "assistant"), "gpt-test", 10, 2));
+                json.createObjectNode().put("role", "assistant"), "gpt-test", 10, 2))
+                .thenReturn(new AssistantLlmClient.Turn("La publicacion salio correctamente.", List.of(),
+                        json.createObjectNode().put("role", "assistant").put("content", "ok"),
+                        "gpt-test", 8, 3));
+        when(session.call(eq("publicar_ahora"), any()))
+                .thenReturn(json.readTree("{\"content\":[{\"type\":\"text\",\"text\":\"publicada\"}]}"));
 
         AssistantOrchestrator.Result result = service.send(user, threadId,
                 new AssistantOrchestrator.Send("Publicalo", List.of(), "/panel", "message-2"));
+        service.process(new AssistantRunDispatcher.Requested(result.runId(), userId, workspaceId));
 
-        assertThat(result.confirmationToken()).isNotBlank();
+        assertThat(result.confirmationToken()).isNull();
         verify(session, never()).call(any(), any());
         verify(calls, atLeastOnce()).save(org.mockito.ArgumentMatchers.argThat(call ->
                 call.getStatus() == AssistantToolCallStatus.WAITING_CONFIRMATION
                         && call.getConfirmationTokenHash() != null
-                        && !call.getConfirmationTokenHash().equals(result.confirmationToken())));
+                        && call.getConfirmationExpiresAt() != null));
         assertThat(history.get(history.size() - 1).getArtifactsJson()).contains("confirmation");
+
+        AssistantOrchestrator.Result renewed = service.renewConfirmation(user, result.runId());
+        assertThat(renewed.confirmationToken()).isNotBlank();
+        service.confirm(user, result.runId(), renewed.confirmationToken());
+
+        verify(session).call(eq("publicar_ahora"), any());
+        assertThat(savedRun.getStatus()).isEqualTo(AssistantRunStatus.COMPLETED);
+        assertThatThrownBy(() -> service.confirm(user, result.runId(), renewed.confirmationToken()))
+                .isInstanceOf(IllegalArgumentException.class).hasMessageContaining("ya no espera");
     }
 
     private static AssistantRun withId(AssistantRun run) {

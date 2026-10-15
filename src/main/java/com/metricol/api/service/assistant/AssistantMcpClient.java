@@ -12,6 +12,7 @@ import java.util.UUID;
 import java.util.concurrent.atomic.AtomicLong;
 
 import org.springframework.beans.factory.annotation.Value;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Component;
 
 import com.fasterxml.jackson.databind.JsonNode;
@@ -30,6 +31,7 @@ public class AssistantMcpClient {
     private final HttpClient http;
     private final AtomicLong ids = new AtomicLong();
 
+    @Autowired
     public AssistantMcpClient(AssistantDelegationToken delegations, ObjectMapper json,
             @Value("${app.assistant.mcp-url}") String endpoint) {
         this(delegations, json, endpoint, HttpClient.newBuilder()

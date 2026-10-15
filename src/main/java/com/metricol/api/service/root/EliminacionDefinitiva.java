@@ -284,6 +284,18 @@ public class EliminacionDefinitiva {
         if (existe("hilos_de_imagen")) {
             sql.update("delete from hilos_de_imagen where workspace_id = :ws", ws);
         }
+        // El asistente conserva conversaciones, ejecuciones, eventos y recibos
+        // de herramientas. Se eliminan de hojas a raiz para no dejar historial
+        // ni auditoria perteneciente a un espacio que ya no existe.
+        if (existe("assistant_threads")) {
+            sql.update("delete from assistant_tool_calls where run_id in "
+                    + "(select id from assistant_runs where workspace_id = :ws)", ws);
+            sql.update("delete from assistant_run_events where workspace_id = :ws", ws);
+            sql.update("delete from assistant_messages where thread_id in "
+                    + "(select id from assistant_threads where workspace_id = :ws)", ws);
+            sql.update("delete from assistant_runs where workspace_id = :ws", ws);
+            sql.update("delete from assistant_threads where workspace_id = :ws", ws);
+        }
         sql.update("delete from post_targets where post_id in (select id from posts where tenant_id = :t)", t);
         sql.update("delete from post_media where post_id in (select id from posts where tenant_id = :t)", t);
         sql.update("delete from publish_jobs where workspace_id = :ws", ws);
@@ -339,6 +351,23 @@ public class EliminacionDefinitiva {
     void borrarPersona(UUID userId) {
         MapSqlParameterSource u = new MapSqlParameterSource("u", userId);
         String correo = sql.queryForObject("select email from users where id = :u", u, String.class);
+        // Sus conversaciones privadas se eliminan completas. Si participo en
+        // un hilo creado por otra persona, se elimina solo su ejecucion y sus
+        // registros dependientes, manteniendo intacto el resto del hilo.
+        if (existe("assistant_threads")) {
+            sql.update("delete from assistant_tool_calls where run_id in "
+                    + "(select id from assistant_runs where user_id = :u or thread_id in "
+                    + "(select id from assistant_threads where created_by = :u))", u);
+            sql.update("delete from assistant_run_events where run_id in "
+                    + "(select id from assistant_runs where user_id = :u or thread_id in "
+                    + "(select id from assistant_threads where created_by = :u))", u);
+            sql.update("delete from assistant_messages where run_id in "
+                    + "(select id from assistant_runs where user_id = :u) or thread_id in "
+                    + "(select id from assistant_threads where created_by = :u)", u);
+            sql.update("delete from assistant_runs where user_id = :u or thread_id in "
+                    + "(select id from assistant_threads where created_by = :u)", u);
+            sql.update("delete from assistant_threads where created_by = :u", u);
+        }
         sql.update("update invitations set invited_by = null where invited_by = :u", u);
         if (existe("workspace_invitations")) {
             sql.update("delete from workspace_invitations where invited_by = :u", u);

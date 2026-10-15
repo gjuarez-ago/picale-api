@@ -65,6 +65,9 @@ public class AssistantRun {
     @Column(length = 80)
     private String model;
 
+    @Column(name = "context_path", length = 300)
+    private String contextPath;
+
     @Column(name = "error_code", length = 50)
     private String errorCode;
 
