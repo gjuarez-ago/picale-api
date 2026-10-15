@@ -222,6 +222,7 @@ public class AssistantOrchestrator {
                         : turn.content();
                 messages.save(AssistantMessage.builder().threadId(thread.getId()).runId(run.getId())
                         .role("ASSISTANT").content(answer).model(turn.model())
+                        .artifactsJson(resultArtifacts(run.getId(), tools))
                         .inputTokens(turn.inputTokens()).outputTokens(turn.outputTokens())
                         .createdAt(LocalDateTime.now()).build());
                 run.setStatus(AssistantRunStatus.COMPLETED);
@@ -345,6 +346,22 @@ public class AssistantOrchestrator {
                 .artifactsJson(cards.toString()).createdAt(LocalDateTime.now()).build();
     }
 
+    private String resultArtifacts(UUID runId, JsonNode tools) {
+        ArrayNode artifacts = json.createArrayNode();
+        for (AssistantToolCall call : calls.findByRunIdOrderByCreatedAtAsc(runId)) {
+            if (call.getStatus() != AssistantToolCallStatus.COMPLETED) continue;
+            JsonNode definition = findTool(tools, call.getToolName());
+            ObjectNode card = artifacts.addObject();
+            card.put("type", "result");
+            card.put("toolCallId", call.getId().toString());
+            card.put("title", definition.path("description").asText("Resultado verificado"));
+            card.put("summary", call.getResultSummary() == null ? "Accion completada." : call.getResultSummary());
+            card.put("riskLevel", call.getRiskLevel());
+            card.put("status", "completed");
+        }
+        return artifacts.isEmpty() ? null : artifacts.toString();
+    }
+
     private ObjectNode assistantToolRequest(AssistantToolCall call) {
         ObjectNode message = json.createObjectNode();
         message.put("role", "assistant");
@@ -373,8 +390,9 @@ public class AssistantOrchestrator {
     private void completeCall(AssistantRun run, AssistantToolCall call, JsonNode result, long started) {
         call.setStatus(AssistantToolCallStatus.COMPLETED);
         call.setDurationMs((System.nanoTime() - started) / 1_000_000);
-        call.setResultSummary(truncate(result.path("content").isMissingNode() ? result.toString()
-                : result.path("content").toString(), 1000));
+        JsonNode safeResult = sanitize(result);
+        call.setResultSummary(truncate(safeResult.path("content").isMissingNode() ? safeResult.toString()
+                : safeResult.path("content").toString(), 1000));
         calls.save(call);
         events.emit(run, "tool.completed", payload("toolCallId", call.getId().toString()));
     }
@@ -428,9 +446,23 @@ public class AssistantOrchestrator {
                 if (key.contains("secret") || key.contains("password") || key.contains("token")
                         || key.contains("authorization")) {
                     ((ObjectNode) node).put(field.getKey(), "[REDACTED]");
+                } else if (field.getValue().isTextual() && looksSigned(field.getValue().asText())) {
+                    ((ObjectNode) node).put(field.getKey(), "[SIGNED_URL_REDACTED]");
                 } else redact(field.getValue());
             }
-        } else if (node.isArray()) node.forEach(this::redact);
+        } else if (node.isArray()) {
+            for (int index = 0; index < node.size(); index++) {
+                if (node.get(index).isTextual() && looksSigned(node.get(index).asText())) {
+                    ((ArrayNode) node).set(index, json.getNodeFactory().textNode("[SIGNED_URL_REDACTED]"));
+                } else redact(node.get(index));
+            }
+        }
+    }
+
+    private static boolean looksSigned(String value) {
+        String lower = value.toLowerCase(Locale.ROOT);
+        return lower.contains("x-amz-") || lower.contains("x-goog-signature=")
+                || lower.contains("signature=") || lower.contains("access_token=");
     }
 
     private JsonNode parse(String value) {
