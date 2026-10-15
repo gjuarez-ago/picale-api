@@ -73,7 +73,17 @@ public class AssistantOrchestrator {
             Eres el Asistente Operativo de Picale. Ayudas a entender la cuenta, decidir y ejecutar trabajo real.
             Usa herramientas para cualquier afirmacion sobre datos actuales; nunca inventes resultados ni digas que
             hiciste algo sin el recibo de la herramienta. Distingue con claridad hechos, inferencias y recomendaciones.
-            No menciones nombres internos de herramientas. Se breve, concreto y profesional. Si hay archivos adjuntos,
+            No menciones nombres internos de herramientas. Se breve, concreto y profesional.
+
+            Como se lee tu respuesta: empieza con una linea que diga lo importante, y si hay varias cosas,
+            ponlas en lista con "- " o numeradas, una idea por renglon, nunca mas de cinco. Resalta con
+            **negritas** el dato que la persona busca (una cifra, un nombre, una fecha), una o dos por mensaje.
+            Cierra con lo que sigue o con una pregunta. Nada de parrafos largos ni de tablas.
+
+            Emojis: uno al principio del renglon, y solo cuando ayude a distinguir de que habla cada punto
+            (por ejemplo 📅 una fecha, ⚠️ algo que atender, ✅ algo resuelto). Como mucho tres en todo el
+            mensaje, nunca dos seguidos, nunca en medio de una frase y nunca uno alegre sobre una mala
+            noticia. Si dudas, no pongas ninguno: un mensaje sin emojis esta bien, uno saturado no. Si hay archivos adjuntos,
             sus IDs aparecen en el mensaje y debes inspeccionarlos con la herramienta disponible antes de opinar.
             Las acciones sensibles se detendran para confirmacion: describe exactamente que se propone y su efecto.
             No solicites claves, tokens ni secretos. No intentes acciones fuera del catalogo de herramientas.
@@ -369,7 +379,7 @@ public class AssistantOrchestrator {
                     run.setStatus(AssistantRunStatus.WAITING_CONFIRMATION);
                     runs.save(run);
                     messages.save(confirmationMessage(thread.getId(), run.getId(), call, definition, rawToken,
-                            policy.confirmation()));
+                            policy.confirmation(), turn.content()));
                     events.emit(run, "confirmation.required", payload("toolCallId", call.getId().toString()));
                     return new Result(threadService.detail(user, thread.getId()), run.getId(), rawToken);
                 }
@@ -557,7 +567,7 @@ public class AssistantOrchestrator {
     }
 
     private AssistantMessage confirmationMessage(UUID threadId, UUID runId, AssistantToolCall call,
-            JsonNode definition, String rawToken, String confirmation) {
+            JsonNode definition, String rawToken, String confirmation, String said) {
         ObjectNode card = json.createObjectNode();
         card.put("type", "confirmation");
         card.put("runId", runId.toString());
@@ -569,9 +579,13 @@ public class AssistantOrchestrator {
         card.put("description", definition.path("description").asText("Se ejecutara la accion solicitada."));
         card.set("arguments", sanitize(parse(call.getArgumentsJson())));
         ArrayNode cards = json.createArrayNode().add(card);
+        // Si el modelo ya explico que propone, esa frase va en la burbuja: repetir el titulo
+        // de la tarjeta justo encima de la tarjeta no le dice nada nuevo a nadie.
+        String content = said == null || said.isBlank()
+                ? "Preparé esto y espero tu visto bueno."
+                : said.strip();
         return AssistantMessage.builder().threadId(threadId).runId(runId).role("ASSISTANT")
-                .content(card.path("title").asText() + ". Revisa los detalles antes de autorizarla.")
-                .artifactsJson(cards.toString()).createdAt(LocalDateTime.now()).build();
+                .content(content).artifactsJson(cards.toString()).createdAt(LocalDateTime.now()).build();
     }
 
     private String resultArtifacts(UUID runId, JsonNode tools) {
