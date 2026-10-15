@@ -177,6 +177,65 @@ class AssistantOrchestratorTest {
     }
 
     @Test
+    void cierraElTurnoConOpcionesParaTocarSinLlamarAlMcp() throws Exception {
+        when(session.tools()).thenReturn(json.readTree("[]"));
+        when(llm.complete(any(), any())).thenReturn(new AssistantLlmClient.Turn("", List.of(
+                new AssistantLlmClient.ToolCall("call-1", "ofrecer_opciones", json.readTree("""
+                        {"pregunta":"¿Cual es el giro?","opciones":[{"etiqueta":"Restaurante"},
+                         {"etiqueta":"Tienda de ropa"},{"etiqueta":"Otro"}]}"""))),
+                json.createObjectNode().put("role", "assistant"), "gpt-test", 7, 2));
+
+        AssistantOrchestrator.Result result = service.send(user, threadId,
+                new AssistantOrchestrator.Send("Ayudame", List.of(), "/panel", "message-8"));
+        service.process(new AssistantRunDispatcher.Requested(result.runId(), userId, workspaceId));
+
+        AssistantMessage last = history.get(history.size() - 1);
+        assertThat(last.getContent()).isEqualTo("¿Cual es el giro?");
+        assertThat(last.getArtifactsJson()).contains("choices").contains("Restaurante").contains("Tienda de ropa");
+        assertThat(savedRun.getStatus()).isEqualTo(AssistantRunStatus.COMPLETED);
+        // No es una accion: no toca el MCP ni deja recibo de herramienta.
+        verify(session, never()).call(any(), any());
+        assertThat(savedCalls).isEmpty();
+    }
+
+    @Test
+    void ofreceLaHerramientaDeOpcionesJuntoAlCatalogo() throws Exception {
+        when(session.tools()).thenReturn(json.readTree("""
+                [{"name":"panel","description":"Consulta el panel","inputSchema":{"type":"object"},
+                  "_meta":{"picale/policy":{"riskLevel":0,"permission":"MEMBERSHIP",
+                  "confirmation":"none","idempotencyRequired":false}}}]
+                """));
+        when(llm.complete(any(), any())).thenReturn(new AssistantLlmClient.Turn("Listo.", List.of(),
+                json.createObjectNode().put("role", "assistant"), "gpt-test", 5, 1));
+
+        AssistantOrchestrator.Result result = service.send(user, threadId,
+                new AssistantOrchestrator.Send("Hola", List.of(), "/panel", "message-9"));
+        service.process(new AssistantRunDispatcher.Requested(result.runId(), userId, workspaceId));
+
+        var ofrecidas = org.mockito.ArgumentCaptor.forClass(com.fasterxml.jackson.databind.JsonNode.class);
+        verify(llm).complete(any(), ofrecidas.capture());
+        assertThat(ofrecidas.getValue().toString()).contains("panel").contains("ofrecer_opciones");
+    }
+
+    @Test
+    void ignoraLasOpcionesSiNoHayDondeElegir() throws Exception {
+        when(session.tools()).thenReturn(json.readTree("[]"));
+        when(llm.complete(any(), any())).thenReturn(new AssistantLlmClient.Turn("", List.of(
+                new AssistantLlmClient.ToolCall("call-1", "ofrecer_opciones", json.readTree("""
+                        {"pregunta":"¿Seguimos?","opciones":[{"etiqueta":"Si"}]}"""))),
+                json.createObjectNode().put("role", "assistant"), "gpt-test", 7, 2));
+
+        AssistantOrchestrator.Result result = service.send(user, threadId,
+                new AssistantOrchestrator.Send("Ayudame", List.of(), "/panel", "message-10"));
+        service.process(new AssistantRunDispatcher.Requested(result.runId(), userId, workspaceId));
+
+        AssistantMessage last = history.get(history.size() - 1);
+        assertThat(last.getContent()).isEqualTo("¿Seguimos?");
+        assertThat(last.getArtifactsJson()).isNull();
+        assertThat(savedRun.getStatus()).isEqualTo(AssistantRunStatus.COMPLETED);
+    }
+
+    @Test
     void expandeElAtajoDelCatalogoSinEnsenarleLasInstruccionesALaPersona() throws Exception {
         when(session.tools()).thenReturn(json.readTree("[]"));
         when(session.resource("picale://reglas")).thenReturn("Instagram: 2200 caracteres.");

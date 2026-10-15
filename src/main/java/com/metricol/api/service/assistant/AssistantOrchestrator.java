@@ -65,6 +65,9 @@ public class AssistantOrchestrator {
     // leer la marca, la cuenta y el contenido, guardar y verificar ya los agotaba.
     private static final int MAX_TOOL_STEPS = 12;
     private static final String REGLAS_URI = "picale://reglas";
+    /** Herramienta propia, no del MCP: no ejecuta nada, cierra el turno con opciones para tocar. */
+    private static final String CHOICES_TOOL = "ofrecer_opciones";
+    private static final int MAX_CHOICES = 5;
     private static final SecureRandom RANDOM = new SecureRandom();
     private static final String SYSTEM_PROMPT = """
             Eres el Asistente Operativo de Picale. Ayudas a entender la cuenta, decidir y ejecutar trabajo real.
@@ -75,12 +78,28 @@ public class AssistantOrchestrator {
             Las acciones sensibles se detendran para confirmacion: describe exactamente que se propone y su efecto.
             No solicites claves, tokens ni secretos. No intentes acciones fuera del catalogo de herramientas.
 
+            Propon, no interrogues. Nunca devuelvas una pregunta abierta si puedes ofrecer opciones: usa la
+            herramienta de opciones para que la persona elija tocando en vez de redactar. Antes de preguntar algo,
+            deducelo: el nombre del negocio, lo que ya esta guardado, las redes conectadas, las publicaciones y el
+            material que hay dicen casi todo. Si puedes adivinarlo con fundamento, proponlo como primera opcion en
+            vez de preguntarlo en blanco. Pregunta solo lo que de verdad no puedas deducir, y de una cosa a la vez.
+
+            Cada opcion que ofreces es una RESPUESTA ya redactada, no un campo ni un paso. Si preguntas el giro,
+            las opciones son "Restaurante", "Tienda de ropa", "Inmobiliaria"; nunca "Nombre del negocio", "Giro",
+            "Ciudad", porque eso es volver a pedirle a la persona que haga el trabajo. Si no sabes que opciones
+            poner, es que todavia no investigaste lo suficiente con las herramientas.
+
+            Prefiere ensenar un borrador a pedir instrucciones. Cuando haya que escribir o armar algo (la marca,
+            una publicacion, un plan de la semana), redacta una primera version COMPLETA con lo que sabes y
+            enseñala para que la persona la apruebe o la corrija. Es mas facil corregir algo escrito que escribirlo
+            desde cero. Nunca pidas que te dicte varios campos seguidos ni preguntes por cual quiere empezar.
+
             Cuentas nuevas o incompletas: tu primer trabajo es dejar la cuenta lista para operar, sin mandar a la
-            persona a configurarla por su cuenta. Si falta informacion de la marca, si no hay redes conectadas o si
-            no hay material, acompanala paso a paso: revisa que falta con las herramientas, pide un solo dato a la
-            vez en palabras simples y con un ejemplo, y guarda lo que te vaya dando con la herramienta
-            correspondiente. No pidas de golpe una lista larga de campos ni le devuelvas un instructivo numerado
-            para que lo haga sola. Cuando un dato quede guardado, dilo y continua con el siguiente que falte.
+            persona a configurarla por su cuenta. Lee lo que ya hay, deduce todo lo que puedas (el nombre del
+            espacio, las redes conectadas, las publicaciones y el material dicen mucho) y redacta una propuesta
+            completa de la marca de una sola vez: giro, descripcion, que vende, a quien le habla y tono. Enseñala
+            y pide un si o una correccion. Pregunta solo lo que sea imposible deducir, y con opciones.
+            Cuando un dato quede guardado, dilo en una linea y continua con el siguiente que falte.
             Lo que no puedas hacer tu (conectar una red social, por ejemplo) explicalo en una frase, di donde se
             hace, y sigue avanzando con lo que si este a tu alcance en vez de detenerte ahi.
             """;
@@ -303,7 +322,7 @@ public class AssistantOrchestrator {
             // explorando y tiene que responder con lo que reunio. Antes se quedaba sin pasos
             // y el turno moria con un error, dejando a la persona sin ninguna respuesta.
             boolean lastStep = step == MAX_TOOL_STEPS - 1;
-            AssistantLlmClient.Turn turn = llm.complete(history, lastStep ? null : tools);
+            AssistantLlmClient.Turn turn = llm.complete(history, lastStep ? null : withChoicesTool(tools));
             run.setModel(turn.model());
             runs.save(run);
             if (turn.toolCalls().isEmpty()) {
@@ -327,6 +346,9 @@ public class AssistantOrchestrator {
 
             history.add(turn.assistantMessage());
             for (AssistantLlmClient.ToolCall requested : turn.toolCalls()) {
+                if (CHOICES_TOOL.equals(requested.name())) {
+                    return askWithChoices(user, thread, run, turn, requested.arguments());
+                }
                 JsonNode definition = findTool(tools, requested.name());
                 Policy policy = policy(definition);
                 AssistantToolCall call = calls.save(AssistantToolCall.builder().runId(run.getId())
@@ -358,6 +380,84 @@ public class AssistantOrchestrator {
             }
         }
         throw new IllegalStateException("Se alcanzo el limite seguro de pasos del asistente.");
+    }
+
+    /**
+     * Suma al catalogo del MCP una herramienta que no ejecuta nada: solo deja la pregunta
+     * con respuestas listas para tocar. Existe para que el modelo tenga una alternativa
+     * mejor que soltar una pregunta abierta y dejar a la persona escribiendo desde cero.
+     */
+    private JsonNode withChoicesTool(JsonNode tools) {
+        ArrayNode result = json.createArrayNode();
+        if (tools != null && tools.isArray()) tools.forEach(result::add);
+
+        ObjectNode tool = result.addObject();
+        tool.put("name", CHOICES_TOOL);
+        tool.put("description", "Haz una pregunta dejando entre 2 y " + MAX_CHOICES + " respuestas listas"
+                + " para tocar. Usala SIEMPRE en vez de preguntar a campo abierto: la persona elige en vez"
+                + " de redactar. Cada opcion es una RESPUESTA posible a la pregunta, ya redactada como la diria"
+                + " la persona (por ejemplo, para el giro: 'Restaurante', 'Tienda de ropa', 'Inmobiliaria')."
+                + " NUNCA pongas como opciones una lista de campos, temas o pasos siguientes: eso le devuelve"
+                + " el trabajo a la persona. La primera opcion es la mas probable segun lo que ya sabes.");
+        ObjectNode schema = tool.putObject("inputSchema");
+        schema.put("type", "object");
+        ObjectNode props = schema.putObject("properties");
+        props.putObject("pregunta").put("type", "string")
+                .put("description", "La pregunta, en una linea y en palabras de la persona.");
+        ObjectNode opciones = props.putObject("opciones");
+        opciones.put("type", "array");
+        opciones.put("description", "Entre 2 y " + MAX_CHOICES + " respuestas posibles.");
+        ObjectNode item = opciones.putObject("items");
+        item.put("type", "object");
+        item.putObject("properties").putObject("etiqueta").put("type", "string")
+                .put("description", "Lo que se lee en el boton; breve.");
+        item.putArray("required").add("etiqueta");
+        ArrayNode required = schema.putArray("required");
+        required.add("pregunta");
+        required.add("opciones");
+        tool.putObject("_meta").putObject("picale/policy")
+                .put("riskLevel", 0).put("permission", "MEMBERSHIP")
+                .put("confirmation", "none").put("idempotencyRequired", false);
+        return result;
+    }
+
+    /** Cierra el turno con la pregunta y sus opciones; no toca el MCP ni la cuenta. */
+    private Result askWithChoices(User user, AssistantThread thread, AssistantRun run,
+            AssistantLlmClient.Turn turn, JsonNode arguments) {
+        String question = arguments.path("pregunta").asText("").strip();
+        ArrayNode options = json.createArrayNode();
+        for (JsonNode option : arguments.path("opciones")) {
+            String label = option.path("etiqueta").asText("").strip();
+            if (label.isEmpty() || options.size() >= MAX_CHOICES) continue;
+            options.addObject().put("label", truncate(label, 80));
+        }
+        // Sin pregunta o con una sola salida no hay nada que elegir: mejor texto normal.
+        if (question.isEmpty() || options.size() < 2) {
+            String fallback = question.isEmpty() ? turn.content() : question;
+            return finish(user, thread, run, turn,
+                    fallback.isBlank() ? "Cuentame un poco mas y seguimos." : fallback, null);
+        }
+        ObjectNode card = json.createObjectNode();
+        card.put("type", "choices");
+        card.set("options", options);
+        return finish(user, thread, run, turn, question, json.createArrayNode().add(card).toString());
+    }
+
+    /** Guarda la respuesta del asistente, cierra el turno y devuelve el detalle. */
+    private Result finish(User user, AssistantThread thread, AssistantRun run,
+            AssistantLlmClient.Turn turn, String answer, String artifacts) {
+        messages.save(AssistantMessage.builder().threadId(thread.getId()).runId(run.getId())
+                .role("ASSISTANT").content(answer).model(turn.model()).artifactsJson(artifacts)
+                .inputTokens(turn.inputTokens()).outputTokens(turn.outputTokens())
+                .createdAt(LocalDateTime.now()).build());
+        events.emit(run, "message.delta", payload("content", answer));
+        run.setStatus(AssistantRunStatus.COMPLETED);
+        run.setFinishedAt(LocalDateTime.now());
+        runs.save(run);
+        thread.setUpdatedAt(LocalDateTime.now());
+        threads.save(thread);
+        events.emit(run, "run.completed", payload("message", answer));
+        return new Result(threadService.detail(user, thread.getId()), run.getId(), null);
     }
 
     private ArrayNode history(UUID threadId, String currentPath) {
