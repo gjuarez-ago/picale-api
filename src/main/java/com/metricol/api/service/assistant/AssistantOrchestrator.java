@@ -75,15 +75,32 @@ public class AssistantOrchestrator {
             hiciste algo sin el recibo de la herramienta. Distingue con claridad hechos, inferencias y recomendaciones.
             No menciones nombres internos de herramientas. Se breve, concreto y profesional.
 
-            Como se lee tu respuesta: empieza con una linea que diga lo importante, y si hay varias cosas,
-            ponlas en lista con "- " o numeradas, una idea por renglon, nunca mas de cinco. Resalta con
-            **negritas** el dato que la persona busca (una cifra, un nombre, una fecha), una o dos por mensaje.
-            Cierra con lo que sigue o con una pregunta. Nada de parrafos largos ni de tablas.
+            COMO ESCRIBES. Esto no es opcional: la pantalla da forma a las listas y a las negritas, asi que
+            si sueltas renglones pelados se leen como un bloque gris. Toda enumeracion va con "- " al
+            principio del renglon. El dato que la persona busca va en **negritas**.
 
-            Emojis: uno al principio del renglon, y solo cuando ayude a distinguir de que habla cada punto
-            (por ejemplo 📅 una fecha, ⚠️ algo que atender, ✅ algo resuelto). Como mucho tres en todo el
-            mensaje, nunca dos seguidos, nunca en medio de una frase y nunca uno alegre sobre una mala
-            noticia. Si dudas, no pongas ninguno: un mensaje sin emojis esta bien, uno saturado no. Si hay archivos adjuntos,
+            Una respuesta tuya se ve asi:
+
+            📅 Esta semana no tienes nada programado.
+
+            - **3 fotos** sin usar en Contenido
+            - **Facebook** desconectado desde el lunes
+            - ⚠️ El agente esta en pausa
+
+            ¿Preparo publicaciones para el jueves y el sabado?
+
+            Fijate en lo que hace: una linea con lo importante, los puntos en lista de verdad, el dato en
+            negrita, un emoji donde ayuda, y un cierre con la siguiente accion concreta. Nunca mas de cinco
+            puntos, nunca un parrafo largo, nunca una tabla.
+
+            Emojis: al principio del renglon, solo cuando distinguen de que habla el punto (📅 fecha,
+            ⚠️ algo que atender, ✅ algo resuelto, 📸 material, 💬 conversacion). Tres como mucho en todo
+            el mensaje, nunca dos seguidos, nunca en medio de una frase, nunca uno alegre sobre una mala
+            noticia. Si dudas, ninguno: un mensaje sin emojis esta bien, uno saturado no.
+
+            Y nunca enumeres los datos que te faltan para que la persona te los dicte. Si te piden algo y
+            falta informacion, rellena con lo mas razonable, enseña la propuesta completa marcando que
+            asumiste, y ofrece opciones para ajustar lo que haga falta. Si hay archivos adjuntos,
             sus IDs aparecen en el mensaje y debes inspeccionarlos con la herramienta disponible antes de opinar.
             Las acciones sensibles se detendran para confirmacion: describe exactamente que se propone y su efecto.
             No solicites claves, tokens ni secretos. No intentes acciones fuera del catalogo de herramientas.
@@ -517,11 +534,27 @@ public class AssistantOrchestrator {
             if ("SYSTEM".equals(message.getRole())) continue;
             String content = message.getContent();
             if (message.getAttachmentsJson() != null && !message.getAttachmentsJson().isBlank()) {
-                content += "\nArchivos adjuntos (usa estos IDs): " + message.getAttachmentsJson();
+                content += "\nArchivos adjuntos (usa estos IDs): " + forModel(message.getAttachmentsJson());
             }
             result.addObject().put("role", message.getRole().toLowerCase(Locale.ROOT)).put("content", content);
         }
         return result;
+    }
+
+    /**
+     * Los adjuntos guardan tambien su direccion para que el chat los enseñe, pero al
+     * modelo solo le sirve el id: las direcciones son largas, gastan contexto y lo
+     * tientan a usarlas en vez de la herramienta que inspecciona el archivo.
+     */
+    private String forModel(String attachments) {
+        ArrayNode lean = json.createArrayNode();
+        for (JsonNode item : parse(attachments)) {
+            ObjectNode copy = lean.addObject();
+            copy.put("id", item.path("id").asText());
+            copy.put("name", item.path("name").asText());
+            copy.put("type", item.path("type").asText());
+        }
+        return lean.isEmpty() ? attachments : lean.toString();
     }
 
     private String validateAttachments(List<UUID> ids) {
@@ -537,6 +570,9 @@ public class AssistantOrchestrator {
             item.put("name", asset.getFileName());
             item.put("type", asset.getType() == null ? "" : asset.getType().name());
             item.put("sizeBytes", asset.getSizeBytes() == null ? 0 : asset.getSizeBytes());
+            // Para que el chat pueda enseñar lo que la persona subio, sin volver a pedirlo.
+            item.put("url", asset.getUrl() == null ? "" : asset.getUrl());
+            item.put("thumbnailUrl", asset.getThumbnailUrl() == null ? "" : asset.getThumbnailUrl());
         }
         return result.toString();
     }
