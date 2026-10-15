@@ -176,6 +176,47 @@ class AssistantOrchestratorTest {
                 .isInstanceOf(IllegalArgumentException.class).hasMessageContaining("ya no espera");
     }
 
+    @Test
+    void cierraConRespuestaCuandoElModeloNoDejaDeConsultar() throws Exception {
+        when(session.tools()).thenReturn(json.readTree("""
+                [{"name":"panel","description":"Consulta el panel","inputSchema":{"type":"object"},
+                  "_meta":{"picale/policy":{"riskLevel":0,"permission":"MEMBERSHIP",
+                  "confirmation":"none","idempotencyRequired":false}}}]
+                """));
+        when(session.call(eq("panel"), any()))
+                .thenReturn(json.readTree("{\"content\":[{\"type\":\"text\",\"text\":\"sin datos\"}]}"));
+        // Con herramientas el modelo sigue consultando; en el ultimo paso se le retiran y responde.
+        when(llm.complete(any(), org.mockito.ArgumentMatchers.isNull()))
+                .thenReturn(new AssistantLlmClient.Turn("Esto es lo que alcance a revisar.", List.of(),
+                        json.createObjectNode().put("role", "assistant"), "gpt-test", 5, 1));
+        when(llm.complete(any(), org.mockito.ArgumentMatchers.notNull()))
+                .thenReturn(new AssistantLlmClient.Turn("", List.of(
+                        new AssistantLlmClient.ToolCall("call-1", "panel", json.createObjectNode())),
+                        json.createObjectNode().put("role", "assistant"), "gpt-test", 10, 2));
+
+        AssistantOrchestrator.Result result = service.send(user, threadId,
+                new AssistantOrchestrator.Send("Como vamos?", List.of(), "/panel", "message-3"));
+        service.process(new AssistantRunDispatcher.Requested(result.runId(), userId, workspaceId));
+
+        assertThat(savedRun.getStatus()).isEqualTo(AssistantRunStatus.COMPLETED);
+        assertThat(history.get(history.size() - 1).getContent()).isEqualTo("Esto es lo que alcance a revisar.");
+    }
+
+    @Test
+    void explicaLaCaidaDelProveedorSinCulparALaPersona() throws Exception {
+        when(session.tools()).thenReturn(json.readTree("[]"));
+        when(llm.complete(any(), any()))
+                .thenThrow(new org.springframework.web.client.ResourceAccessException("connect timed out"));
+
+        AssistantOrchestrator.Result result = service.send(user, threadId,
+                new AssistantOrchestrator.Send("Ayudame", List.of(), "/panel", "message-4"));
+        service.process(new AssistantRunDispatcher.Requested(result.runId(), userId, workspaceId));
+
+        assertThat(savedRun.getStatus()).isEqualTo(AssistantRunStatus.FAILED);
+        assertThat(history.get(history.size() - 1).getContent())
+                .contains("no pude conectarme").contains("No cambie nada");
+    }
+
     private static AssistantRun withId(AssistantRun run) {
         if (run.getId() == null) run.setId(UUID.randomUUID());
         return run;

@@ -11,9 +11,12 @@ import java.util.Locale;
 import java.util.Set;
 import java.util.UUID;
 
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.context.ApplicationEventPublisher;
+import org.springframework.web.client.RestClientException;
 
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
@@ -48,6 +51,7 @@ public class AssistantOrchestrator {
     public record Result(AssistantThreads.Detail detail, UUID runId, String confirmationToken) {
     }
 
+    private static final Logger log = LoggerFactory.getLogger(AssistantOrchestrator.class);
     private static final int MAX_TOOL_STEPS = 6;
     private static final SecureRandom RANDOM = new SecureRandom();
     private static final String SYSTEM_PROMPT = """
@@ -58,6 +62,15 @@ public class AssistantOrchestrator {
             sus IDs aparecen en el mensaje y debes inspeccionarlos con la herramienta disponible antes de opinar.
             Las acciones sensibles se detendran para confirmacion: describe exactamente que se propone y su efecto.
             No solicites claves, tokens ni secretos. No intentes acciones fuera del catalogo de herramientas.
+
+            Cuentas nuevas o incompletas: tu primer trabajo es dejar la cuenta lista para operar, sin mandar a la
+            persona a configurarla por su cuenta. Si falta informacion de la marca, si no hay redes conectadas o si
+            no hay material, acompanala paso a paso: revisa que falta con las herramientas, pide un solo dato a la
+            vez en palabras simples y con un ejemplo, y guarda lo que te vaya dando con la herramienta
+            correspondiente. No pidas de golpe una lista larga de campos ni le devuelvas un instructivo numerado
+            para que lo haga sola. Cuando un dato quede guardado, dilo y continua con el siguiente que falte.
+            Lo que no puedas hacer tu (conectar una red social, por ejemplo) explicalo en una frase, di donde se
+            hace, y sigue avanzando con lo que si este a tu alcance en vez de detenerte ahi.
             """;
 
     private final AssistantThreads threadService;
@@ -149,7 +162,7 @@ public class AssistantOrchestrator {
             ArrayNode history = history(run.getThreadId(), run.getContextPath());
             execute(user, thread, run, history, tools, session, 0);
         } catch (Exception error) {
-            fail(run, safeError(error));
+            fail(run, safeError(error), error);
         }
     }
 
@@ -203,7 +216,7 @@ public class AssistantOrchestrator {
             call.setStatus(AssistantToolCallStatus.FAILED);
             call.setResultSummary(safeError(error));
             calls.save(call);
-            fail(run, safeError(error));
+            fail(run, safeError(error), error);
             return new Result(threadService.detail(user, run.getThreadId()), runId, null);
         }
     }
@@ -249,7 +262,11 @@ public class AssistantOrchestrator {
     private Result execute(User user, AssistantThread thread, AssistantRun run, ArrayNode history,
             JsonNode tools, AssistantMcpClient.Session session, int completedSteps) {
         for (int step = completedSteps; step < MAX_TOOL_STEPS; step++) {
-            AssistantLlmClient.Turn turn = llm.complete(history, tools);
+            // En el ultimo paso se retiran las herramientas: el modelo ya no puede seguir
+            // explorando y tiene que responder con lo que reunio. Antes se quedaba sin pasos
+            // y el turno moria con un error, dejando a la persona sin ninguna respuesta.
+            boolean lastStep = step == MAX_TOOL_STEPS - 1;
+            AssistantLlmClient.Turn turn = llm.complete(history, lastStep ? null : tools);
             run.setModel(turn.model());
             runs.save(run);
             if (turn.toolCalls().isEmpty()) {
@@ -454,6 +471,18 @@ public class AssistantOrchestrator {
     }
 
     private void fail(AssistantRun run, String safeMessage) {
+        fail(run, safeMessage, null);
+    }
+
+    /**
+     * El texto que ve la persona nunca lleva detalles tecnicos, asi que la causa real solo
+     * sobrevive si queda en el log: sin esto un turno fallido es imposible de diagnosticar.
+     */
+    private void fail(AssistantRun run, String safeMessage, Exception cause) {
+        if (cause != null) {
+            log.error("Turno del asistente fallido. run={} thread={} workspace={} modelo={}",
+                    run.getId(), run.getThreadId(), run.getWorkspaceId(), run.getModel(), cause);
+        }
         run.setStatus(AssistantRunStatus.FAILED);
         run.setErrorCode("ASSISTANT_RUN_FAILED");
         run.setErrorMessage(safeMessage);
@@ -555,10 +584,17 @@ public class AssistantOrchestrator {
 
     private static String safeError(Exception error) {
         if (error instanceof IllegalArgumentException || error instanceof SecurityException
-                || error instanceof AssistantMcpClient.McpException) {
+                || error instanceof AssistantMcpClient.McpException
+                || error instanceof ResourceNotFoundException) {
             return truncate(error.getMessage(), 500);
         }
-        return "No pude completar esta solicitud. No se realizo ninguna accion pendiente; intenta de nuevo.";
+        // Que el servicio del modelo se caiga no es lo mismo que un error de la cuenta:
+        // decirlo por su nombre evita que la persona crea que hizo algo mal.
+        if (error instanceof RestClientException) {
+            return "Ahora mismo no pude conectarme para pensar tu respuesta. No cambie nada; "
+                    + "vuelve a intentarlo en un momento.";
+        }
+        return "No pude completar esta solicitud. No cambie nada en tu cuenta; intenta de nuevo.";
     }
 
     private static String token() {

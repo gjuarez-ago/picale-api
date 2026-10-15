@@ -51,9 +51,13 @@ public class AssistantLlmClient {
         ObjectNode body = json.createObjectNode();
         body.put("model", props.getModel());
         body.set("messages", messages);
-        body.set("tools", toolsForModel(mcpTools, json));
-        body.put("tool_choice", "auto");
-        body.put("parallel_tool_calls", false);
+        // Sin herramientas el turno obliga al modelo a redactar: un arreglo vacio seria rechazado.
+        ArrayNode tools = toolsForModel(mcpTools, json);
+        if (!tools.isEmpty()) {
+            body.set("tools", tools);
+            body.put("tool_choice", "auto");
+            body.put("parallel_tool_calls", false);
+        }
         if (reasoningModel(props.getModel()) && props.getReasoningEffort() != null
                 && !props.getReasoningEffort().isBlank()) {
             body.put("reasoning_effort", props.getReasoningEffort().strip());
