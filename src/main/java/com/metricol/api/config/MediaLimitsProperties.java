@@ -32,10 +32,10 @@ public class MediaLimitsProperties {
     private long maxFileBytes = 200L * 1024 * 1024;
 
     /**
-     * Espacio total por workspace, en bytes (1 GB). Un 0 o negativo significa
+     * Espacio total por workspace, en bytes (10 GB). Un 0 o negativo significa
      * "sin tope": útil para un entorno donde no se quiera medir nada.
      */
-    private long maxBytesPerWorkspace = 1024L * 1024 * 1024;
+    private long maxBytesPerWorkspace = 10L * 1024 * 1024 * 1024;
 
     /**
      * Archivos que puede subir un workspace en un día (desde las 0:00). Es el
