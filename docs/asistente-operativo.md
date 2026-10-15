@@ -626,4 +626,3 @@ global compartida entre negocios.
 4. Retención de conversaciones y opción de borrarlas/exportarlas.
 5. Proveedor y modelo inicial, con fallback y presupuesto máximo por workspace.
 6. Qué documentos podrán alimentar la primera base de conocimiento.
-
