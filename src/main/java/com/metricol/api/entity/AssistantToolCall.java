@@ -71,6 +71,9 @@ public class AssistantToolCall {
     @Column(name = "confirmation_token_hash", length = 100)
     private String confirmationTokenHash;
 
+    @Column(name = "confirmation_expires_at")
+    private LocalDateTime confirmationExpiresAt;
+
     @Column(name = "confirmed_by")
     private UUID confirmedBy;
 

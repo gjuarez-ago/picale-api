@@ -5,6 +5,8 @@ import java.util.List;
 import java.util.UUID;
 
 import org.springframework.http.ResponseEntity;
+import org.springframework.http.MediaType;
+import org.springframework.web.bind.annotation.RequestHeader;
 import org.springframework.security.core.annotation.AuthenticationPrincipal;
 import org.springframework.web.bind.annotation.DeleteMapping;
 import org.springframework.web.bind.annotation.GetMapping;
@@ -13,6 +15,7 @@ import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
+import org.springframework.web.servlet.mvc.method.annotation.SseEmitter;
 
 import com.metricol.api.entity.AssistantMessage;
 import com.metricol.api.entity.AssistantRun;
@@ -22,6 +25,7 @@ import com.metricol.api.entity.User;
 import com.metricol.api.models.response.ApiResponse;
 import com.metricol.api.service.assistant.AssistantThreads;
 import com.metricol.api.service.assistant.AssistantOrchestrator;
+import com.metricol.api.service.assistant.AssistantRunEvents;
 
 /** API publica de conversaciones; la ejecucion y el SSE se agregan sobre estos IDs durables. */
 @RestController
@@ -61,10 +65,13 @@ public class AssistantController {
 
     private final AssistantThreads threads;
     private final AssistantOrchestrator orchestrator;
+    private final AssistantRunEvents events;
 
-    public AssistantController(AssistantThreads threads, AssistantOrchestrator orchestrator) {
+    public AssistantController(AssistantThreads threads, AssistantOrchestrator orchestrator,
+            AssistantRunEvents events) {
         this.threads = threads;
         this.orchestrator = orchestrator;
+        this.events = events;
     }
 
     @PostMapping("/threads")
@@ -123,6 +130,14 @@ public class AssistantController {
     public ResponseEntity<ApiResponse<ThreadDetail>> cancel(@AuthenticationPrincipal User user,
             @PathVariable UUID id) {
         return ResponseEntity.ok(ApiResponse.success(view(orchestrator.cancel(user, id))));
+    }
+
+    @GetMapping(value = "/runs/{id}/events", produces = MediaType.TEXT_EVENT_STREAM_VALUE)
+    public SseEmitter events(@AuthenticationPrincipal User user, @PathVariable UUID id,
+            @RequestHeader(name = "Last-Event-ID", required = false) String lastEventId) {
+        long after = 0;
+        if (lastEventId != null && lastEventId.matches("\\d+")) after = Long.parseLong(lastEventId);
+        return events.subscribe(user, id, after);
     }
 
     @DeleteMapping("/threads/{id}")

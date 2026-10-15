@@ -4,6 +4,7 @@ import java.nio.charset.StandardCharsets;
 import java.security.MessageDigest;
 import java.security.SecureRandom;
 import java.time.LocalDateTime;
+import java.time.temporal.ChronoUnit;
 import java.util.Base64;
 import java.util.List;
 import java.util.Locale;
@@ -66,12 +67,13 @@ public class AssistantOrchestrator {
     private final PermissionService permissions;
     private final AssistantMcpClient mcp;
     private final AssistantLlmClient llm;
+    private final AssistantRunEvents events;
     private final ObjectMapper json;
 
     public AssistantOrchestrator(AssistantThreads threadService, AssistantThreadRepository threads,
             AssistantMessageRepository messages, AssistantRunRepository runs,
             AssistantToolCallRepository calls, MediaAssetRepository media, PermissionService permissions,
-            AssistantMcpClient mcp, AssistantLlmClient llm, ObjectMapper json) {
+            AssistantMcpClient mcp, AssistantLlmClient llm, AssistantRunEvents events, ObjectMapper json) {
         this.threadService = threadService;
         this.threads = threads;
         this.messages = messages;
@@ -81,6 +83,7 @@ public class AssistantOrchestrator {
         this.permissions = permissions;
         this.mcp = mcp;
         this.llm = llm;
+        this.events = events;
         this.json = json;
     }
 
@@ -109,6 +112,7 @@ public class AssistantOrchestrator {
         messages.save(AssistantMessage.builder().threadId(threadId).runId(run.getId()).role("USER")
                 .content(content).attachmentsJson(attachments).createdAt(now).build());
         updateThread(thread, content, now);
+        events.emit(run, "run.started", payload("runId", run.getId().toString()));
 
         try {
             Set<Permission> allowed = permissions.permisosDe(user);
@@ -124,7 +128,7 @@ public class AssistantOrchestrator {
 
     @Transactional
     public Result confirm(User user, UUID runId, String token) {
-        AssistantRun run = ownedRun(user, runId);
+        AssistantRun run = ownedRunLocked(user, runId);
         if (run.getStatus() != AssistantRunStatus.WAITING_CONFIRMATION) {
             throw new IllegalArgumentException("Esta accion ya no espera confirmacion.");
         }
@@ -132,11 +136,14 @@ public class AssistantOrchestrator {
                 .filter(item -> item.getStatus() == AssistantToolCallStatus.WAITING_CONFIRMATION)
                 .findFirst().orElseThrow(() -> new IllegalArgumentException("No hay una accion pendiente."));
         if (token == null || call.getConfirmationTokenHash() == null
+                || call.getConfirmationExpiresAt() == null
+                || call.getConfirmationExpiresAt().isBefore(LocalDateTime.now())
                 || !constantEquals(call.getConfirmationTokenHash(), hash(token))) {
             throw new IllegalArgumentException("La confirmacion no es valida o ya vencio.");
         }
 
         call.setConfirmationTokenHash(null);
+        call.setConfirmationExpiresAt(null);
         call.setConfirmedBy(user.getId());
         call.setConfirmedAt(LocalDateTime.now());
         call.setStatus(AssistantToolCallStatus.RUNNING);
@@ -150,7 +157,7 @@ public class AssistantOrchestrator {
             JsonNode arguments = json.readTree(call.getArgumentsJson());
             long started = System.nanoTime();
             JsonNode result = session.call(call.getToolName(), arguments);
-            completeCall(call, result, started);
+            completeCall(run, call, result, started);
             ArrayNode history = history(run.getThreadId(), null);
             history.add(assistantToolRequest(call));
             history.add(toolResult(call, result));
@@ -167,7 +174,7 @@ public class AssistantOrchestrator {
 
     @Transactional
     public Result renewConfirmation(User user, UUID runId) {
-        AssistantRun run = ownedRun(user, runId);
+        AssistantRun run = ownedRunLocked(user, runId);
         if (run.getStatus() != AssistantRunStatus.WAITING_CONFIRMATION) {
             throw new IllegalArgumentException("Esta accion ya no espera confirmacion.");
         }
@@ -176,19 +183,21 @@ public class AssistantOrchestrator {
                 .findFirst().orElseThrow(() -> new IllegalArgumentException("No hay una accion pendiente."));
         String rawToken = token();
         call.setConfirmationTokenHash(hash(rawToken));
+        call.setConfirmationExpiresAt(LocalDateTime.now().plus(15, ChronoUnit.MINUTES));
         calls.save(call);
         return new Result(threadService.detail(user, run.getThreadId()), runId, rawToken);
     }
 
     @Transactional
     public AssistantThreads.Detail cancel(User user, UUID runId) {
-        AssistantRun run = ownedRun(user, runId);
+        AssistantRun run = ownedRunLocked(user, runId);
         if (run.getStatus() == AssistantRunStatus.WAITING_CONFIRMATION) {
             calls.findByRunIdOrderByCreatedAtAsc(runId).stream()
                     .filter(call -> call.getStatus() == AssistantToolCallStatus.WAITING_CONFIRMATION)
                     .forEach(call -> {
                         call.setStatus(AssistantToolCallStatus.CANCELLED);
                         call.setConfirmationTokenHash(null);
+                        call.setConfirmationExpiresAt(null);
                         calls.save(call);
                     });
             run.setStatus(AssistantRunStatus.CANCELLED);
@@ -196,6 +205,7 @@ public class AssistantOrchestrator {
             runs.save(run);
             messages.save(AssistantMessage.builder().threadId(run.getThreadId()).runId(runId).role("ASSISTANT")
                     .content("Accion cancelada. No hice ningun cambio.").createdAt(LocalDateTime.now()).build());
+            events.emit(run, "run.cancelled", payload("runId", runId.toString()));
         }
         return threadService.detail(user, run.getThreadId());
     }
@@ -219,6 +229,7 @@ public class AssistantOrchestrator {
                 runs.save(run);
                 thread.setUpdatedAt(LocalDateTime.now());
                 threads.save(thread);
+                events.emit(run, "run.completed", payload("message", answer));
                 return new Result(threadService.detail(user, thread.getId()), run.getId(), null);
             }
 
@@ -235,19 +246,22 @@ public class AssistantOrchestrator {
                     String rawToken = token();
                     call.setStatus(AssistantToolCallStatus.WAITING_CONFIRMATION);
                     call.setConfirmationTokenHash(hash(rawToken));
+                    call.setConfirmationExpiresAt(LocalDateTime.now().plus(15, ChronoUnit.MINUTES));
                     calls.save(call);
                     run.setStatus(AssistantRunStatus.WAITING_CONFIRMATION);
                     runs.save(run);
                     messages.save(confirmationMessage(thread.getId(), run.getId(), call, definition, rawToken,
                             policy.confirmation()));
+                    events.emit(run, "confirmation.required", payload("toolCallId", call.getId().toString()));
                     return new Result(threadService.detail(user, thread.getId()), run.getId(), rawToken);
                 }
 
                 call.setStatus(AssistantToolCallStatus.RUNNING);
                 calls.save(call);
+                events.emit(run, "tool.started", payload("toolCallId", call.getId().toString()));
                 long started = System.nanoTime();
                 JsonNode result = session.call(requested.name(), requested.arguments());
-                completeCall(call, result, started);
+                completeCall(run, call, result, started);
                 history.add(toolResult(requested.id(), result));
             }
         }
@@ -356,12 +370,13 @@ public class AssistantOrchestrator {
         return message;
     }
 
-    private void completeCall(AssistantToolCall call, JsonNode result, long started) {
+    private void completeCall(AssistantRun run, AssistantToolCall call, JsonNode result, long started) {
         call.setStatus(AssistantToolCallStatus.COMPLETED);
         call.setDurationMs((System.nanoTime() - started) / 1_000_000);
         call.setResultSummary(truncate(result.path("content").isMissingNode() ? result.toString()
                 : result.path("content").toString(), 1000));
         calls.save(call);
+        events.emit(run, "tool.completed", payload("toolCallId", call.getId().toString()));
     }
 
     private void fail(AssistantRun run, String safeMessage) {
@@ -372,11 +387,19 @@ public class AssistantOrchestrator {
         runs.save(run);
         messages.save(AssistantMessage.builder().threadId(run.getThreadId()).runId(run.getId()).role("ASSISTANT")
                 .content(safeMessage).createdAt(LocalDateTime.now()).build());
+        events.emit(run, "run.failed", payload("message", safeMessage));
     }
 
     private AssistantRun ownedRun(User user, UUID runId) {
         UUID workspaceId = user == null || user.getWorkspace() == null ? null : user.getWorkspace().getId();
         return runs.findById(runId).filter(run -> workspaceId != null && workspaceId.equals(run.getWorkspaceId())
+                        && user.getId().equals(run.getUserId()))
+                .orElseThrow(() -> new ResourceNotFoundException("Esa ejecucion no esta disponible."));
+    }
+
+    private AssistantRun ownedRunLocked(User user, UUID runId) {
+        UUID workspaceId = user == null || user.getWorkspace() == null ? null : user.getWorkspace().getId();
+        return runs.findLockedById(runId).filter(run -> workspaceId != null && workspaceId.equals(run.getWorkspaceId())
                         && user.getId().equals(run.getUserId()))
                 .orElseThrow(() -> new ResourceNotFoundException("Esa ejecucion no esta disponible."));
     }
@@ -413,6 +436,10 @@ public class AssistantOrchestrator {
     private JsonNode parse(String value) {
         try { return json.readTree(value); }
         catch (Exception e) { return json.createObjectNode(); }
+    }
+
+    private ObjectNode payload(String key, String value) {
+        return json.createObjectNode().put(key, value);
     }
 
     private static String cleanContent(String value) {

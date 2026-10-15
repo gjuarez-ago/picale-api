@@ -48,6 +48,7 @@ class AssistantOrchestratorTest {
     private final PermissionService permissions = mock(PermissionService.class);
     private final AssistantMcpClient mcp = mock(AssistantMcpClient.class);
     private final AssistantLlmClient llm = mock(AssistantLlmClient.class);
+    private final AssistantRunEvents events = mock(AssistantRunEvents.class);
     private final AssistantMcpClient.Session session = mock(AssistantMcpClient.Session.class);
     private final ObjectMapper json = new ObjectMapper();
     private final UUID workspaceId = UUID.randomUUID();
@@ -61,7 +62,7 @@ class AssistantOrchestratorTest {
     @BeforeEach
     void setUp() {
         service = new AssistantOrchestrator(threadService, threads, messages, runs, calls, media,
-                permissions, mcp, llm, json);
+                permissions, mcp, llm, events, json);
         thread = AssistantThread.builder().id(threadId).workspaceId(workspaceId).createdBy(userId)
                 .title("Nueva conversacion").createdAt(LocalDateTime.now()).updatedAt(LocalDateTime.now()).build();
         user = User.builder().id(userId).workspace(Workspace.builder().id(workspaceId).build()).build();
