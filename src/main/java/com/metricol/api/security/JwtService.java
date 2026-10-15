@@ -5,6 +5,7 @@ import java.security.Key;
 import java.util.Date;
 import java.util.Map;
 import java.util.function.Function;
+import java.time.Duration;
 
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.security.core.userdetails.UserDetails;
@@ -31,8 +32,13 @@ public class JwtService {
     private String audience;
 
     public String generateToken(Map<String, Object> extraClaims, UserDetails userDetails) {
+        return generateToken(extraClaims, userDetails, Duration.ofDays(expirationDays));
+    }
+
+    /** Token con vida acotada para delegaciones internas, sin cambiar la sesion normal. */
+    public String generateToken(Map<String, Object> extraClaims, UserDetails userDetails, Duration lifetime) {
         Date now = new Date();
-        Date expiry = new Date(now.getTime() + expirationDays * 24L * 60 * 60 * 1000);
+        Date expiry = new Date(now.getTime() + lifetime.toMillis());
 
         return Jwts.builder()
                 .setClaims(extraClaims)
@@ -52,6 +58,15 @@ public class JwtService {
     public boolean isTokenValid(String token, UserDetails userDetails) {
         String username = extractUsername(token);
         return username.equals(userDetails.getUsername()) && !isTokenExpired(token);
+    }
+
+    /** Comprueba los limites firmados de una identidad del asistente integrado. */
+    public boolean isAssistantDelegation(String token, String workspaceId, String threadId, String runId) {
+        Claims claims = extractClaim(token, Function.identity());
+        return Boolean.TRUE.equals(claims.get("assistant", Boolean.class))
+                && workspaceId.equals(claims.get("workspaceId", String.class))
+                && threadId.equals(claims.get("assistantThreadId", String.class))
+                && runId.equals(claims.get("assistantRunId", String.class));
     }
 
     private boolean isTokenExpired(String token) {

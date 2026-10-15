@@ -57,6 +57,12 @@ public class ConexionIaFilter extends OncePerRequestFilter {
         if (origen == null || origen.isBlank()) {
             return true;
         }
+        // El asistente integrado usa una delegacion corta ligada a workspace,
+        // hilo y run; AssistantScopeFilter valida esos limites. No es una
+        // conexion OAuth revocable de un cliente externo.
+        if ("assistant".equalsIgnoreCase(origen)) {
+            return true;
+        }
         String ruta = request.getRequestURI();
         if (ruta == null || !ruta.startsWith("/api/v1/") || ruta.startsWith("/api/v1/auth/")) {
             return true;
