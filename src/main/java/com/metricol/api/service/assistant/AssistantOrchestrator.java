@@ -431,6 +431,11 @@ public class AssistantOrchestrator {
         ObjectNode schema = tool.putObject("inputSchema");
         schema.put("type", "object");
         ObjectNode props = schema.putObject("properties");
+        props.putObject("respuesta").put("type", "string")
+                .put("description", "Lo que la persona tiene que LEER antes de elegir: la propuesta completa,"
+                        + " el resumen o lo que encontraste, con sus datos. Va arriba de los botones y es lo"
+                        + " unico que va a ver. Nunca te refieras a algo (\"esta propuesta\") sin escribirlo"
+                        + " aqui. Si de verdad no hay nada que mostrar, deja la cadena vacia.");
         props.putObject("pregunta").put("type", "string")
                 .put("description", "La pregunta, en una linea y en palabras de la persona.");
         ObjectNode opciones = props.putObject("opciones");
@@ -442,6 +447,7 @@ public class AssistantOrchestrator {
                 .put("description", "Lo que se lee en el boton; breve.");
         item.putArray("required").add("etiqueta");
         ArrayNode required = schema.putArray("required");
+        required.add("respuesta");
         required.add("pregunta");
         required.add("opciones");
         tool.putObject("_meta").putObject("picale/policy")
@@ -469,10 +475,11 @@ public class AssistantOrchestrator {
         ObjectNode card = json.createObjectNode();
         card.put("type", "choices");
         card.set("options", options);
-        // Lo que el modelo escribio junto a la pregunta ES la respuesta: la propuesta de
-        // marca, el resumen, lo que se revisó. Quedarse solo con la pregunta dejaba a la
-        // persona eligiendo sobre algo que no podia ver.
-        String said = turn.content() == null ? "" : turn.content().strip();
+        // Lo que se lee arriba de los botones. El modelo tiende a preguntar por "esta
+        // propuesta" sin haberla escrito nunca, asi que la herramienta la pide como campo
+        // propio; si aun asi no viene, se usa lo que haya escrito al lado.
+        String said = arguments.path("respuesta").asText("").strip();
+        if (said.isEmpty()) said = turn.content() == null ? "" : turn.content().strip();
         String content = said.isEmpty() || said.endsWith(question) ? question : said + "\n\n" + question;
         return finish(user, thread, run, turn, content, json.createArrayNode().add(card).toString());
     }

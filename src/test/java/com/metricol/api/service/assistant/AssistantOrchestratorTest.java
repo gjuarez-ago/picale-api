@@ -199,6 +199,23 @@ class AssistantOrchestratorTest {
     }
 
     @Test
+    void enseñaLaRespuestaQueViajaConLasOpciones() throws Exception {
+        when(session.tools()).thenReturn(json.readTree("[]"));
+        when(llm.complete(any(), any())).thenReturn(new AssistantLlmClient.Turn("", List.of(
+                new AssistantLlmClient.ToolCall("call-1", "ofrecer_opciones", json.readTree("""
+                        {"respuesta":"Tono: cercano y confiable.","pregunta":"¿La guardo asi?",
+                         "opciones":[{"etiqueta":"Si"},{"etiqueta":"Cambiar"}]}"""))),
+                json.createObjectNode().put("role", "assistant"), "gpt-test", 7, 2));
+
+        AssistantOrchestrator.Result result = service.send(user, threadId,
+                new AssistantOrchestrator.Send("Completa mi marca", List.of(), "/panel", "message-12"));
+        service.process(new AssistantRunDispatcher.Requested(result.runId(), userId, workspaceId));
+
+        AssistantMessage last = history.get(history.size() - 1);
+        assertThat(last.getContent()).contains("Tono: cercano y confiable.").endsWith("¿La guardo asi?");
+    }
+
+    @Test
     void conservaLaPropuestaQueAcompanaALaPregunta() throws Exception {
         when(session.tools()).thenReturn(json.readTree("[]"));
         when(llm.complete(any(), any())).thenReturn(new AssistantLlmClient.Turn(
