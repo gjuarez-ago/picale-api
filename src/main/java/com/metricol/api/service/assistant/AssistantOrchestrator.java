@@ -469,7 +469,12 @@ public class AssistantOrchestrator {
         ObjectNode card = json.createObjectNode();
         card.put("type", "choices");
         card.set("options", options);
-        return finish(user, thread, run, turn, question, json.createArrayNode().add(card).toString());
+        // Lo que el modelo escribio junto a la pregunta ES la respuesta: la propuesta de
+        // marca, el resumen, lo que se revisó. Quedarse solo con la pregunta dejaba a la
+        // persona eligiendo sobre algo que no podia ver.
+        String said = turn.content() == null ? "" : turn.content().strip();
+        String content = said.isEmpty() || said.endsWith(question) ? question : said + "\n\n" + question;
+        return finish(user, thread, run, turn, content, json.createArrayNode().add(card).toString());
     }
 
     /** Guarda la respuesta del asistente, cierra el turno y devuelve el detalle. */
