@@ -481,7 +481,9 @@ public class AssistantOrchestrator {
                 + " se eligen varios (el tono) y una caja de texto cuando es redaccion libre (la descripcion)."
                 + " Usala en vez de " + CHOICES_TOOL + " cuando necesites mas de un dato o cuando las opciones"
                 + " no quepan en unos botones. Rellena siempre 'valor' con tu propuesta: la persona corrige, no"
-                + " escribe desde cero. Las opciones salen del esquema de la herramienta que luego vas a usar.");
+                + " escribe desde cero. Las opciones salen del esquema de la herramienta que luego vas a usar,"
+                + " pero ESCRITAS COMO LAS LEE LA PERSONA: 'Conseguir mas clientes', no 'MAS_CLIENTES';"
+                + " 'Profesional y serio', no 'PROFESIONAL'. El codigo interno lo traduces tu al guardar.");
         ObjectNode schema = tool.putObject("inputSchema");
         schema.put("type", "object");
         ObjectNode props = schema.putObject("properties");
