@@ -68,6 +68,10 @@ public class AssistantOrchestrator {
     /** Herramienta propia, no del MCP: no ejecuta nada, cierra el turno con opciones para tocar. */
     private static final String CHOICES_TOOL = "ofrecer_opciones";
     private static final int MAX_CHOICES = 5;
+    /** La otra herramienta propia: pide varios datos a la vez, con su control adecuado. */
+    private static final String FORM_TOOL = "pedir_datos";
+    private static final int MAX_FIELDS = 6;
+    private static final int MAX_FIELD_OPTIONS = 40;
     private static final SecureRandom RANDOM = new SecureRandom();
     private static final String SYSTEM_PROMPT = """
             Eres el Asistente Chispa IA, el asistente operativo de Picale. Si tienes que nombrarte, ese es tu
@@ -378,6 +382,9 @@ public class AssistantOrchestrator {
                 if (CHOICES_TOOL.equals(requested.name())) {
                     return askWithChoices(user, thread, run, turn, requested.arguments());
                 }
+                if (FORM_TOOL.equals(requested.name())) {
+                    return askWithForm(user, thread, run, turn, requested.arguments());
+                }
                 JsonNode definition = findTool(tools, requested.name());
                 Policy policy = policy(definition);
                 AssistantToolCall call = calls.save(AssistantToolCall.builder().runId(run.getId())
@@ -453,7 +460,100 @@ public class AssistantOrchestrator {
         tool.putObject("_meta").putObject("picale/policy")
                 .put("riskLevel", 0).put("permission", "MEMBERSHIP")
                 .put("confirmation", "none").put("idempotencyRequired", false);
+
+        result.add(formTool());
         return result;
+    }
+
+    /**
+     * Pide varios datos a la vez, cada uno con el control que le toca.
+     *
+     * <p>Unos botones sirven para elegir entre pocas salidas, pero no para doce giros
+     * ni para una descripcion de dos frases. Con esto el chat puede enseñar un
+     * desplegable con buscador, varias casillas o una caja de texto, ya rellenados con
+     * la propuesta: la persona corrige lo que no le cuadre en vez de escribirlo todo.
+     */
+    private ObjectNode formTool() {
+        ObjectNode tool = json.createObjectNode();
+        tool.put("name", FORM_TOOL);
+        tool.put("description", "Pide hasta " + MAX_FIELDS + " datos a la vez con el control adecuado:"
+                + " un desplegable con buscador cuando hay una lista (el giro, el objetivo), casillas cuando"
+                + " se eligen varios (el tono) y una caja de texto cuando es redaccion libre (la descripcion)."
+                + " Usala en vez de " + CHOICES_TOOL + " cuando necesites mas de un dato o cuando las opciones"
+                + " no quepan en unos botones. Rellena siempre 'valor' con tu propuesta: la persona corrige, no"
+                + " escribe desde cero. Las opciones salen del esquema de la herramienta que luego vas a usar.");
+        ObjectNode schema = tool.putObject("inputSchema");
+        schema.put("type", "object");
+        ObjectNode props = schema.putObject("properties");
+        props.putObject("respuesta").put("type", "string")
+                .put("description", "Lo que se lee arriba del formulario: que propones y que asumiste.");
+        ObjectNode campos = props.putObject("campos");
+        campos.put("type", "array");
+        campos.put("description", "De 1 a " + MAX_FIELDS + " datos.");
+        ObjectNode item = campos.putObject("items");
+        item.put("type", "object");
+        ObjectNode campo = item.putObject("properties");
+        campo.putObject("nombre").put("type", "string")
+                .put("description", "La clave del campo en la herramienta que lo guarda, por ejemplo 'giro'.");
+        campo.putObject("etiqueta").put("type", "string")
+                .put("description", "Como se le llama a la persona, por ejemplo 'Giro del negocio'.");
+        campo.putObject("tipo").put("type", "string")
+                .put("description", "'opcion' para elegir uno de una lista, 'opciones' para elegir varios,"
+                        + " 'texto' para escribir libre.");
+        campo.putObject("opciones").put("type", "array").putObject("items").put("type", "string");
+        campo.putObject("valor").put("type", "string")
+                .put("description", "Tu propuesta ya puesta. En 'opciones', separadas por coma.");
+        campo.putObject("ayuda").put("type", "string")
+                .put("description", "Una linea opcional que explique el campo o por que lo propones asi.");
+        item.putArray("required").add("nombre").add("etiqueta").add("tipo");
+        props.putObject("boton").put("type", "string")
+                .put("description", "Lo que dice el boton, por ejemplo 'Guardar mi marca'.");
+        schema.putArray("required").add("respuesta").add("campos");
+        tool.putObject("_meta").putObject("picale/policy")
+                .put("riskLevel", 0).put("permission", "MEMBERSHIP")
+                .put("confirmation", "none").put("idempotencyRequired", false);
+        return tool;
+    }
+
+    /** Cierra el turno enseñando el formulario; no toca el MCP ni la cuenta. */
+    private Result askWithForm(User user, AssistantThread thread, AssistantRun run,
+            AssistantLlmClient.Turn turn, JsonNode arguments) {
+        ArrayNode fields = json.createArrayNode();
+        for (JsonNode source : arguments.path("campos")) {
+            String name = source.path("nombre").asText("").strip();
+            String label = source.path("etiqueta").asText("").strip();
+            if (name.isEmpty() || label.isEmpty() || fields.size() >= MAX_FIELDS) continue;
+            String type = switch (source.path("tipo").asText("texto").strip().toLowerCase(Locale.ROOT)) {
+                case "opcion", "opciones" -> source.path("tipo").asText().strip().toLowerCase(Locale.ROOT);
+                default -> "texto";
+            };
+            ObjectNode field = fields.addObject();
+            field.put("name", name);
+            field.put("label", truncate(label, 80));
+            field.put("type", type);
+            field.put("value", truncate(source.path("valor").asText(""), 1000));
+            String help = source.path("ayuda").asText("").strip();
+            if (!help.isEmpty()) field.put("help", truncate(help, 200));
+            ArrayNode options = field.putArray("options");
+            for (JsonNode option : source.path("opciones")) {
+                String value = option.asText("").strip();
+                if (value.isEmpty() || options.size() >= MAX_FIELD_OPTIONS) continue;
+                options.add(truncate(value, 120));
+            }
+            // Sin lista no hay nada que desplegar: se queda como texto libre.
+            if (!"texto".equals(type) && options.isEmpty()) field.put("type", "texto");
+        }
+        String said = arguments.path("respuesta").asText("").strip();
+        if (fields.isEmpty()) {
+            return finish(user, thread, run, turn,
+                    said.isEmpty() ? "Cuentame un poco mas y seguimos." : said, null);
+        }
+        ObjectNode card = json.createObjectNode();
+        card.put("type", "form");
+        card.put("submit", truncate(arguments.path("boton").asText("Guardar").strip(), 40));
+        card.set("fields", fields);
+        return finish(user, thread, run, turn, said.isEmpty() ? "Revisa y corrige lo que no cuadre." : said,
+                json.createArrayNode().add(card).toString());
     }
 
     /** Cierra el turno con la pregunta y sus opciones; no toca el MCP ni la cuenta. */
