@@ -12,7 +12,12 @@ import lombok.Getter;
 import lombok.Setter;
 
 /**
- * Cuánto video acepta cada red, en segundos.
+ * Cuánto video acepta cada red: en segundos y en bytes.
+ *
+ * <p>Las dos cosas se preguntan igual y se contestan igual, así que viven
+ * juntas. Una red rechaza un video por largo o por pesado con la misma
+ * indiferencia, y en la pantalla las dos acaban en el mismo sitio: el chip de
+ * esa red, bloqueado y con su tope escrito.
  *
  * <p>Va por configuración y no como constantes en el código porque estas
  * cifras las mueven las redes cada temporada —Instagram pasó de 60 a 90
@@ -59,6 +64,32 @@ public class VideoLimitsProperties {
         }
         Integer tope = maxSecondsFor(platform);
         return tope != null && duracionSegundos > tope;
+    }
+
+    /**
+     * Tope de peso por red, en bytes. Mismas reglas que los segundos: 0 o
+     * ausente es "sin límite conocido", y quien decide de verdad es la red.
+     */
+    private Map<Platform, Long> maxBytes = new EnumMap<>(Platform.class);
+
+    /** El tope de peso de esa red, o {@code null} si no hay ninguno configurado. */
+    public Long maxBytesFor(Platform platform) {
+        Long tope = maxBytes.get(platform);
+        return tope == null || tope <= 0 ? null : tope;
+    }
+
+    /**
+     * ¿Este archivo pesa más de lo que acepta la red?
+     *
+     * <p>Sin tamaño contesta que no, por lo mismo que la duración: un dato que
+     * puede no venir no debe bloquear una publicación.
+     */
+    public boolean excedeBytes(Platform platform, Long bytes) {
+        if (bytes == null || bytes <= 0) {
+            return false;
+        }
+        Long tope = maxBytesFor(platform);
+        return tope != null && bytes > tope;
     }
 
     /**

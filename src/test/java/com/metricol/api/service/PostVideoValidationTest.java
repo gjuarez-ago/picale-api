@@ -32,6 +32,13 @@ class PostVideoValidationTest {
             new MediaLimitsProperties(), limits, new FormatRulesService(), storage, null, reelJobs);
 
     private void validar(int seconds, PostFormat format, boolean publicar) {
+        validar(seconds, format, publicar,
+                format == PostFormat.STORY ? List.of(Platform.FACEBOOK, Platform.INSTAGRAM)
+                        : List.of(Platform.FACEBOOK, Platform.INSTAGRAM, Platform.TIKTOK,
+                                Platform.LINKEDIN));
+    }
+
+    private void validar(int seconds, PostFormat format, boolean publicar, List<Platform> enRedes) {
         limits.setMaxSeconds(Map.of(Platform.FACEBOOK, 14400, Platform.INSTAGRAM, 900,
                 Platform.TIKTOK, 600, Platform.LINKEDIN, 1800));
         String url = "https://media.example/video.mp4";
@@ -40,9 +47,8 @@ class PostVideoValidationTest {
         request.setMediaUrls(List.of(url));
         request.setVideoDurationSeconds(seconds);
         request.setPublishNow(publicar);
-        var redes = (format == PostFormat.STORY ? List.of(Platform.FACEBOOK, Platform.INSTAGRAM)
-                : List.of(Platform.FACEBOOK, Platform.INSTAGRAM, Platform.TIKTOK, Platform.LINKEDIN))
-                .stream().map(p -> SocialAccount.builder().platform(p).build()).toList();
+        var redes = enRedes.stream()
+                .map(p -> SocialAccount.builder().platform(p).build()).toList();
         ReflectionTestUtils.invokeMethod(service, "validarMedios", request, redes, format);
     }
 
@@ -56,7 +62,26 @@ class PostVideoValidationTest {
     }
     @Test void unVideoDemasiadoLargoSePuedeGuardarComoBorrador() {
         assertThatCode(() -> validar(601, PostFormat.REEL, false)).doesNotThrowAnyException();
-        assertThatThrownBy(() -> validar(601, PostFormat.REEL, true)).hasMessageContaining("TikTok");
+    }
+
+    /**
+     * Pasarse del tope de UNA red no tumba la publicacion: esa red se queda
+     * fuera —su destino nace marcado con el motivo, ver aplicarDestinos— y las
+     * otras tres reciben el video igual.
+     *
+     * <p>Antes esto lanzaba, y era peor de lo que parece: un video de 10 minutos
+     * y un segundo con TikTok marcado dejaba a la persona sin publicar en
+     * Facebook, Instagram ni LinkedIn, donde cabia de sobra.
+     */
+    @Test void unaRedQueSePasaNoTumbaLasDemas() {
+        assertThatCode(() -> validar(601, PostFormat.REEL, true)).doesNotThrowAnyException();
+    }
+
+    /** Sin ninguna red que pueda recibirlo si se para: guardar eso no es publicar. */
+    @Test void siNingunaRedPuedeRecibirloSeDice() {
+        assertThatThrownBy(() -> validar(601, PostFormat.REEL, true, List.of(Platform.TIKTOK)))
+                .hasMessageContaining("TikTok")
+                .hasMessageContaining("No queda ninguna red");
     }
 
     @Test void exigeAprobacionHumanaParaUnReelGenerado() {

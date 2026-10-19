@@ -512,7 +512,9 @@ public class MediaService {
 
     private MediaAssetResponse upload(MultipartFile file, UUID workspaceId, String carpeta) {
         exigirTipoDeMedio(normalizar(file.getContentType()));
-        cuota.verificar(file.getSize(), file.getOriginalFilename());
+        // Este camino cruza nginx y el multipart de Spring, asi que tiene su
+        // propio tope, mas bajo que el del presign.
+        cuota.verificarSubidaDirecta(file.getSize(), file.getOriginalFilename());
 
         R2StorageService.UploadedFile subido = storage.upload(file, workspaceId, carpeta);
 

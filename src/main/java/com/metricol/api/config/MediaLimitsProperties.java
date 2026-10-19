@@ -28,14 +28,31 @@ public class MediaLimitsProperties {
     /** Fotos por publicación (carrusel). El video siempre va solo. */
     private int maxImagesPerPost = 6;
 
-    /** Tope de un archivo suelto, en bytes. */
-    private long maxFileBytes = 200L * 1024 * 1024;
+    /**
+     * Tope de un archivo suelto, en bytes (500 MB), por el camino del presign.
+     *
+     * <p>Ahí el archivo va directo a R2 sin cruzar nuestro servidor, así que
+     * este es el único tope que lo limita. Es cuánto estamos dispuestos a
+     * guardar, no cuánto acepta un destino: a qué redes puede ir un archivo lo
+     * dice {@link VideoLimitsProperties#maxBytesFor}.
+     */
+    private long maxFileBytes = 500L * 1024 * 1024;
 
     /**
-     * Espacio total por workspace, en bytes (10 GB). Un 0 o negativo significa
+     * Tope del camino viejo, el multipart a través de la API, en bytes (100 MB).
+     *
+     * <p>Más bajo que {@link #maxFileBytes} y tiene que serlo: esa petición sí
+     * cruza nginx y el multipart de Spring, y pasarse ahí no da nuestro mensaje
+     * sino un 413 del proxy. Hoy solo usa este camino la herramienta
+     * {@code subir_archivo} del MCP.
+     */
+    private long maxUploadBytes = 100L * 1024 * 1024;
+
+    /**
+     * Espacio total por workspace, en bytes (50 GB). Un 0 o negativo significa
      * "sin tope": útil para un entorno donde no se quiera medir nada.
      */
-    private long maxBytesPerWorkspace = 10L * 1024 * 1024 * 1024;
+    private long maxBytesPerWorkspace = 50L * 1024 * 1024 * 1024;
 
     /**
      * Archivos que puede subir un workspace en un día (desde las 0:00). Es el
