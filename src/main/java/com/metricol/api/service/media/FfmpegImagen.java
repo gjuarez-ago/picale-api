@@ -161,6 +161,20 @@ public class FfmpegImagen {
         return bytes != null ? bytes : extraer(video, "0", ancho, calidad);
     }
 
+    /**
+     * Igual, pero sin el respaldo: si en ese segundo no hay nada, devuelve
+     * {@code null}.
+     *
+     * <p>Lo usa quien va PROBANDO segundos para quedarse con el mejor
+     * ({@link MejorCuadroDeVideo}). Ahí el respaldo del método de arriba haría
+     * daño: un segundo que no existe devolvería el primer cuadro del video, y
+     * quien puntúa creería que ese cuadro está en el segundo cinco. Acabaría
+     * eligiendo el cuadro negro del principio pensando que eligió otro.
+     */
+    public byte[] fotogramaExacto(Path video, String segundo, int ancho, int calidad) {
+        return extraer(video, segundo, ancho, calidad);
+    }
+
     private byte[] extraer(Path video, String segundo, int ancho, int calidad) {
         Path destino = null;
         try {

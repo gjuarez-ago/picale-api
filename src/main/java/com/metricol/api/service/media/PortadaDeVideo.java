@@ -35,10 +35,60 @@ public class PortadaDeVideo {
 
     private final MediaAdaptProperties props;
     private final FfmpegImagen ffmpeg;
+    private final MejorCuadroDeVideo mejorCuadro;
 
-    public PortadaDeVideo(MediaAdaptProperties props, FfmpegImagen ffmpeg) {
+    public PortadaDeVideo(MediaAdaptProperties props, FfmpegImagen ffmpeg, MejorCuadroDeVideo mejorCuadro) {
         this.props = props;
         this.ffmpeg = ffmpeg;
+        this.mejorCuadro = mejorCuadro;
+    }
+
+    /**
+     * La portada elegida: de qué segundo salió y su JPEG.
+     *
+     * <p>Las dos cosas juntas porque las dos redes piden una distinta de la
+     * misma decisión: TikTok quiere el instante y solo acepta eso, e Instagram
+     * quiere la imagen. Devolverlas por separado obligaría a elegir dos veces y
+     * podrían no coincidir: la portada de TikTok saldría de un cuadro y la de
+     * Instagram de otro, en el mismo video.
+     *
+     * @param imagen puede ser {@code null} si ffmpeg no pudo con ella; el
+     *               segundo sigue sirviendo para TikTok
+     */
+    public record Elegida(double segundo, byte[] imagen) {
+    }
+
+    /**
+     * Elige el mejor cuadro del video y lo devuelve ya recortado.
+     *
+     * <p>Un solo temporal para las dos cosas: puntuar los candidatos y sacar la
+     * imagen final. Escribirlo dos veces sería copiar el video entero otra vez,
+     * y aquí los videos llegan a 500 MB.
+     *
+     * <p>Nunca lanza. Si algo falla devuelve el segundo uno sin imagen, que es
+     * lo que se hacía antes de que esto existiera.
+     */
+    public Elegida elegir(byte[] video, Integer duracionSg) {
+        if (!props.isEnabled() || video == null || video.length == 0) {
+            return new Elegida(MejorCuadroDeVideo.POR_OMISION, null);
+        }
+        Path archivo = null;
+        try {
+            archivo = Files.createTempFile("picale-portada-", ".mp4");
+            Files.write(archivo, video);
+            double segundo = mejorCuadro.segundoDe(archivo, duracionSg);
+            String cuando = String.format(java.util.Locale.US, "%.3f", segundo);
+            byte[] imagen = ffmpeg.fotograma(archivo, cuando, ANCHO, props.getCalidad());
+            if (imagen == null) {
+                log.warn("ffmpeg no devolvió portada para el video; Instagram elegirá la suya.");
+            }
+            return new Elegida(segundo, imagen);
+        } catch (IOException ex) {
+            log.warn("No se pudo escribir el temporal para elegir la portada: {}", ex.getMessage());
+            return new Elegida(MejorCuadroDeVideo.POR_OMISION, null);
+        } finally {
+            FfmpegImagen.borrar(archivo);
+        }
     }
 
     /**

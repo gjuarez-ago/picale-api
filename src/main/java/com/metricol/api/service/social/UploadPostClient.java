@@ -212,12 +212,26 @@ public class UploadPostClient {
     public Map<String, Object> publishVideo(String user, List<String> platforms, String titulo,
             Map<String, String> captionsPorRed, String videoUrl, PostFormat formato, Integer portadaMs,
             Ubicacion ubicacion, boolean hechaConIa, Integer videoDurationSeconds) {
-        MultiValueMap<String, Object> body = cuerpoVideo(user, platforms, titulo, captionsPorRed, formato, portadaMs, videoDurationSeconds);
+        // El video se baja ANTES de armar el cuerpo porque de él sale la
+        // portada: sin mirarlo no se puede saber qué cuadro vale, y el instante
+        // viaja en el cuerpo (cover_timestamp de TikTok).
+        ByteArrayResource video = download(videoUrl);
+
+        // Si nadie eligió portada —lo normal: la persona publica a mano y el
+        // campo llega vacío—, se elige aquí en vez de dar por bueno el segundo
+        // uno. Una sola decisión para las dos redes.
+        PortadaDeVideo.Elegida elegida = null;
+        Integer cuandoMs = portadaMs;
+        if (cuandoMs == null && portada != null && necesitaPortada(platforms)) {
+            elegida = portada.elegir(video.getByteArray(), videoDurationSeconds);
+            cuandoMs = (int) Math.round(elegida.segundo() * 1000);
+        }
+
+        MultiValueMap<String, Object> body = cuerpoVideo(user, platforms, titulo, captionsPorRed, formato, cuandoMs, videoDurationSeconds);
         ubicacion(body, platforms, ubicacion);
         etiquetaDeIa(body, hechaConIa);
-        ByteArrayResource video = download(videoUrl);
         body.add("video", video);
-        portadaDeInstagram(body, platforms, formato, video, portadaMs);
+        portadaDeInstagram(body, platforms, formato, video, cuandoMs, elegida);
 
         return restClient.post()
                 .uri("/upload")
@@ -554,7 +568,10 @@ public class UploadPostClient {
      */
     private void portadaDeTikTok(MultiValueMap<String, Object> body, List<String> platforms, Integer portadaMs) {
         if (platforms.contains("tiktok")) {
-            // La que eligió el agente al analizar el video, si eligió; si no, el segundo uno.
+            // El cuadro elegido: por el agente si analizó el video, y si no por
+            // MejorCuadroDeVideo, que prueba varios segundos y se queda con el
+            // que tiene imagen de verdad. El 1000 de aquí ya casi no se usa:
+            // queda para cuando ffmpeg está apagado o no pudo con el archivo.
             body.add("cover_timestamp", String.valueOf(portadaMs != null && portadaMs >= 0 ? portadaMs : 1000));
         }
     }
@@ -569,12 +586,28 @@ public class UploadPostClient {
      * <p>Si no se pudo sacar, no se manda nada y el reel sale con la portada
      * que elija Instagram, como hasta ahora.
      */
+    /**
+     * ¿Alguna de las redes de este envío usa portada? Solo TikTok e Instagram.
+     *
+     * <p>Se pregunta antes de elegirla porque elegirla cuesta: son varios
+     * ffmpeg sobre el video. Para una publicación que solo va a LinkedIn sería
+     * trabajo tirado, y espera añadida justo al publicar.
+     */
+    private static boolean necesitaPortada(List<String> platforms) {
+        return platforms.contains("tiktok") || platforms.contains("instagram");
+    }
+
     private void portadaDeInstagram(MultiValueMap<String, Object> body, List<String> platforms,
-            PostFormat formato, ByteArrayResource video, Integer portadaMs) {
+            PostFormat formato, ByteArrayResource video, Integer portadaMs, PortadaDeVideo.Elegida elegida) {
         if (portada == null || formato == PostFormat.STORY || !platforms.contains("instagram")) {
             return;
         }
-        byte[] imagen = portada.sacar(video.getByteArray(), portadaMs == null ? 1.0 : portadaMs / 1000.0);
+        // Si ya se eligió arriba, su imagen sale del MISMO cuadro que el
+        // instante que recibe TikTok. Volver a sacarla aquí costaría otro
+        // temporal del video entero por nada.
+        byte[] imagen = elegida != null && elegida.imagen() != null
+                ? elegida.imagen()
+                : portada.sacar(video.getByteArray(), portadaMs == null ? 1.0 : portadaMs / 1000.0);
         if (imagen != null) {
             body.add("cover_image", new ByteArrayResource(imagen) {
                 @Override
