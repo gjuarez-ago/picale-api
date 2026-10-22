@@ -38,6 +38,28 @@ public class MediaOrphanWorker {
     private final MediaAssetReconciler reconciliador;
 
     /**
+     * Para rescatar con la MISMA confirmacion que usa la app (arreglo de fotos, miniatura
+     * de video): un archivo rescatado tiene que quedar igual que uno normal. Perezoso
+     * para no forzar el orden de arranque del servicio de medios.
+     */
+    private com.metricol.api.service.MediaService media;
+
+    @org.springframework.beans.factory.annotation.Autowired
+    void setMedia(@org.springframework.context.annotation.Lazy com.metricol.api.service.MediaService media) {
+        this.media = media;
+    }
+
+    /**
+     * A los cuantos minutos se rescata una subida que YA esta completa en R2 pero que la app
+     * no confirmo. El 22 oct 2026 la app se cayo a media tanda (5 videos y 7 fotos): los
+     * archivos llegaron pero aparecieron hasta una hora despues, la persona reintento y el
+     * mismo video quedo subido tres veces. Rescatar lo completo no puede esperar la hora que
+     * si necesita descartar lo que nunca llego.
+     */
+    @Value("${app.media.rescate-after-minutes:3}")
+    private long rescateMinutos;
+
+    /**
      * Cuánto se espera antes de dar por abandonada una subida sin confirmar.
      * Tiene que ser holgadamente mayor que lo que vale una URL firmada
      * ({@code app.media.presign-ttl-seconds}): mientras la URL sigue siendo
@@ -52,6 +74,41 @@ public class MediaOrphanWorker {
     public MediaOrphanWorker(MediaAssetRepository repository, MediaAssetReconciler reconciliador) {
         this.repository = repository;
         this.reconciliador = reconciliador;
+    }
+
+    /**
+     * Confirma las subidas completas que la app dejo sin confirmar (se cerro, se quedo sin
+     * bateria, Android la mato). Solo confirma: lo que todavia no esta completo en R2 se
+     * queda pendiente -puede seguir subiendo- y lo resuelve revisarPendientes a la hora. Si
+     * la app confirma al mismo tiempo no pasa nada: confirmar dos veces devuelve lo mismo.
+     */
+    @Scheduled(fixedDelayString = "${app.media.rescate-delay-ms:120000}")
+    public void rescatarCompletas() {
+        if (media == null) return;
+        List<Object[]> pendientes;
+        try {
+            pendientes = repository.findPrefirmadosViejos(
+                    LocalDateTime.now().minusMinutes(rescateMinutos), tope);
+        } catch (Exception ex) {
+            log.error("No se pudo consultar las subidas por rescatar: {}", ex.getMessage());
+            return;
+        }
+        int rescatadas = 0;
+        for (Object[] fila : pendientes) {
+            Object tenant = fila[1];
+            if (tenant == null || String.valueOf(tenant).isBlank()) continue;
+            try {
+                UUID id = UUID.fromString(String.valueOf(fila[0]));
+                TenantIdentifierResolver.comoTenant(String.valueOf(tenant), () -> media.confirm(id));
+                rescatadas++;
+            } catch (Exception ex) {
+                // Todavia subiendo o incompleta: se vuelve a mirar en la siguiente vuelta.
+                log.debug("Subida {} aun no se puede confirmar: {}", fila[0], ex.getMessage());
+            }
+        }
+        if (rescatadas > 0) {
+            log.info("Subidas completas que la app no confirmo, rescatadas: {}", rescatadas);
+        }
     }
 
     @Scheduled(fixedDelayString = "${app.media.orphan-delay-ms:900000}")
