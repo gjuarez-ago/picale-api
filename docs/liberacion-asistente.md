@@ -18,10 +18,10 @@ Antes de mezclar o etiquetar:
 
 | Componente | Rama de salida | Commit | Estado limpio |
 | --- | --- | --- | --- |
-| API | pendiente | pendiente | pendiente |
-| MCP | pendiente | pendiente | pendiente |
-| Web | pendiente | pendiente | pendiente |
-| Móvil | pendiente | pendiente | pendiente |
+| API | `feature/asistente-operativo` | etiqueta `assistant-rc-20261023.1` | candidato congelado; sólo quedan documentos comerciales no incluidos |
+| MCP | `feature/asistente-operativo` | `8818cc2` | candidato congelado; configuración personal `.claude` no incluida |
+| Web | `feature/asistente-operativo` | `f93f1a6` | limpio |
+| Móvil | `agente` | `4dccec3` | limpio |
 
 - Mantener `CD_ENABLED` apagado en API y MCP mientras se prepara el conjunto.
 - Crear la misma etiqueta de candidato en los cuatro repositorios, por ejemplo
@@ -177,7 +177,7 @@ personales ni secretos:
 
 | Evidencia | Resultado | Referencia |
 | --- | --- | --- |
-| SHA API/MCP/web/móvil | pendiente | pendiente |
+| SHA API/MCP/web/móvil | listo en candidato local | `assistant-rc-20261023.1`; MCP `8818cc2`; web `f93f1a6`; móvil `4dccec3` |
 | Respaldo Cloud SQL exitoso | pendiente | pendiente |
 | Migraciones verificadas | pendiente | pendiente |
 | Conversación y propuesta | pendiente | pendiente |
