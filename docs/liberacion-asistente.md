@@ -19,7 +19,7 @@ Antes de mezclar o etiquetar:
 | Componente | Rama de salida | Commit | Estado limpio |
 | --- | --- | --- | --- |
 | API | `feature/asistente-operativo` | etiqueta `assistant-rc-20261023.1` | candidato congelado; sólo quedan documentos comerciales no incluidos |
-| MCP | `feature/asistente-operativo` | `8818cc2` | candidato congelado; configuración personal `.claude` no incluida |
+| MCP | `feature/asistente-operativo` | `fa86a43` | candidato congelado; configuración personal `.claude` no incluida |
 | Web | `feature/asistente-operativo` | `f93f1a6` | limpio |
 | Móvil | `agente` | `4dccec3` | limpio |
 
@@ -177,7 +177,7 @@ personales ni secretos:
 
 | Evidencia | Resultado | Referencia |
 | --- | --- | --- |
-| SHA API/MCP/web/móvil | listo en candidato local | `assistant-rc-20261023.1`; MCP `8818cc2`; web `f93f1a6`; móvil `4dccec3` |
+| SHA API/MCP/web/móvil | listo en candidato local | `assistant-rc-20261023.1`; MCP `fa86a43`; web `f93f1a6`; móvil `4dccec3` |
 | Respaldo Cloud SQL exitoso | pendiente | pendiente |
 | Migraciones verificadas | pendiente | pendiente |
 | Conversación y propuesta | pendiente | pendiente |
