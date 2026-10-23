@@ -142,7 +142,7 @@ openai:
     input-usd-per-million: ${OPENAI_REDACTOR_PRICING_INPUT_PER_1M_USD:0}
     output-usd-per-million: ${OPENAI_REDACTOR_PRICING_OUTPUT_PER_1M_USD:0}
   assistant-api: ${OPENAI_ASSISTANT_API:chat}
-  assistant-reasoning-effort: ${OPENAI_ASSISTANT_REASONING_EFFORT:none}
+  assistant-reasoning-effort: ${OPENAI_ASSISTANT_REASONING_EFFORT:minimal}
   director-reasoning-effort: ${OPENAI_DIRECTOR_REASONING_EFFORT:low}
   director-timeout-seconds: ${OPENAI_DIRECTOR_TIMEOUT_SECONDS:25}
   director-pricing:

@@ -30,14 +30,11 @@ public class OpenAiProperties {
     /**
      * Cuánto razona el asistente, que es caso aparte.
      *
-     * <p>En {@code /v1/chat/completions} ningún modelo gpt-6 admite herramientas y
-     * razonamiento a la vez, y el asistente manda su catálogo en cada llamada: con
-     * cualquier valor que no sea {@code none} la petición se rechaza con un 400.
-     * El resto de las llamadas no llevan herramientas y sí pueden razonar, por eso
-     * tienen su propio ajuste. Para tener las dos cosas hay que mover al asistente
-     * a {@code /v1/responses}.
+     * <p>Los modelos actuales aceptan herramientas con {@code minimal}; {@code none}
+     * ya no es un valor válido y provoca un 400 antes de ejecutar el turno. El resto
+     * de las llamadas conserva su ajuste independiente.
      */
-    private String assistantReasoningEffort = "none";
+    private String assistantReasoningEffort = "minimal";
 
     /**
      * Por dónde habla el asistente: {@code responses} o {@code chat}.

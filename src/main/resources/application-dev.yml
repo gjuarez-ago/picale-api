@@ -168,10 +168,10 @@ openai:
   # Solo se manda a los modelos que razonan (gpt-5 en adelante); los demas lo
   # rechazan, igual que ellos rechazan la temperatura.
   reasoning-effort: ${OPENAI_REASONING_EFFORT:low}
-  # El asistente manda herramientas en cada llamada y los gpt-6 solo admiten
-  # 'none' junto a ellas en chat/completions. Ver OpenAiProperties.
+  # El asistente manda herramientas en cada llamada; minimal es el valor de
+  # menor latencia aceptado por los modelos actuales. Ver OpenAiProperties.
   assistant-api: ${OPENAI_ASSISTANT_API:chat}
-  assistant-reasoning-effort: ${OPENAI_ASSISTANT_REASONING_EFFORT:none}
+  assistant-reasoning-effort: ${OPENAI_ASSISTANT_REASONING_EFFORT:minimal}
   pricing:
     input-usd-per-million: ${OPENAI_PRICING_INPUT_PER_1M_USD:0}
     output-usd-per-million: ${OPENAI_PRICING_OUTPUT_PER_1M_USD:0}

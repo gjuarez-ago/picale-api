@@ -11,6 +11,12 @@ class AssistantLlmClientTest {
     private final ObjectMapper json = new ObjectMapper();
 
     @Test
+    void usaRazonamientoMinimoCompatiblePorDefecto() {
+        var props = new com.metricol.api.config.OpenAiProperties();
+        assertThat(props.getAssistantReasoningEffort()).isEqualTo("minimal");
+    }
+
+    @Test
     void convierteElCatalogoMcpSinDuplicarContratos() throws Exception {
         var mcp = json.readTree("""
                 [{"name":"panel","description":"Resumen real", "inputSchema":{"type":"object","properties":{}}}]

@@ -2,32 +2,45 @@
     [ValidateSet('Snapshot', 'Simple', 'Retouch', 'ContinueRetouch', 'Confirm', 'Status')][string]$Action = 'Snapshot',
     [switch]$PaidAuthorized,
     [switch]$FinalTrialAuthorized,
-    [switch]$ExtraConsultAuthorized
+    [switch]$ExtraConsultAuthorized,
+    [string]$BaseUrl = 'http://localhost:8087/api/v1',
+    [string]$EnvironmentFile = '../.env',
+    [string]$ReportName = '',
+    [string]$BearerToken = '',
+    [string]$WorkspaceId = 'ed843752-8e99-4b67-8b13-9359ce327b12',
+    [string]$SourceId = 'dc20a2a0-d15a-47fe-bd30-0544de01c0ff',
+    [string]$ExpectedWorkspaceName = 'Banquetera y Postres',
+    [switch]$CreateThreadAuthorized
 )
 $ErrorActionPreference = 'Stop'
-$base = 'http://localhost:8087/api/v1'
-$workspaceId = 'ed843752-8e99-4b67-8b13-9359ce327b12'
-$sourceId = 'dc20a2a0-d15a-47fe-bd30-0544de01c0ff'
-$reportPath = Join-Path $PSScriptRoot $(if ($FinalTrialAuthorized) { '../target/assistant-goal-real-final.json' } else { '../target/assistant-goal-real.json' })
+$base = $BaseUrl.TrimEnd('/')
+$workspaceId = $WorkspaceId
+$sourceId = $SourceId
+$defaultReportName = if ($FinalTrialAuthorized) { 'assistant-goal-real-final.json' } else { 'assistant-goal-real.json' }
+$reportPath = Join-Path $PSScriptRoot ('../target/' + $(if ($ReportName) { $ReportName } else { $defaultReportName }))
 if ($ExtraConsultAuthorized -and -not $FinalTrialAuthorized) { throw 'La consulta adicional pertenece exclusivamente a la prueba final.' }
 if ($FinalTrialAuthorized -and ($Action -eq 'Simple' -or ($Action -eq 'ContinueRetouch' -and -not $ExtraConsultAuthorized))) { throw 'La prueba final admite solo el retoque aprobado y la consulta adicional expresamente autorizada.' }
 if ($Action -in @('Simple','Retouch','ContinueRetouch','Confirm') -and -not $PaidAuthorized) { throw 'Esta acción requiere autorización explícita de consumo.' }
 
-# Credenciales solo en memoria. Este helper es local y está limitado al perfil aprobado.
-$config = @{}
-Get-Content (Join-Path $PSScriptRoot '../.env') | ForEach-Object {
-    if ($_ -match '^\s*([^#=\s]+)\s*=\s*(.*)$') { $config[$matches[1]] = $matches[2].Trim().Trim('"').Trim("'") }
+# Credenciales solo en memoria. Este helper está limitado al perfil aprobado.
+if ($BearerToken) {
+    $headers = @{Authorization='Bearer ' + $BearerToken}
+} else {
+    $config = @{}
+    Get-Content (Join-Path $PSScriptRoot $EnvironmentFile) | ForEach-Object {
+        if ($_ -match '^\s*([^#=\s]+)\s*=\s*(.*)$') { $config[$matches[1]] = $matches[2].Trim().Trim('"').Trim("'") }
+    }
+    if (-not $config['JWT_SECRET']) { throw 'No se encontró la clave configurada. No se usa una clave predeterminada.' }
+    function Encode-Url([byte[]]$bytes) { [Convert]::ToBase64String($bytes).TrimEnd('=').Replace('+','-').Replace('/','_') }
+    $now = [DateTimeOffset]::UtcNow.ToUnixTimeSeconds()
+    $head = Encode-Url ([Text.Encoding]::UTF8.GetBytes('{"alg":"HS256","typ":"JWT"}'))
+    $payload = @{ sub='contacto@rodtech.cloud'; iss='metricol-api'; aud='metricol-app'; iat=$now; exp=$now+1200 } | ConvertTo-Json -Compress
+    $unsigned = $head + '.' + (Encode-Url ([Text.Encoding]::UTF8.GetBytes($payload)))
+    $hmac = New-Object Security.Cryptography.HMACSHA256
+    $hmac.Key = [Text.Encoding]::UTF8.GetBytes($config['JWT_SECRET'])
+    $headers = @{Authorization='Bearer ' + $unsigned + '.' + (Encode-Url ($hmac.ComputeHash([Text.Encoding]::UTF8.GetBytes($unsigned))))}
+    $hmac.Dispose()
 }
-if (-not $config['JWT_SECRET']) { throw 'No se encontró la clave local configurada. No se usa una clave predeterminada.' }
-function Encode-Url([byte[]]$bytes) { [Convert]::ToBase64String($bytes).TrimEnd('=').Replace('+','-').Replace('/','_') }
-$now = [DateTimeOffset]::UtcNow.ToUnixTimeSeconds()
-$head = Encode-Url ([Text.Encoding]::UTF8.GetBytes('{"alg":"HS256","typ":"JWT"}'))
-$payload = @{ sub='contacto@rodtech.cloud'; iss='metricol-api'; aud='metricol-app'; iat=$now; exp=$now+1200 } | ConvertTo-Json -Compress
-$unsigned = $head + '.' + (Encode-Url ([Text.Encoding]::UTF8.GetBytes($payload)))
-$hmac = New-Object Security.Cryptography.HMACSHA256
-$hmac.Key = [Text.Encoding]::UTF8.GetBytes($config['JWT_SECRET'])
-$headers = @{Authorization='Bearer ' + $unsigned + '.' + (Encode-Url ($hmac.ComputeHash([Text.Encoding]::UTF8.GetBytes($unsigned))))}
-$hmac.Dispose()
 function Api([string]$Method, [string]$Path, $Body = $null) {
     $parameters = @{Uri=$base+$Path; Method=$Method; Headers=$headers; TimeoutSec=160}
     if ($null -ne $Body) { $parameters.ContentType='application/json; charset=utf-8'; $parameters.Body=[Text.Encoding]::UTF8.GetBytes(($Body | ConvertTo-Json -Depth 20 -Compress)) }
@@ -36,8 +49,12 @@ function Api([string]$Method, [string]$Path, $Body = $null) {
 }
 function Save-Report { $script:report | ConvertTo-Json -Depth 30 | Set-Content -Encoding UTF8 -LiteralPath $reportPath }
 $workspace = Api 'GET' '/workspace'
-if ($workspace.id -ne $workspaceId -or $workspace.name -ne 'Banquetera y Postres') { throw 'El perfil autenticado no es el negocio autorizado. No se cambió de espacio.' }
+if ($workspace.id -ne $workspaceId -or $workspace.name -ne $ExpectedWorkspaceName) { throw 'El perfil autenticado no es el negocio autorizado. No se cambió de espacio.' }
 $threads = @(Api 'GET' '/assistant/threads')
+if ($threads.Count -eq 0 -and $CreateThreadAuthorized) {
+    $null = Api 'POST' '/assistant/threads' @{title='Validación controlada de liberación'}
+    $threads = @(Api 'GET' '/assistant/threads')
+}
 if ($threads.Count -ne 1) { throw 'Se requiere una única conversación existente; el helper no crea otra.' }
 $threadId = $threads[0].id
 $detail = Api 'GET' "/assistant/threads/$threadId"

@@ -279,7 +279,7 @@ public class AssistantLlmClient {
             // accion; lo que ahorramos son viajes adicionales al modelo.
             body.put("parallel_tool_calls", true);
         }
-        // Ajuste propio: con herramientas, los gpt-6 solo aceptan 'none' aqui.
+        // Ajuste propio: el valor minimo compatible mantiene baja la latencia con herramientas.
         if (reasoningModel(props.getModel()) && props.getAssistantReasoningEffort() != null
                 && !props.getAssistantReasoningEffort().isBlank()) {
             body.put("reasoning_effort", props.getAssistantReasoningEffort().strip());
