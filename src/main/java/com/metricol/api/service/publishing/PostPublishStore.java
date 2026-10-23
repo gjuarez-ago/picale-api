@@ -24,6 +24,7 @@ import com.metricol.api.enums.PostFormat;
 import com.metricol.api.enums.PostStatus;
 import com.metricol.api.enums.PostTargetStatus;
 import com.metricol.api.exception.ResourceNotFoundException;
+import com.metricol.api.config.MediaLimitsProperties;
 import com.metricol.api.repository.PostRepository;
 import com.metricol.api.repository.WorkspaceRepository;
 
@@ -192,6 +193,9 @@ public class PostPublishStore {
 
         List<PublishPlan.Destino> destinos = new ArrayList<>();
         boolean algunaSinCuota = false;
+        // Una sola vez y fuera del bucle: es la misma consulta para las cinco
+        // redes, y dentro serian cinco viajes a la base por publicacion.
+        Long pesoVideo = pesoDelVideo(post);
 
         for (PostTarget target : targets) {
             if (target.getStatus() == PostTargetStatus.PUBLISHED) {
@@ -225,6 +229,19 @@ public class PostPublishStore {
                         + VideoLimitsProperties.legible(post.getVideoDurationSeconds())
                         + " y " + platform.getLabel() + " acepta hasta "
                         + VideoLimitsProperties.legible(tope) + ".");
+                continue;
+            }
+
+            // El peso, igual que la duracion: esta red se queda fuera y las
+            // demas siguen. Se comprueba aqui ademas de al guardar por las
+            // programadas de antes de que existiera, y porque mandarlo a
+            // upload-post para que lo rechace devuelve un motivo que no
+            // explica nada.
+            if (videoLimits.excedeBytes(platform, pesoVideo)) {
+                marcar(target, PostTargetStatus.FAILED, "El video pesa "
+                        + MediaLimitsProperties.legible(pesoVideo)
+                        + " y " + platform.getLabel() + " acepta hasta "
+                        + MediaLimitsProperties.legible(videoLimits.maxBytesFor(platform)) + ".");
                 continue;
             }
 
@@ -587,6 +604,25 @@ public class PostPublishStore {
             }
         }
         return false;
+    }
+
+    /**
+     * Lo que pesa el video de esta publicación, según nuestra biblioteca.
+     *
+     * <p>{@code null} cuando no hay video, cuando el archivo ya no está o
+     * cuando su fila no trae tamaño —las viejas pueden no tenerlo—. En los tres
+     * casos no se bloquea ninguna red: sin el dato, que opine la red.
+     */
+    private Long pesoDelVideo(Post post) {
+        if (post.getMediaType() != com.metricol.api.enums.MediaType.VIDEO
+                || post.getMediaUrls() == null || post.getMediaUrls().isEmpty()) {
+            return null;
+        }
+        return assets.findByUrlIn(post.getMediaUrls()).stream()
+                .map(com.metricol.api.entity.MediaAsset::getSizeBytes)
+                .filter(bytes -> bytes != null && bytes > 0)
+                .findFirst()
+                .orElse(null);
     }
 
     private boolean alguna(Post post, PostTargetStatus estado) {

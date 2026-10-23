@@ -142,7 +142,44 @@ final class SelloDeLogo {
     static Colocado colocar(byte[] imagen, byte[] logo, Posicion pedida, boolean historia) {
         BufferedImage base = leer(imagen, "La imagen generada no se pudo leer.");
         BufferedImage original = leer(logo, "El logo no se puede leer: usa un archivo JPG o PNG.");
+        // Primero, el logo como lo pondría un diseñador: sin placa. Un logo con fondo blanco
+        // salía como un cuadro blanco pegado sobre el diseño —lo primero que se veía—.
+        Colocado sinPlaca = sinPlaca(base, original, pedida, ANCHO_MAX, ALTO_MAX, historia, true);
+        if (sinPlaca != null) {
+            return sinPlaca;
+        }
+        return conPlaca(base, original, pedida, historia);
+    }
 
+    /** Preserva el archivo, incluyendo su fondo; separar el fondo requiere una preferencia explícita. */
+    static Colocado colocarFiel(byte[] imagen, byte[] logo, Posicion pedida, boolean historia, boolean quitarFondo) {
+        BufferedImage base = leer(imagen, "La imagen no se puede leer.");
+        BufferedImage original = leer(logo, "El logo no se puede leer.");
+        if (quitarFondo) {
+            original = LogoBackgroundIsolation.removeSolid(original);
+            Colocado separated = sinPlaca(base, original, pedida, ANCHO_MAX, ALTO_MAX, historia, false);
+            return separated == null ? conPlaca(base, original, pedida, historia) : separated;
+        }
+        double scale = Math.min(ANCHO_MAX * base.getWidth() / original.getWidth(), ALTO_MAX * base.getHeight() / original.getHeight());
+        int width = Math.max(1, (int) Math.round(original.getWidth() * scale));
+        int height = Math.max(1, (int) Math.round(original.getHeight() * scale));
+        Posicion position = sitioLimpio(base, width, height, pedida, historia);
+        Rectangle rect = rectangulo(base.getWidth(), base.getHeight(), width, height, position, historia);
+        Graphics2D g = base.createGraphics();
+        try {
+            g.setRenderingHint(RenderingHints.KEY_INTERPOLATION, RenderingHints.VALUE_INTERPOLATION_BICUBIC);
+            if (conTransparencia(original)) { g.setColor(Color.WHITE); g.fillRect(rect.x - 3, rect.y - 3, width + 6, height + 6); }
+            g.drawImage(original, rect.x, rect.y, width, height, null);
+        } finally { g.dispose(); }
+        return new Colocado(aJpeg(base), position);
+    }
+
+    /**
+     * El sello de siempre: el logo con un borde del color de su propio fondo. Queda solo para lo
+     * que sin placa no se leería —un logo claro sobre un fondo claro— o un logo que no se puede
+     * separar de su fondo.
+     */
+    private static Colocado conPlaca(BufferedImage base, BufferedImage original, Posicion pedida, boolean historia) {
         Contenido contenido = recortarVacio(original);
         int ancho = base.getWidth();
         int alto = base.getHeight();
@@ -221,19 +258,45 @@ final class SelloDeLogo {
     static Colocado colocarSobreFoto(byte[] imagen, byte[] logo, Posicion zona, double anchoFoto, boolean historia) {
         BufferedImage base = leer(imagen, "La foto no se pudo leer.");
         BufferedImage original = leer(logo, "El logo no se puede leer: usa un archivo JPG o PNG.");
-        if (!conTransparencia(original)) {
-            return colocar(imagen, logo, zona, historia);
+        Colocado sinPlaca = sinPlaca(base, original, zona, anchoFoto, ALTO_MAX_FOTO, historia, false);
+        return sinPlaca != null ? sinPlaca : conPlaca(base, original, zona, historia);
+    }
+
+    /**
+     * El logo directo sobre la imagen, sin placa; {@code null} si así no se leería.
+     *
+     * <p>Un logo con fondo blanco se separa de su fondo antes de decidir (lo blanco que toca el
+     * borde se vuelve transparente; lo que el logo encierra se queda), con la misma regla que el
+     * acabado de las fotos ({@link AcabadoDeMarca#sinFondo}). Antes, un logo así iba SIEMPRE en
+     * su cuadro blanco: ni se intentaba.
+     *
+     * <ul>
+     * <li>Si contrasta con lo que tiene debajo, va directo con una sombra apenas perceptible.</li>
+     * <li>Si el fondo es oscuro y no se leería, va su versión para fondo oscuro.</li>
+     * <li>Un logo claro sobre un fondo claro devuelve {@code null}: ahí la placa sí hace falta.</li>
+     * </ul>
+     *
+     * @param buscarSitio en los diseños se busca siempre el rincón más limpio; en una foto se
+     *                    respeta la zona del director salvo que esté llena de detalle
+     */
+    private static Colocado sinPlaca(BufferedImage base, BufferedImage original, Posicion zona, double anchoMax,
+            double altoMax, boolean historia, boolean buscarSitio) {
+        // Siempre por el quitafondo: decide él si hay un cuadro blanco que quitar, aunque el
+        // archivo ya traiga transparencia (ver AcabadoDeMarca.sinFondo).
+        BufferedImage separado = AcabadoDeMarca.sinFondo(original);
+        if (!conTransparencia(separado)) {
+            return null;
         }
-        Contenido contenido = recortarVacio(original);
+        Contenido contenido = recortarVacio(separado);
         int ancho = base.getWidth();
         int alto = base.getHeight();
-        double escala = Math.min(anchoFoto * ancho / contenido.imagen().getWidth(),
-                ALTO_MAX_FOTO * alto / contenido.imagen().getHeight());
+        double escala = Math.min(anchoMax * ancho / contenido.imagen().getWidth(),
+                altoMax * alto / contenido.imagen().getHeight());
         int logoAncho = Math.max(1, (int) Math.round(contenido.imagen().getWidth() * escala));
         int logoAlto = Math.max(1, (int) Math.round(contenido.imagen().getHeight() * escala));
 
         Posicion posicion = zona;
-        if (ocupacion(base, rectangulo(ancho, alto, logoAncho, logoAlto, zona, historia)) > MUY_OCUPADO) {
+        if (buscarSitio || ocupacion(base, rectangulo(ancho, alto, logoAncho, logoAlto, zona, historia)) > MUY_OCUPADO) {
             posicion = sitioLimpio(base, logoAncho, logoAlto, zona, historia);
         }
         Rectangle sitio = rectangulo(ancho, alto, logoAncho, logoAlto, posicion, historia);
@@ -244,7 +307,7 @@ final class SelloDeLogo {
         if (Math.abs(fondo - luzLogo) < CONTRASTE_MINIMO) {
             if (fondo >= FONDO_OSCURO) {
                 // Fondo claro y logo claro: sin placa no se lee.
-                return colocar(imagen, logo, posicion, historia);
+                return null;
             }
             chico = paraFondoOscuro(chico);
         }

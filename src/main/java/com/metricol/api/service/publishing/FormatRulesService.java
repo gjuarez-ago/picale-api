@@ -51,6 +51,16 @@ public class FormatRulesService {
     public static final int MAX_SEGUNDOS_HISTORIA = 60;
 
     /**
+     * Y no admite más de 100 MB, aunque la misma red acepte 300 MB en el feed.
+     *
+     * <p>Va aquí y no en los topes por red porque es del formato: Instagram
+     * acepta 300 MB en feed y reels y solo 100 MB en historias. Puesto por red
+     * habría bloqueado Instagram entera por un límite que solo rige para un
+     * formato.
+     */
+    public static final long MAX_BYTES_HISTORIA = 100L * 1024 * 1024;
+
+    /**
      * Lo que se puede hacer con un formato.
      *
      * @param redes         las que publican este formato. El resto se apagan
@@ -59,6 +69,8 @@ public class FormatRulesService {
      *                      carrusel
      * @param minSegundos   {@code null} cuando el formato no lleva video
      * @param maxSegundos   {@code null} cuando el formato no lleva video
+     * @param maxBytes      tope de peso del formato, {@code null} cuando no
+     *                      tiene uno propio y manda el de cada red
      * @param exigeVertical si hay que exigir 9:16. Es un error, no un aviso:
      *                      un reel apaisado lo rechaza Facebook y en el resto
      *                      sale con bandas, que es peor que no dejarlo subir
@@ -73,6 +85,7 @@ public class FormatRulesService {
             boolean admiteVideo,
             Integer minSegundos,
             Integer maxSegundos,
+            Long maxBytes,
             boolean exigeVertical) {
     }
 
@@ -84,19 +97,20 @@ public class FormatRulesService {
                 new Regla(PostFormat.PHOTO, PostFormat.PHOTO.getLabel(), true,
                         EnumSet.of(Platform.FACEBOOK, Platform.INSTAGRAM,
                                 Platform.TIKTOK, Platform.LINKEDIN),
-                        maxFotos, true, false, null, null, false),
+                        maxFotos, true, false, null, null, null, false),
 
                 // Reel. Lo admiten las cinco. Vertical obligatorio: es lo que
                 // pide el formato en todas, y Facebook lo rechaza si no.
                 new Regla(PostFormat.REEL, PostFormat.REEL.getLabel(), true,
                         EnumSet.allOf(Platform.class),
-                        1, false, true, MIN_SEGUNDOS_VIDEO, null, true),
+                        1, false, true, MIN_SEGUNDOS_VIDEO, null, null, true),
 
                 // Historia. Solo Meta: TikTok no las tiene y YouTube tampoco.
                 // Es el único formato que acepta las dos clases de archivo.
                 new Regla(PostFormat.STORY, PostFormat.STORY.getLabel(), true,
                         EnumSet.of(Platform.FACEBOOK, Platform.INSTAGRAM),
-                        1, true, true, MIN_SEGUNDOS_VIDEO, MAX_SEGUNDOS_HISTORIA, true),
+                        1, true, true, MIN_SEGUNDOS_VIDEO, MAX_SEGUNDOS_HISTORIA,
+                        MAX_BYTES_HISTORIA, true),
 
                 // Video largo, para el feed. Sin vertical obligatorio —uno de
                 // feed se ve bien apaisado— y sin tope propio: el máximo lo
@@ -104,7 +118,7 @@ public class FormatRulesService {
                 new Regla(PostFormat.VIDEO, PostFormat.VIDEO.getLabel(), true,
                         EnumSet.of(Platform.FACEBOOK, Platform.INSTAGRAM,
                                 Platform.TIKTOK, Platform.LINKEDIN, Platform.YOUTUBE),
-                        1, false, true, MIN_SEGUNDOS_VIDEO, null, false));
+                        1, false, true, MIN_SEGUNDOS_VIDEO, null, null, false));
     }
 
     /** Solo lo que se le puede proponer a alguien hoy. */

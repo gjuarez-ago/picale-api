@@ -63,4 +63,12 @@ public class AssistantThread {
 
     @Column(name = "deleted_at")
     private LocalDateTime deletedAt;
+
+    /**
+     * Desde cuándo se "empezó de nuevo". Lo anterior no se borra: deja de verse y de
+     * mandarse al modelo. La memoria del negocio ({@link #summary}) sigue intacta, así que
+     * Chispa conserva lo que sabe sin arrastrar la conversación vieja.
+     */
+    @Column(name = "reiniciado_en")
+    private LocalDateTime reiniciadoEn;
 }

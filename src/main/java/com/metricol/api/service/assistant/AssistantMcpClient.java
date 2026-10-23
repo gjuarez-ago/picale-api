@@ -127,7 +127,7 @@ public class AssistantMcpClient {
 
         private JsonNode send(ObjectNode body) {
             HttpRequest request = HttpRequest.newBuilder(endpoint)
-                    .timeout(Duration.ofSeconds(95))
+                    .timeout(AssistantExecutionBudget.timeout(Duration.ofSeconds(95)))
                     .header("Authorization", "Bearer " + token)
                     .header("Accept", "application/json")
                     .header("Content-Type", "application/json")

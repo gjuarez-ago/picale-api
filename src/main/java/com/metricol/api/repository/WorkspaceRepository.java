@@ -11,6 +11,10 @@ import com.metricol.api.entity.Workspace;
 
 public interface WorkspaceRepository extends JpaRepository<Workspace, UUID> {
 
+    @org.springframework.data.jpa.repository.Lock(jakarta.persistence.LockModeType.PESSIMISTIC_WRITE)
+    @Query("select w from Workspace w where w.id = :id")
+    java.util.Optional<Workspace> findLockedById(@Param("id") UUID id);
+
     /** Los espacios de una organización. Los archivados salen al final. */
     @Query("""
             select w from Workspace w

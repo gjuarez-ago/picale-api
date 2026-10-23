@@ -465,11 +465,23 @@ public class PostService {
             // efecto, sin que se vea por que.
             String suyo = porRed.get(account.getPlatform().name());
 
+            // Si esta red no aguanta el video, su destino nace ya marcado con
+            // el motivo en vez de tumbar la publicacion entera. El video no se
+            // descarta y las demas redes salen; lo que se queda fuera es ella,
+            // y se ve desde el momento de guardar —no a las tres de la mañana,
+            // cuando una programada intenta salir y no hay nadie mirando.
+            String fuera = medios.tipo() == MediaType.VIDEO
+                    ? motivoRedFueraPorVideo(account.getPlatform(),
+                            request.getVideoDurationSeconds(), medios.bytesVideo())
+                    : null;
+
             post.getTargets().add(PostTarget.builder()
                     .post(post)
                     .socialAccount(account)
                     .caption(suyo == null || suyo.isBlank() ? null : suyo.strip())
-                    .status(encolada ? PostTargetStatus.QUEUED : PostTargetStatus.PENDING)
+                    .status(fuera != null ? PostTargetStatus.FAILED
+                            : encolada ? PostTargetStatus.QUEUED : PostTargetStatus.PENDING)
+                    .errorMessage(fuera)
                     .build());
         }
 
@@ -537,7 +549,7 @@ public class PostService {
      * de captura, antes de dejar subirlo.
      */
     private void comprobarFormato(PostFormat formato, List<SocialAccount> accounts,
-            List<String> medios, boolean hayVideo, PostSaveRequest request) {
+            List<String> medios, boolean hayVideo, PostSaveRequest request, Long bytesDelVideo) {
 
         FormatRulesService.Regla regla = formatRules.de(formato);
 
@@ -587,6 +599,18 @@ public class PostService {
                         + regla.maxSegundos() + " segundos, y el tuyo dura " + segundos + ".");
             }
         }
+
+        // El peso del formato, cuando lo tiene: una historia admite 100 MB
+        // aunque la misma red acepte 300 MB en el feed. Va aqui y no entre los
+        // topes por red para que el mensaje hable del formato elegido, que es
+        // lo que se puede cambiar en un toque.
+        if (hayVideo && regla.maxBytes() != null && bytesDelVideo != null
+                && bytesDelVideo > regla.maxBytes()) {
+            throw new IllegalArgumentException(regla.label() + ": el video admite hasta "
+                    + MediaLimitsProperties.legible(regla.maxBytes()) + ", y el tuyo pesa "
+                    + MediaLimitsProperties.legible(bytesDelVideo)
+                    + ". Publicalo como reel o video, que aceptan mas.");
+        }
     }
 
     private Medios validarMedios(PostSaveRequest request, List<SocialAccount> accounts,
@@ -602,7 +626,7 @@ public class PostService {
         }
 
         if (medios.isEmpty()) {
-            return new Medios(medios, null);
+            return new Medios(medios, null, null);
         }
 
         // Solo archivos de nuestro propio bucket. Al publicar, el servidor
@@ -638,13 +662,14 @@ public class PostService {
         // —una historia lleva un archivo y dura un minuto— y conviene que el
         // mensaje que llegue sea el del formato, que es lo que se eligio, y no
         // el de una red que ademas se pasa.
+        Long bytesDelVideo = hayVideo ? pesoDelVideo(activos) : null;
         if (formato != null) {
-            comprobarFormato(formato, accounts, medios, hayVideo, request);
+            comprobarFormato(formato, accounts, medios, hayVideo, request, bytesDelVideo);
         }
 
-        comprobarRedes(request, accounts, medios, hayVideo);
+        comprobarRedes(request, accounts, medios, hayVideo, bytesDelVideo);
 
-        return new Medios(medios, hayVideo ? MediaType.VIDEO : MediaType.IMAGE);
+        return new Medios(medios, hayVideo ? MediaType.VIDEO : MediaType.IMAGE, bytesDelVideo);
     }
 
     /**
@@ -680,11 +705,58 @@ public class PostService {
      * eso no se hace a espaldas de quien lo escribió. Se dice qué red es y
      * cuánto admite, que es lo que hace falta para arreglarlo en un toque.
      */
+    /**
+     * Lo que pesa el video de esta publicación, según nuestra propia biblioteca.
+     *
+     * <p>No se le pide al cliente: el tamaño ya está en la fila del archivo,
+     * medido al subirlo. Un dato que el servidor tiene no se le pregunta a
+     * nadie, y menos uno con el que se decide a qué redes puede ir.
+     *
+     * <p>{@code null} si el archivo no trae tamaño —las filas viejas pueden no
+     * tenerlo—, y entonces no se bloquea nada: que opine la red.
+     */
+    private Long pesoDelVideo(List<MediaAsset> activos) {
+        return activos.stream()
+                .filter(asset -> asset.getType() == MediaType.VIDEO)
+                .map(MediaAsset::getSizeBytes)
+                .filter(bytes -> bytes != null && bytes > 0)
+                .findFirst()
+                .orElse(null);
+    }
+
+    /**
+     * Por qué esta red no puede recibir este video, o {@code null} si sí puede.
+     *
+     * <p>Una sola frase, la misma en los dos momentos en que hace falta: al
+     * guardar, para dejar su destino marcado desde ya, y al publicar, cuando
+     * una programada se guardó antes de que existiera la comprobación. Tenerla
+     * en un solo sitio es lo que evita que las dos pantallas digan cosas
+     * distintas del mismo video.
+     *
+     * <p>Duración y peso van juntos y en ese orden, pero son dos arreglos
+     * distintos: uno se acorta, el otro se comprime. Por eso cada uno dice lo
+     * suyo en vez de un «no cabe» que deja probando a ciegas.
+     */
+    private String motivoRedFueraPorVideo(Platform red, Integer segundos, Long bytes) {
+        if (videoLimits.excede(red, segundos)) {
+            return "El video dura " + VideoLimitsProperties.legible(segundos)
+                    + " y " + red.getLabel() + " acepta hasta "
+                    + VideoLimitsProperties.legible(videoLimits.maxSecondsFor(red)) + ".";
+        }
+        if (videoLimits.excedeBytes(red, bytes)) {
+            return "El video pesa " + MediaLimitsProperties.legible(bytes)
+                    + " y " + red.getLabel() + " acepta hasta "
+                    + MediaLimitsProperties.legible(videoLimits.maxBytesFor(red)) + ".";
+        }
+        return null;
+    }
+
     private void comprobarRedes(
             PostSaveRequest request,
             List<SocialAccount> accounts,
             List<String> medios,
-            boolean hayVideo) {
+            boolean hayVideo,
+            Long bytesDelVideo) {
 
         List<Platform> redes = accounts.stream()
                 .map(SocialAccount::getPlatform)
@@ -696,16 +768,26 @@ public class PostService {
             return;
         }
 
+        // El video y las redes que no lo aguantan: se descartan ELLAS, no la
+        // publicacion. Solo se para si no queda ninguna, porque entonces no hay
+        // nada que publicar. Ver motivoRedFueraPorVideo.
+        if (hayVideo && (request.isPublishNow() || request.getScheduledAt() != null)) {
+            long fuera = redes.stream()
+                    .filter(red -> motivoRedFueraPorVideo(
+                            red, request.getVideoDurationSeconds(), bytesDelVideo) != null)
+                    .count();
+            if (fuera == redes.size()) {
+                throw new IllegalArgumentException(redes.stream()
+                        .map(red -> motivoRedFueraPorVideo(
+                                red, request.getVideoDurationSeconds(), bytesDelVideo))
+                        .distinct()
+                        .collect(java.util.stream.Collectors.joining(" "))
+                        + " No queda ninguna red que pueda recibirlo.");
+            }
+        }
+
         for (Platform red : redes) {
             if (hayVideo) {
-                if ((request.isPublishNow() || request.getScheduledAt() != null)
-                        && videoLimits.excede(red, request.getVideoDurationSeconds())) {
-                    throw new IllegalArgumentException("El video dura "
-                            + VideoLimitsProperties.legible(request.getVideoDurationSeconds())
-                            + " y " + red.getLabel() + " acepta hasta "
-                            + VideoLimitsProperties.legible(videoLimits.maxSecondsFor(red))
-                            + ". Quita esa red o acorta el video.");
-                }
                 continue;
             }
 
@@ -766,7 +848,13 @@ public class PostService {
     }
 
     /** Los medios de una publicación y el tipo que resultaron ser. */
-    private record Medios(List<String> urls, MediaType tipo) {
+    /**
+     * @param bytesVideo lo que pesa el video, o {@code null} si no hay video o
+     *                   el archivo no trae tamaño. Viaja aquí porque lo decide
+     *                   nuestra biblioteca al validar y hace falta después,
+     *                   al repartir la publicación entre las redes.
+     */
+    private record Medios(List<String> urls, MediaType tipo, Long bytesVideo) {
     }
 
     /** Por id y solo si la persona todavía la tiene: una eliminada es un 404 para ella. */

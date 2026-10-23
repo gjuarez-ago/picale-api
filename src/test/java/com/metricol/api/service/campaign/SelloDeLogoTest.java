@@ -179,34 +179,17 @@ class SelloDeLogoTest {
     }
 
     @Test
-    @DisplayName("un logo sobre hoja blanca conserva su fondo blanco alrededor del dibujo")
-    void placaBlanca() throws Exception {
+    @DisplayName("un logo sobre hoja blanca sale sin su cuadro blanco: el dibujo va directo sobre la imagen")
+    void sinCuadroBlanco() throws Exception {
         BufferedImage salida = leer(SelloDeLogo.poner(fondoGris(W, H), logoConAire(), Posicion.BOTTOM_CENTER, false));
 
         Mancha m = azules(salida, H / 2, H);
-        // Un poco a la izquierda del dibujo, dentro del sello: casi blanco.
-        int pixel = salida.getRGB(m.minX() - 8, (int) m.centroY());
-        assertThat(pixel & 0xFF).isGreaterThan(220);
-    }
-
-    @Test
-    @DisplayName("el borde es angosto y las esquinas apenas redondeadas: se ve el logo, no una tarjeta")
-    void bordeAngostoYEsquinasSuaves() throws Exception {
-        BufferedImage salida = leer(SelloDeLogo.poner(fondoGris(W, H), logoConAire(), Posicion.TOP_LEFT, false));
-
-        Mancha m = azules(salida, 0, H / 2);
+        assertThat(m.cuantos()).isGreaterThan(500);
         int y = (int) m.centroY();
-        // A 30 px del dibujo ya es foto: el blanco alrededor mide menos que eso. Antes
-        // la placa sobresalía más de 40 px por cada lado.
-        assertThat(esBlanco(salida.getRGB(m.minX() - 8, y))).as("aire propio del logo").isTrue();
-        assertThat(esBlanco(salida.getRGB(m.minX() - 30, y))).as("foto, no tarjeta").isFalse();
-
-        // El sello empieza en el margen (4 % y 3.5 %). Su esquina exacta queda fuera del
-        // redondeo —se ve la foto—, y unos píxeles hacia adentro ya es el sello.
-        int x0 = (int) Math.round(W * 0.04);
-        int y0 = (int) Math.round(H * 0.035);
-        assertThat(esBlanco(salida.getRGB(x0, y0))).as("esquina redondeada").isFalse();
-        assertThat(esBlanco(salida.getRGB(x0 + 8, y))).as("dentro del sello").isTrue();
+        // Junto al dibujo ya es la imagen: antes ahí asomaba la hoja blanca del archivo.
+        assertThat(esBlanco(salida.getRGB(m.minX() - 8, y))).isFalse();
+        assertThat(esBlanco(salida.getRGB(m.maxX() + 8, y))).isFalse();
+        assertThat(blancos(salida, 0, H).cuantos()).as("ningún blanco en toda la imagen").isZero();
     }
 
     @Test
@@ -227,20 +210,41 @@ class SelloDeLogoTest {
     }
 
     @Test
-    @DisplayName("un logo claro sobre transparente lleva placa oscura, o no se vería")
-    void logoClaroLlevaPlacaOscura() throws Exception {
+    @DisplayName("un logo blanco sobre una imagen media va directo: contrasta solo")
+    void logoClaroSobreFondoMedio() throws Exception {
+        BufferedImage salida = leer(SelloDeLogo.poner(fondoGris(W, H), png(logoBlanco()), Posicion.BOTTOM_CENTER, false));
+
+        // El dibujo blanco está y nada alrededor es más oscuro que el gris: no hubo placa.
+        assertThat(blancos(salida, H / 2, H).cuantos()).isGreaterThan(500);
+        Mancha dibujo = blancos(salida, H / 2, H);
+        int pixel = salida.getRGB(W / 2, dibujo.minY() - 12);
+        assertThat(pixel & 0xFF).isGreaterThan(100);
+    }
+
+    @Test
+    @DisplayName("un logo claro sobre un fondo claro lleva placa oscura, o no se vería")
+    void logoClaroSobreFondoClaroLlevaPlacaOscura() throws Exception {
+        BufferedImage claro = new BufferedImage(W, H, BufferedImage.TYPE_INT_RGB);
+        Graphics2D g = claro.createGraphics();
+        g.setColor(new Color(235, 235, 235));
+        g.fillRect(0, 0, W, H);
+        g.dispose();
+
+        BufferedImage salida = leer(SelloDeLogo.poner(png(claro), png(logoBlanco()), Posicion.BOTTOM_CENTER, false));
+
+        // La placa asoma por encima del logo: mucho más oscura que el fondo.
+        int y = H - (int) Math.round(H * 0.035) - 4;
+        int pixel = salida.getRGB(W / 2, y);
+        assertThat(pixel & 0xFF).isLessThan(100);
+    }
+
+    private static BufferedImage logoBlanco() {
         BufferedImage claro = new BufferedImage(600, 300, BufferedImage.TYPE_INT_ARGB);
         Graphics2D g = claro.createGraphics();
         g.setColor(Color.WHITE);
         g.fillRect(100, 100, 400, 100);
         g.dispose();
-
-        BufferedImage salida = leer(SelloDeLogo.poner(fondoGris(W, H), png(claro), Posicion.BOTTOM_CENTER, false));
-
-        // La placa asoma por encima del logo: debe ser más oscura que el fondo gris.
-        int y = H - (int) Math.round(H * 0.035) - 4;
-        int pixel = salida.getRGB(W / 2, y);
-        assertThat(pixel & 0xFF).isLessThan(100);
+        return claro;
     }
 
     @Test
@@ -357,5 +361,21 @@ class SelloDeLogoTest {
         assertThat(Posicion.de("NONE")).isNull();
         assertThat(Posicion.de("en el medio")).isNull();
         assertThat(Posicion.de(null)).isNull();
+    }
+    @Test
+    @DisplayName("un logo en tarjeta blanca con esquinas transparentes sale sin la tarjeta")
+    void tarjetaBlancaConEsquinasTransparentes() throws Exception {
+        BufferedImage tarjeta = new BufferedImage(800, 400, BufferedImage.TYPE_INT_ARGB);
+        Graphics2D g = tarjeta.createGraphics();
+        g.setColor(Color.WHITE);
+        g.fillRoundRect(0, 0, 800, 400, 120, 120);
+        g.setColor(AZUL);
+        g.fillRect(250, 120, 300, 160);
+        g.dispose();
+
+        BufferedImage salida = leer(SelloDeLogo.poner(fondoGris(W, H), png(tarjeta), Posicion.BOTTOM_CENTER, false));
+
+        assertThat(azules(salida, H / 2, H).cuantos()).isGreaterThan(500);
+        assertThat(blancos(salida, 0, H).cuantos()).as("sin rastro de la tarjeta").isZero();
     }
 }

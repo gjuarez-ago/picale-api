@@ -120,6 +120,28 @@ if ! sudo test -f $DESTINO/.env.vps; then
   exit 1
 fi
 
+# El contenedor no debe ser la primera parte que descubra una configuracion
+# incompleta. Se valida sin imprimir la llave y, si el MCP ya esta instalado,
+# se exige que ambos lados tengan exactamente la misma.
+ASSISTANT_KEY=\$(sudo grep -E '^ASSISTANT_DELEGATION_KEY=' $DESTINO/.env.vps | tail -1 | cut -d= -f2-)
+ASSISTANT_URL=\$(sudo grep -E '^ASSISTANT_MCP_URL=' $DESTINO/.env.vps | tail -1 | cut -d= -f2-)
+if [ \${#ASSISTANT_KEY} -lt 32 ]; then
+  echo 'ASSISTANT_DELEGATION_KEY debe tener al menos 32 caracteres en .env.vps.' >&2
+  exit 1
+fi
+if [ "\$ASSISTANT_URL" != 'https://mcp.picale.click/mcp' ]; then
+  echo 'ASSISTANT_MCP_URL debe ser https://mcp.picale.click/mcp en .env.vps.' >&2
+  exit 1
+fi
+MCP_ENV=/home/contacto_rodtech_cloud/picale-mcp/.env.vps
+if sudo test -f "\$MCP_ENV"; then
+  MCP_KEY=\$(sudo grep -E '^ASSISTANT_DELEGATION_KEY=' "\$MCP_ENV" | tail -1 | cut -d= -f2-)
+  if [ "\$ASSISTANT_KEY" != "\$MCP_KEY" ]; then
+    echo 'ASSISTANT_DELEGATION_KEY no coincide entre API y MCP.' >&2
+    exit 1
+  fi
+fi
+
 # El --env-file no es adorno: sin el, DB_NAME no llega a donde hace falta.
 # La clave env_file del compose mete las variables DENTRO del contenedor, pero
 # la que aparece en SPRING_DATASOURCE_URL la resuelve compose ANTES de arrancar
@@ -167,7 +189,7 @@ echo "==> Comprobando que sirve la base correcta"
 gcloud compute ssh "$VM" --zone="$ZONA" --project="$PROYECTO" --command "
 respuesta=\$(curl -s --max-time 10 http://127.0.0.1:18085/api/v1/ops/version)
 echo \"  \$respuesta\"
-esperada=\$(grep -E '^DB_NAME=' \$HOME/metricol.api/.env.vps | cut -d= -f2-)
+esperada=\$(sudo grep -E '^DB_NAME=' $DESTINO/.env.vps | cut -d= -f2-)
 if ! echo \"\$respuesta\" | grep -q \"\\\"base\\\":\\\"\$esperada\\\"\"; then
   echo \"ERROR: la API NO esta usando la base '\$esperada'. Revisa --env-file y DB_NAME.\" >&2
   exit 1

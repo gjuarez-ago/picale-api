@@ -60,6 +60,22 @@ class RedactorTest {
     }
 
     @Test
+    @DisplayName("ordena espacios y deja una sola linea en blanco entre bloques")
+    void normalizaElFormatoParaTelefono() {
+        when(client.completeJson(any(), anyString(), anyString())).thenReturn("""
+                {"titulo":"Tacos de hoy","guion":"Gancho.\\n\\n\\nCuerpo.  ",
+                 "textos":{"INSTAGRAM":"Gancho.  \\n\\n\\nCuerpo.\\n\\nCierre."}}
+                """);
+
+        Redactor.Borrador borrador = redactor.redactar(
+                "tacos de hoy", List.of(), List.of(Platform.INSTAGRAM), Redactor.Negocio.DESCONOCIDO);
+
+        assertThat(borrador.guion()).isEqualTo("Gancho.\n\nCuerpo.");
+        assertThat(borrador.textos().get(Platform.INSTAGRAM))
+                .isEqualTo("Gancho.\n\nCuerpo.\n\nCierre.");
+    }
+
+    @Test
     @DisplayName("si falta una red, se rellena con el guion en vez de dejarla vacia")
     void ningunaRedSeQuedaSinTexto() {
         // Una red sin texto no es un hueco en la pantalla: es una publicacion
@@ -247,5 +263,65 @@ class RedactorTest {
         verify(client).completeJson(any(), anyString(), prompt.capture());
 
         assertThat(prompt.getValue()).doesNotContain("El negocio que publica");
+    }
+    @Test
+    @DisplayName("las etiquetas de estructura no llegan al texto: el caso de oct 2026")
+    void sinGanchoNiCierre() {
+        when(client.completeJson(any(), anyString(), anyString())).thenReturn("""
+                {"titulo": "Pagos y riesgo de deducción",
+                 "guion": "Carrusel (4 fotos) sobre pagos y riesgo de deducción. Cerrar invitando a pedir una cotización.",
+                 "textos": {"TIKTOK": "Gancho: No solo pierdes ISR; también puedes perder IVA.\\n\\nCierre: pide cotización por WhatsApp.",
+                            "INSTAGRAM": "No solo arriesgas ISR. También IVA.\\n\\nTip práctico:\\n- Revisa el CFDI\\n- Revisa cómo pagaste"}}
+                """);
+
+        Redactor.Borrador borrador = redactor.redactar(
+                "Haz una publicacion tipo carrusel de 4 fotos sobre pagos", List.of(),
+                List.of(Platform.TIKTOK, Platform.INSTAGRAM), Redactor.Negocio.DESCONOCIDO);
+
+        assertThat(borrador.textos().get(Platform.TIKTOK))
+                .isEqualTo("No solo pierdes ISR; también puedes perder IVA.\n\nPide cotización por WhatsApp.");
+        assertThat(borrador.textos().get(Platform.INSTAGRAM))
+                .doesNotContain("Tip").contains("- Revisa el CFDI");
+        // El guion describía el carrusel: se cambia por el texto de Instagram.
+        assertThat(borrador.guion()).startsWith("No solo arriesgas ISR").doesNotContain("Carrusel (");
+    }
+
+    @Test
+    @DisplayName("una palabra con dos puntos a media frase no se toca")
+    void soloAlInicioDeLinea() {
+        assertThat(Redactor.sinEtiquetas("Revisa: relación con el negocio y CFDI."))
+                .isEqualTo("Revisa: relación con el negocio y CFDI.");
+        assertThat(Redactor.sinEtiquetas("Horario: de 9 a 6")).isEqualTo("Horario: de 9 a 6");
+        assertThat(Redactor.pareceInstruccion("Hoy hay 2x1 en tacos al pastor")).isFalse();
+        assertThat(Redactor.pareceInstruccion("Publicación tipo carrusel (2 fotos) sobre facturas")).isTrue();
+    }
+    @Test
+    @DisplayName("lo que se publica no lleva groserías aunque la persona las haya dictado")
+    void sinGroseriasAlPublicar() {
+        when(client.completeJson(any(), anyString(), anyString())).thenReturn("""
+                {"titulo": "Pastel de fresa", "guion": "Está bien chingón el pastel",
+                 "textos": {"INSTAGRAM": "Está bien chingón el pastel de fresa 🍓"}}
+                """);
+        when(client.complete(any(), anyString(), anyString())).thenReturn("Está buenísimo el pastel de fresa 🍓");
+
+        Redactor.Borrador borrador = redactor.redactar("está bien chingón el pastel", List.of(),
+                List.of(Platform.INSTAGRAM), Redactor.Negocio.DESCONOCIDO);
+
+        assertThat(borrador.textos().get(Platform.INSTAGRAM)).isEqualTo("Está buenísimo el pastel de fresa 🍓");
+        assertThat(LenguajeCuidado.tieneGroserias(borrador.guion())).isFalse();
+    }
+
+    @Test
+    @DisplayName("si reescribir falla, la grosería se tapa: nunca sale tal cual")
+    void siNoSePuedeReescribirSeTapa() {
+        when(client.completeJson(any(), anyString(), anyString())).thenReturn("""
+                {"titulo": "Promo", "guion": "Promo", "textos": {"TIKTOK": "Pinche promo de hoy"}}
+                """);
+        when(client.complete(any(), anyString(), anyString())).thenThrow(new RuntimeException("sin red"));
+
+        Redactor.Borrador borrador = redactor.redactar("promo", List.of(), List.of(Platform.TIKTOK),
+                Redactor.Negocio.DESCONOCIDO);
+
+        assertThat(borrador.textos().get(Platform.TIKTOK)).isEqualTo("P***** promo de hoy");
     }
 }

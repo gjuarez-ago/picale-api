@@ -178,6 +178,21 @@ class EliminacionDefinitivaTest {
                 .status(LicenseStatus.ACTIVE).currentPeriodEnd(LocalDateTime.now().plusDays(20))
                 .stripeSubscriptionId(suscripcion).build());
         creditos.save(ImageCredits.builder().workspaceId(w.getId()).packBalance(39).build());
+        Map<String, Object> durable = Map.of(
+                "id", UUID.randomUUID(), "ws", w.getId(), "tenant", w.getId().toString(),
+                "request", UUID.randomUUID(), "fingerprint", "a".repeat(64));
+        sql.update("""
+                insert into assistant_generation_requests
+                    (id, tenant_id, workspace_id, request_id, fingerprint, created_at)
+                values (:id, :tenant, :ws, :request, :fingerprint, current_timestamp)
+                """, durable);
+        sql.update("""
+                insert into contenido_jobs
+                    (id, workspace_id, status, response_json, request_json, credit_reference,
+                     external_started, created_at, updated_at)
+                values (:id, :ws, 'READY', '{}', '{}', 'prueba-borrado', false,
+                        current_timestamp, current_timestamp)
+                """, Map.of("id", UUID.randomUUID(), "ws", w.getId()));
     }
 
     private long filas(String tabla, String columna, Object valor) {
@@ -221,6 +236,8 @@ class EliminacionDefinitivaTest {
             assertThat(filas("social_accounts", "tenant_id", t)).isZero();
             assertThat(filas("licenses", "workspace_id", w.getId())).isZero();
             assertThat(filas("image_credits", "workspace_id", w.getId())).isZero();
+            assertThat(filas("assistant_generation_requests", "workspace_id", w.getId())).isZero();
+            assertThat(filas("contenido_jobs", "workspace_id", w.getId())).isZero();
         }
         // La community manager sigue, en su agencia.
         assertThat(sql.queryForObject("select workspace_id from users where id = :u", Map.of("u", cm.getId()),
@@ -352,7 +369,9 @@ class EliminacionDefinitivaTest {
                 "assistant_run_events.workspace_id", "assistant_runs.tenant_id",
                 "assistant_runs.user_id", "assistant_runs.workspace_id",
                 "assistant_threads.tenant_id", "assistant_threads.workspace_id",
-                "assistant_tool_calls.tenant_id",
+                "assistant_tool_calls.tenant_id", "assistant_run_paradas.tenant_id",
+                "assistant_generation_requests.tenant_id", "assistant_generation_requests.workspace_id",
+                "contenido_jobs.workspace_id",
                 "ai_usage.workspace_id", "acciones_ia.workspace_id", "acciones_ia.user_id",
                 "conexiones_ia.user_id", "dispositivos.user_id",
                 // Los comentarios se van con el espacio; de la persona solo se

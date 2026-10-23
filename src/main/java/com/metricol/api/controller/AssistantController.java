@@ -36,7 +36,8 @@ public class AssistantController {
     }
 
     public record SendMessageRequest(String content, List<UUID> attachmentIds, String currentPath,
-            String idempotencyKey, String promptName) {
+            String idempotencyKey, String promptName, java.util.Map<String, String> formAnswers,
+            com.fasterxml.jackson.databind.JsonNode accion) {
     }
 
     public record ConfirmRequest(String token) {
@@ -58,9 +59,10 @@ public class AssistantController {
             LocalDateTime createdAt) {
     }
 
+    /** @param reiniciadoEn desde cuándo se empezó de nuevo; la web marca ahí el corte */
     public record ThreadDetail(UUID id, String title, String summary, UUID campaignId, LocalDateTime createdAt,
             LocalDateTime updatedAt, LocalDateTime closedAt, List<MessageView> messages, List<RunView> runs,
-            List<ToolCallView> toolCalls, String pendingConfirmationToken) {
+            List<ToolCallView> toolCalls, String pendingConfirmationToken, LocalDateTime reiniciadoEn) {
     }
 
     private final AssistantThreads threads;
@@ -92,10 +94,13 @@ public class AssistantController {
         return ResponseEntity.ok(ApiResponse.success(threads.list(user).stream().map(this::summary).toList()));
     }
 
+    /** @param completo también lo anterior a "empezar de nuevo" (solo lectura) */
     @GetMapping("/threads/{id}")
     public ResponseEntity<ApiResponse<ThreadDetail>> detail(@AuthenticationPrincipal User user,
-            @PathVariable UUID id) {
-        return ResponseEntity.ok(ApiResponse.success(view(threads.detail(user, id))));
+            @PathVariable UUID id,
+            @org.springframework.web.bind.annotation.RequestParam(name = "completo", defaultValue = "false")
+            boolean completo) {
+        return ResponseEntity.ok(ApiResponse.success(view(threads.detail(user, id, completo))));
     }
 
     @PostMapping("/threads/{id}/rename")
@@ -111,6 +116,13 @@ public class AssistantController {
         return ResponseEntity.ok(ApiResponse.success(view(threads.close(user, id))));
     }
 
+    /** "Empezar de nuevo": para todo y limpia la conversación, sin olvidar al negocio. */
+    @PostMapping("/threads/{id}/empezar-de-nuevo")
+    public ResponseEntity<ApiResponse<ThreadDetail>> empezarDeNuevo(@AuthenticationPrincipal User user,
+            @PathVariable UUID id) {
+        return ResponseEntity.ok(ApiResponse.success(view(orchestrator.empezarDeNuevo(user, id))));
+    }
+
     @PostMapping("/threads/{id}/resume")
     public ResponseEntity<ApiResponse<ThreadDetail>> resume(@AuthenticationPrincipal User user,
             @PathVariable UUID id) {
@@ -122,7 +134,7 @@ public class AssistantController {
             @PathVariable UUID id, @RequestBody SendMessageRequest request) {
         AssistantOrchestrator.Result result = orchestrator.send(user, id,
                 new AssistantOrchestrator.Send(request.content(), request.attachmentIds(), request.currentPath(),
-                        request.idempotencyKey(), request.promptName()));
+                        request.idempotencyKey(), request.promptName(), request.formAnswers(), request.accion()));
         return ResponseEntity.ok(ApiResponse.success(view(result.detail(), result.confirmationToken())));
     }
 
@@ -133,11 +145,25 @@ public class AssistantController {
         return ResponseEntity.ok(ApiResponse.success(view(result.detail(), result.confirmationToken())));
     }
 
+    @GetMapping("/runs/{id}/generation")
+    public ResponseEntity<ApiResponse<ThreadDetail>> generation(@AuthenticationPrincipal User user,
+            @PathVariable UUID id) {
+        return ResponseEntity.ok().cacheControl(org.springframework.http.CacheControl.noStore())
+                .body(ApiResponse.success(view(orchestrator.refreshGeneration(user, id))));
+    }
+
     @PostMapping("/runs/{id}/confirmation-token")
     public ResponseEntity<ApiResponse<ThreadDetail>> renewConfirmation(@AuthenticationPrincipal User user,
             @PathVariable UUID id) {
         AssistantOrchestrator.Result result = orchestrator.renewConfirmation(user, id);
         return ResponseEntity.ok(ApiResponse.success(view(result.detail(), result.confirmationToken())));
+    }
+
+    /** "Detener" mientras Chispa trabaja: corta el turno sin limpiar la conversación. */
+    @PostMapping("/runs/{id}/stop")
+    public ResponseEntity<ApiResponse<ThreadDetail>> detener(@AuthenticationPrincipal User user,
+            @PathVariable UUID id) {
+        return ResponseEntity.ok(ApiResponse.success(view(orchestrator.detener(user, id))));
     }
 
     @PostMapping("/runs/{id}/cancel")
@@ -174,7 +200,8 @@ public class AssistantController {
                 thread.getCreatedAt(), thread.getUpdatedAt(), thread.getClosedAt(),
                 detail.messages().stream().map(this::message).toList(),
                 detail.runs().stream().map(this::run).toList(),
-                detail.toolCalls().stream().map(this::toolCall).toList(), confirmationToken);
+                detail.toolCalls().stream().map(this::toolCall).toList(), confirmationToken,
+                thread.getReiniciadoEn());
     }
 
     private MessageView message(AssistantMessage message) {

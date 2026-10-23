@@ -36,20 +36,39 @@ public class ContenidoController {
 
     private final ContenidoJobs trabajos;
     private final PermissionService permisos;
+    private final com.metricol.api.service.assistant.AssistantGenerationRegistry generations;
 
     public ContenidoController(ContenidoJobs trabajos, PermissionService permisos) {
+        this(trabajos, permisos, null);
+    }
+
+    @org.springframework.beans.factory.annotation.Autowired
+    public ContenidoController(ContenidoJobs trabajos, PermissionService permisos,
+            com.metricol.api.service.assistant.AssistantGenerationRegistry generations) {
         this.trabajos = trabajos;
         this.permisos = permisos;
+        this.generations = generations;
     }
 
     @PostMapping("/generate")
     public ResponseEntity<ApiResponse<Map<String, String>>> generar(
             @AuthenticationPrincipal User currentUser,
-            @Valid @RequestBody CampaignImageRequest request) {
+            @Valid @RequestBody CampaignImageRequest request, jakarta.servlet.http.HttpServletRequest http) {
         // Crear el contenido es el primer paso de crear una publicación.
         permisos.exigir(currentUser, Permission.POST_CREATE);
-        String id = trabajos.iniciar(currentUser, request);
+        String id;
+        // AssistantScopeFilter ya verificó que los headers corresponden a una delegación firmada.
+        if (http != null && "assistant".equalsIgnoreCase(http.getHeader(com.metricol.api.service.bitacora.BitacoraIa.CABECERA_ORIGEN))) {
+            if (generations == null) throw new IllegalStateException("No está disponible el registro de generación.");
+            java.util.UUID requestId = java.util.UUID.fromString(http.getHeader(com.metricol.api.service.assistant.AssistantScopeFilter.RUN));
+            id = generations.start(currentUser.getWorkspace().getId(), requestId, request, () -> trabajos.iniciar(currentUser, request));
+        } else id = trabajos.iniciar(currentUser, request);
         return ResponseEntity.status(HttpStatus.ACCEPTED).body(ApiResponse.success(Map.of("jobId", id)));
+    }
+
+    /** Compatibilidad para callers internos no HTTP y sus pruebas. */
+    public ResponseEntity<ApiResponse<Map<String, String>>> generar(User currentUser, CampaignImageRequest request) {
+        return generar(currentUser, request, null);
     }
 
     @GetMapping("/jobs/{id}")

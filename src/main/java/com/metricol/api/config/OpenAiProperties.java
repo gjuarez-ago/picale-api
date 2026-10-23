@@ -27,8 +27,33 @@ public class OpenAiProperties {
      */
     private String reasoningEffort = "low";
 
+    /**
+     * Cuánto razona el asistente, que es caso aparte.
+     *
+     * <p>En {@code /v1/chat/completions} ningún modelo gpt-6 admite herramientas y
+     * razonamiento a la vez, y el asistente manda su catálogo en cada llamada: con
+     * cualquier valor que no sea {@code none} la petición se rechaza con un 400.
+     * El resto de las llamadas no llevan herramientas y sí pueden razonar, por eso
+     * tienen su propio ajuste. Para tener las dos cosas hay que mover al asistente
+     * a {@code /v1/responses}.
+     */
+    private String assistantReasoningEffort = "none";
+
+    /**
+     * Por dónde habla el asistente: {@code responses} o {@code chat}.
+     *
+     * <p>{@code responses} es el camino bueno —razona y usa herramientas a la vez—
+     * y {@code chat} se conserva como salida de emergencia: si algo sale mal en
+     * producción se vuelve cambiando esta variable, sin desplegar código. Se
+     * retira cuando lleve una semana sin usarse.
+     */
+    private String assistantApi = "chat";
+
     /** El modelo que genera las imágenes de campaña. Tiene que estar permitido en el proyecto de OpenAI. */
-    private String imageModel = "gpt-image-1.5";
+    private String imageModel = "gpt-image-2";
+
+    /** Se conserva medium hasta comparar resultados reales con high. */
+    private String imageQuality = "medium";
 
     /** Lo que cobra OpenAI por {@link #imageModel}; mismo criterio que {@link #pricing}. */
     private Pricing imagePricing = new Pricing();
@@ -84,6 +109,28 @@ public class OpenAiProperties {
 
     /** Lo que cobra OpenAI por {@link #directorModel}. */
     private Pricing directorPricing = new Pricing();
+
+    /**
+     * El modelo que escribe las descripciones de las publicaciones (y sus retoques).
+     * Aparte del de texto general porque aquí la calidad SE LEE: un pie de publicación
+     * plano es lo primero que la gente nota (oct 2026). Vacío = el de siempre
+     * ({@link #model}). Tiene que estar permitido en el proyecto de OpenAI.
+     */
+    private String redactorModel;
+
+    /** Cuánto razona el redactor. Más que el general: aquí se piensa qué aporta el texto. */
+    private String redactorReasoningEffort = "medium";
+
+    /** Lo que cobra OpenAI por {@link #redactorModel}. */
+    private Pricing redactorPricing = new Pricing();
+
+    /** ¿Esta operación la escribe el redactor con su propio modelo? */
+    public boolean usaRedactor(com.metricol.api.enums.AiOperacion operacion) {
+        return redactorModel != null && !redactorModel.isBlank()
+                && (operacion == com.metricol.api.enums.AiOperacion.REDACTAR
+                        || operacion == com.metricol.api.enums.AiOperacion.AJUSTAR
+                        || operacion == com.metricol.api.enums.AiOperacion.ACORTAR);
+    }
 
     /**
      * Lo que cobra OpenAI por {@link #model}. Con esto se calcula el costo de

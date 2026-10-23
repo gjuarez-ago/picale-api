@@ -48,6 +48,13 @@ public class AssistantRunEvents {
     }
 
     @Transactional(readOnly = true)
+    public long activeMillis(UUID runId) {
+        return events.findByRunIdAndSequenceGreaterThanOrderBySequenceAsc(runId, 0).stream()
+                .filter(event -> "run.segment.completed".equals(event.getType()))
+                .mapToLong(event -> Math.max(0, parse(event.getPayloadJson()).path("activeMs").asLong(0))).sum();
+    }
+
+    @Transactional(readOnly = true)
     public SseEmitter subscribe(User user, UUID runId, long afterSequence) {
         AssistantRun run = owned(user, runId);
         SseEmitter emitter = new SseEmitter(30L * 60L * 1000L);

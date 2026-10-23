@@ -16,6 +16,20 @@ import com.metricol.api.service.agente.OrganizadorDeContenido.Grupo;
 /** Las reglas que mandan sobre lo que propone la IA al organizar una tanda. */
 class OrganizadorDeContenidoTest {
 
+    @Test
+    void selectionIdentitySurvivesSlowUploadsAndDoesNotMergeOtherBatches() {
+        var batch = java.util.UUID.randomUUID();
+        var other = java.util.UUID.randomUUID();
+        var now = LocalDateTime.now();
+        var a = MediaAsset.builder().uploadBatchId(batch).uploadBatchIndex(1).createdAt(now).build();
+        var b = MediaAsset.builder().uploadBatchId(other).uploadBatchIndex(0).createdAt(now.plusSeconds(1)).build();
+        var c = MediaAsset.builder().uploadBatchId(batch).uploadBatchIndex(0).createdAt(now.plusHours(1)).build();
+        var grouped = AgenteService.tandas(List.of(a, b, c));
+        assertThat(grouped).hasSize(2);
+        assertThat(grouped.get(0)).containsExactly(c, a);
+        assertThat(grouped.get(1)).containsExactly(b);
+    }
+
     private static Foto foto(int n, String orientacion, boolean efimero, String tema) {
         return new Foto(n, new RevisorDeMarca.Revision(RevisorDeMarca.Veredicto.VA, "va", "se ve algo", "idea",
                 DecisorDelAgente.Diagnostico.BUENA, orientacion, efimero, tema));
@@ -95,15 +109,16 @@ class OrganizadorDeContenidoTest {
     }
 
     @Test
-    @DisplayName("las tandas se cortan en una pausa de más de 15 minutos entre subidas")
+    @DisplayName("la carga móvil conserva una tanda hasta 60 minutos y corta una pausa mayor")
     void tandas() {
         LocalDateTime t = LocalDateTime.of(2026, 10, 1, 12, 0);
         List<MediaAsset> subidas = List.of(
                 MediaAsset.builder().createdAt(t).build(),
                 MediaAsset.builder().createdAt(t.plusMinutes(4)).build(),
                 MediaAsset.builder().createdAt(t.plusMinutes(10)).build(),
-                MediaAsset.builder().createdAt(t.plusMinutes(40)).build());
+                MediaAsset.builder().createdAt(t.plusMinutes(40)).build(),
+                MediaAsset.builder().createdAt(t.plusMinutes(105)).build());
         List<List<MediaAsset>> tandas = AgenteService.tandas(subidas);
-        assertThat(tandas).extracting(List::size).containsExactly(3, 1);
+        assertThat(tandas).extracting(List::size).containsExactly(4, 1);
     }
 }

@@ -38,7 +38,17 @@ public record BrandProfile(
         String historia,
         String valores,
         String frases,
-        List<String> pilares) {
+        List<String> pilares,
+        VisualIdentity visualIdentity) {
+
+    public BrandProfile(String queVende, String publico, List<String> tono, String evitar, String whatsapp,
+            String web, String direccion, String historia, String valores, String frases, List<String> pilares) {
+        this(queVende, publico, tono, evitar, whatsapp, web, direccion, historia, valores, frases, pilares, null);
+    }
+
+    public BrandProfile withVisualIdentity(VisualIdentity visual) {
+        return new BrandProfile(queVende, publico, tono, evitar, whatsapp, web, direccion, historia, valores, frases, pilares, visual);
+    }
 
     public static final BrandProfile VACIO = new BrandProfile(null, null, List.of(), null, null, null, null);
 
@@ -52,7 +62,7 @@ public record BrandProfile(
     public boolean vacio() {
         return vacio(queVende) && vacio(publico) && (tono == null || tono.isEmpty()) && vacio(evitar)
                 && vacio(whatsapp) && vacio(web) && vacio(direccion) && vacio(historia) && vacio(valores)
-                && vacio(frases) && (pilares == null || pilares.isEmpty());
+                && vacio(frases) && (pilares == null || pilares.isEmpty()) && visualIdentity == null;
     }
 
     /** Con al menos una forma de contactarlo. */

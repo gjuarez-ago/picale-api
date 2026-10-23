@@ -28,6 +28,8 @@ class VozDeLaMarcaTest {
         w.setId(UUID.randomUUID());
         WorkspaceRepository repo = mock(WorkspaceRepository.class);
         when(repo.findById(w.getId())).thenReturn(Optional.of(w));
+        // Guardar la marca bloquea la fila mientras escribe (BrandService.guardar).
+        when(repo.findLockedById(w.getId())).thenReturn(Optional.of(w));
         when(repo.save(any(Workspace.class))).thenAnswer(i -> i.getArgument(0));
         User u = mock(User.class);
         when(u.getWorkspace()).thenReturn(w);

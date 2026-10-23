@@ -92,7 +92,7 @@ public class OpenAiImageClient {
         cuerpo.put("model", props.getImageModel());
         cuerpo.put("prompt", prompt);
         cuerpo.put("size", tamanoValido(tamano));
-        cuerpo.put("quality", "medium");
+        cuerpo.put("quality", calidadConfigurada());
         cuerpo.put("n", 1);
 
         try {
@@ -120,7 +120,7 @@ public class OpenAiImageClient {
 
     /** Una imagen que parte de las fotos de referencia. */
     public Resultado editar(String prompt, List<Referencia> referencias, String tamano) {
-        return editar(prompt, referencias, tamano, "medium");
+        return editar(prompt, referencias, tamano, calidadConfigurada());
     }
 
     /**
@@ -131,7 +131,8 @@ public class OpenAiImageClient {
         exigirConfiguracion();
         String conCalidad = calidad == null || calidad.isBlank() ? "medium" : calidad.trim();
         String fidelidad = props.getImageInputFidelity();
-        boolean conFidelidad = fidelidadSoportada && fidelidad != null && !fidelidad.isBlank();
+        boolean conFidelidad = !props.getImageModel().startsWith("gpt-image-2")
+                && fidelidadSoportada && fidelidad != null && !fidelidad.isBlank();
 
         try {
             return enviarEdicion(prompt, referencias, tamano, conCalidad, conFidelidad ? fidelidad.trim() : null);
@@ -189,6 +190,14 @@ public class OpenAiImageClient {
         if (!props.isConfigured()) {
             throw new IllegalStateException("La generación de imágenes no está disponible por ahora.");
         }
+    }
+
+    private String calidadConfigurada() {
+        String quality = props.getImageQuality();
+        if (!Set.of("low", "medium", "high", "auto").contains(quality == null ? "" : quality)) {
+            throw new IllegalStateException("La calidad de imágenes configurada no es válida.");
+        }
+        return quality;
     }
 
     static String tamanoValido(String pedido) {

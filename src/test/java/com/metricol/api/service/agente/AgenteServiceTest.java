@@ -697,8 +697,8 @@ class AgenteServiceTest {
     }
 
     @Test
-    @DisplayName("de una ráfaga sale la más nítida; las demás a Descartadas, y la distinta sale aparte")
-    void rafaga() {
+    @DisplayName("las tomas parecidas pero distintas se conservan; solo una copia real se descarta")
+    void conservaTomasDeUnaRafaga() {
         enElWorkspace(() -> {
             conInstagram();
             agente.encender(ws.getId(), true);
@@ -717,15 +717,31 @@ class AgenteServiceTest {
 
             agente.vuelta(ws.getId());
 
-            assertThat(posts.propuestasDelAgente()).hasSize(2);
-            assertThat(assets.findById(nitida.getId())).get().extracting(MediaAsset::getAgenteEtapa)
-                    .isEqualTo(EtapaAgente.PROPUESTA);
-            assertThat(assets.findById(otra.getId())).get().extracting(MediaAsset::getAgenteEtapa)
-                    .isEqualTo(EtapaAgente.PROPUESTA);
-            assertThat(assets.findById(movida.getId())).get().satisfies(a -> {
-                assertThat(a.getAgenteEtapa()).isEqualTo(EtapaAgente.DESCARTADA);
-                assertThat(a.getAgenteMotivo()).contains("misma ráfaga que «rafaga-2.jpg»");
-            });
+            assertThat(posts.propuestasDelAgente()).hasSize(3);
+            assertThat(List.of(movida, nitida, otra)).allSatisfy(original ->
+                    assertThat(assets.findById(original.getId())).get()
+                            .extracting(MediaAsset::getAgenteEtapa).isEqualTo(EtapaAgente.PROPUESTA));
+        });
+    }
+
+    @Test
+    @DisplayName("una carga mayor a cuatro fotos se termina de analizar antes de organizarse")
+    void noOrganizaUnaCargaAMedias() {
+        enElWorkspace(() -> {
+            conInstagram();
+            agente.encender(ws.getId(), true);
+            for (int i = 1; i <= 5; i++) {
+                foto("recorrido-" + i + ".jpg");
+            }
+            revisaComo(RevisorDeMarca.Veredicto.VA, "va");
+
+            assertThat(agente.vuelta(ws.getId())).isEqualTo(4);
+            assertThat(posts.propuestasDelAgente()).isEmpty();
+            assertThat(assets.countByAgenteEtapa(EtapaAgente.ANALIZADA)).isEqualTo(4);
+
+            assertThat(agente.vuelta(ws.getId())).isEqualTo(1);
+            assertThat(posts.propuestasDelAgente()).hasSize(5);
+            assertThat(assets.countByAgenteEtapa(EtapaAgente.ANALIZADA)).isZero();
         });
     }
 

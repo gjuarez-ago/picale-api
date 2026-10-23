@@ -143,6 +143,8 @@ class CuentaRaizServiceTest {
         // Guardada con el servicio de verdad, el negocio cumple el perfil obligatorio.
         WorkspaceRepository repo = mock(WorkspaceRepository.class);
         when(repo.findById(espacio.getId())).thenReturn(Optional.of(espacio));
+        // Guardar la marca bloquea la fila mientras escribe (BrandService.guardar).
+        when(repo.findLockedById(espacio.getId())).thenReturn(Optional.of(espacio));
         when(repo.save(any(Workspace.class))).thenAnswer(i -> i.getArgument(0));
         new BrandService(repo).guardar(usuario, m);
 

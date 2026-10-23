@@ -33,7 +33,12 @@ final class PromptDeImagen {
         // que dejaba el botón a medias contra el borde de abajo.
         PHOTO_BOTTOM_BAND("photo_bottom_band", 0.8),
         PHOTO_TOP_TITLE("photo_top_title", 0.2),
-        FRAMED_PHOTO("framed_photo", 0.5);
+        FRAMED_PHOTO("framed_photo", 0.5),
+        // Las tres de abajo existen porque con solo las de arriba todas las imágenes salían con la
+        // misma cara de plantilla —panel, marco, panel— y la gente lo notó (oct 2026).
+        FULL_BLEED("full_bleed", 0.5),
+        STICKER_LABEL("sticker_label", 0.5),
+        TYPE_POSTER("type_poster", 0.8);
 
         final String codigo;
 
@@ -85,6 +90,14 @@ final class PromptDeImagen {
     }
 
     static String armar(Datos d) {
+        return armar(d, false);
+    }
+
+    static String armar(Datos d, boolean logoIntegrado) {
+        return armar(d, logoIntegrado, false);
+    }
+
+    static String armar(Datos d, boolean logoIntegrado, boolean conChispa) {
         StringBuilder t = new StringBuilder();
         t.append("Create ONE finished, professional social-media advertisement for ")
                 .append(valor(d.negocio(), "a local business"))
@@ -99,16 +112,35 @@ final class PromptDeImagen {
             if (d.fotos() > 1) {
                 t.append("The other photos are context only: do not make a collage or extra panels. ");
             }
-            t.append("These are REAL photographs of the business: keep the real people, equipment, place and colors ")
-                    .append("faithful. Do not redraw, restyle or replace anything in them; only scale and place them ")
-                    .append("as the layout describes. Never add fog, haze, blur or glow effects over the photo.\n\n");
+            // Antes: "no la redibujes, solo escálala y acomódala". El resultado era la misma foto
+            // con un texto encima, no un anuncio: la gente lo comparó con lo que logra ChatGPT con
+            // la misma foto (oct 2026). Ahora la foto es la REFERENCIA de una edición completa, y lo
+            // que no se toca es lo que la hace real.
+            t.append("These are REAL photographs of the business and Photo 1 is the reference for a COMPLETE ")
+                    .append("professional edit, the way a senior designer and photo retoucher would finish an ad: ")
+                    .append("reframe and crop for impact, extend the background naturally where the layout needs room, ")
+                    .append("relight, color-grade, sharpen, remove small distractions (trash, cables, stray objects), ")
+                    .append("add depth and a premium finish. It must look clearly better than the original photo. ")
+                    .append("What makes it real stays faithful and recognizable: the same dishes, products, portions, ")
+                    .append("people, faces, place and materials. Never swap the food or products, never invent ")
+                    .append("people, never change faces. Never add fog, haze, heavy blur or glow over the subject.\n\n");
+        } else if (conChispa) {
+            t.append("PHOTO: No real-subject photograph. Use the approved CHISPA_IDENTITY reference as a stylized character, ")
+                    .append("preserving its face, proportions and colors. No unreferenced real people.\n\n");
         } else {
             // Sin foto real no se inventa una persona: una cara hecha por la IA
             // presentada como del negocio resta credibilidad (6 oct 2026, un
             // diseño del Día de Muertos salió con una mujer inventada).
-            t.append("PHOTO: No reference photo is given. NO PEOPLE AT ALL: no faces, no bodies, no hands, no ")
-                    .append("silhouettes of real-looking people. Build the scene with objects, places, textures, ")
-                    .append("illustration or typography. Never add fog, haze or glow effects.\n\n");
+            // Antes: "arma la escena con objetos, texturas, ilustración o tipografía". Con eso
+            // una repostería recibió olas abstractas y un titular: nada de lo que vende (oct
+            // 2026). Sin foto, la protagonista es una foto publicitaria de SU producto.
+            t.append("PHOTO: No reference photo is given, so CREATE the hero image: a stunning, photorealistic ")
+                    .append("commercial photo of what this business actually sells or does, as described in SCENE ")
+                    .append("DIRECTION (its dishes, desserts, products, finished work or place), shot like a high-end ")
+                    .append("advertising campaign: irresistible, real textures, professional lighting, depth of field, ")
+                    .append("a styled set that matches the brand colors. It is the protagonist wherever the layout ")
+                    .append("says hero photo, never an abstract pattern or empty background. NO PEOPLE AT ALL: no ")
+                    .append("faces, no bodies, no hands, no silhouettes. Never add fog, haze or glow effects.\n\n");
         }
 
         // Sin botón no se nombra el botón en ningún lado: un prompt que lo menciona lo dibuja.
@@ -127,17 +159,31 @@ final class PromptDeImagen {
             t.append("There is NO button and NO call to action in this image: do not draw any button, pill, arrow ")
                     .append("or \"contact us\" text. The call to action goes in the post's caption, not here.\n");
         }
-        t.append("Typography: modern, bold, geometric sans-serif. The headline is the largest element (at most two ")
-                .append("short lines), the subtitle about 40% of its size. High contrast against whatever is behind each ")
-                .append("text (white on dark, dark on light). One consistent alignment. Easy to read on a phone, but ")
-                .append("RESTRAINED: all the text together").append(conBoton ? ", button included," : "")
-                .append(" takes no more than about a quarter of the image height, so the photo stays the protagonist.")
+        boolean poster = d.layout() == Layout.TYPE_POSTER;
+        t.append(poster
+                        ? "Typography: an expressive, heavy display typeface with character (condensed or rounded, "
+                                + "matching the mood of the business), tight leading. The headline is the hero of the "
+                                + "image (at most three short lines) and the subtitle about 30% of its size. "
+                        : "Typography: modern, bold, geometric sans-serif. The headline is the largest element (at "
+                                + "most two short lines), the subtitle about 40% of its size. ")
+                .append("High contrast against whatever is behind each ")
+                .append("text (white on dark, dark on light). One consistent alignment. Easy to read on a phone, ")
+                .append(poster
+                        ? "and BIG: the text block may take up to about 40% of the image height."
+                        : "but RESTRAINED: all the text together" + (conBoton ? ", button included," : "")
+                                + " takes no more than about a quarter of the image height, so the photo stays the "
+                                + "protagonist.")
                 .append(conBoton
                         ? " The BUTTON is a compact pill, no wider than about half of the text block, never a "
                                 + "full-width bar."
                         : "")
                 .append(" Approximate sizes: ")
-                .append(d.lienzo() == Lienzo.CUADRADO
+                .append(poster
+                        ? (d.lienzo() == Lienzo.CUADRADO
+                                ? "headline lines about 110 px tall, subtitle about 34 px"
+                                : "headline lines about 140 px tall, subtitle about 42 px")
+                                + (conBoton ? ", button about 80 px tall.\n\n" : ".\n\n")
+                        : d.lienzo() == Lienzo.CUADRADO
                         ? "headline lines about 60 px tall, subtitle about 32 px" + (conBoton ? ", button about 68 px tall.\n\n" : ".\n\n")
                         : "headline lines about 76 px tall, subtitle about 40 px" + (conBoton ? ", button about 88 px tall.\n\n" : ".\n\n"));
 
@@ -149,7 +195,11 @@ final class PromptDeImagen {
                     .append("photo).\n\n");
         }
 
-        if (d.logo() != null) {
+        if (logoIntegrado) {
+            t.append("LOGO: integrate exactly ONE instance of the provided logo reference into the composition. ")
+                    .append("Its reference role and allowed transformations are defined in the creative specification. ")
+                    .append("The logo's original lettering is allowed in addition to the requested campaign text.\n\n");
+        } else if (d.logo() != null) {
             t.append("LOGO: leave ").append(zonaLogo(d.logo(), d.lienzo(), d.layout()))
                     .append(" completely clean (plain background, no text, no key subject): the business's real logo ")
                     .append("will be placed there afterwards. Do not draw any logo, emblem or brand mark anywhere.\n\n");
@@ -206,6 +256,15 @@ final class PromptDeImagen {
         };
     }
 
+    /** Donde termina abajo la zona segura del lienzo, en píxeles: lo de más abajo se corta o se tapa. */
+    static int abajoSeguro(Lienzo lienzo, Layout layout) {
+        return switch (lienzo) {
+            case HISTORIA -> 1230;
+            case CUADRADO -> 944;
+            case CUATRO_QUINTOS -> 1536 - cortesVerticales(lienzo, layout)[1] - 72;
+        };
+    }
+
     /** Donde empieza a lo alto la zona segura del lienzo, en píxeles. */
     private static int arribaSeguro(Lienzo lienzo, Layout layout) {
         return switch (lienzo) {
@@ -235,7 +294,7 @@ final class PromptDeImagen {
         // Sin botón la banda es aún más baja: solo lleva titular y subtítulo.
         int alturaBanda = lienzo == Lienzo.CUADRADO ? (conBoton ? 780 : 830) : (conBoton ? 1150 : 1210);
         return switch (layout) {
-            case PHOTO_BOTTOM_BAND -> "The hero photo fills the whole canvas, unchanged, and stays the "
+            case PHOTO_BOTTOM_BAND -> "The hero photo fills the whole canvas, edited as described in PHOTO, and stays the "
                     + "protagonist: the panel covers only about a quarter of the image. A solid panel in the "
                     + "primary brand color, with softly rounded top corners, is anchored to the bottom and rises only "
                     + "to about y=" + alturaBanda + ". Inside the safe rectangle, left-aligned on the panel: a short "
@@ -245,7 +304,7 @@ final class PromptDeImagen {
                             : "HEADLINE and the SUBTITLE under it, with comfortable empty space below them.");
             case PHOTO_TOP_TITLE -> {
                 int desde = inicioDelTitulo(lienzo, layout, logo);
-                yield "The hero photo fills the whole canvas, unchanged, with only a soft dark gradient over the "
+                yield "The hero photo fills the whole canvas, edited as described in PHOTO, with only a soft dark gradient over the "
                         + "top third to hold the text (no fog, no blur). Inside the safe rectangle, left-aligned: the "
                         + "HEADLINE, whose top edge is at about y=" + desde + " and never higher, then the SUBTITLE "
                         + "right under it."
@@ -257,10 +316,42 @@ final class PromptDeImagen {
                                 : " Nothing else is written on the photo: its lower part stays completely clean.");
             }
             case FRAMED_PHOTO -> "A solid background in the primary brand color fills the canvas. The hero photo "
-                    + "sits in the middle inside a large rounded rectangle (its content unchanged and uncropped as "
+                    + "sits in the middle inside a large rounded rectangle (edited as described in PHOTO, its subject complete as "
                     + "much as possible). The HEADLINE, in white, goes above the photo; "
                     + (conBoton ? "the SUBTITLE and the BUTTON go below it, all on the plain color."
                             : "the SUBTITLE goes below it, on the plain color.");
+            case FULL_BLEED -> "Editorial, like a magazine photo: the hero photo fills the whole canvas edge to "
+                    + "edge, edited as described in PHOTO, with NO panel, NO box, NO frame and NO band anywhere. The HEADLINE is set "
+                    + "directly on the calmest, darkest (or lightest) area of the photo in the lower part of the safe "
+                    + "rectangle, left-aligned, with only a very soft local shadow behind the letters for legibility; "
+                    + "the SUBTITLE right under it in the same alignment. Every line of text, complete, ends ABOVE y="
+                    + (abajoSeguro(lienzo, layout) - 40) + ": nothing written below that line, it gets cut."
+                    + (conBoton ? " The BUTTON follows the text, small, in the primary brand color." : "")
+                    + " Generous empty space around the text: the photo breathes.";
+            case STICKER_LABEL -> "Playful and hand-placed: the hero photo fills the whole canvas edge to edge, "
+                    + "edited as described in PHOTO. The HEADLINE sits inside one or two label shapes in the primary brand color, like "
+                    + "stickers or paper tags stuck on the photo, slightly tilted (about 3 to 5 degrees, the two "
+                    + "labels in opposite directions), with a thin offset shadow, placed over the lower-middle part "
+                    + "of the safe rectangle and never covering the main subject's face or the product itself; the "
+                    + "lowest label ends ABOVE y=" + (abajoSeguro(lienzo, layout) - 40) + ". "
+                    + (conBoton ? "The SUBTITLE and the BUTTON go on a smaller label in the secondary brand color "
+                                    + "under it."
+                            : "The SUBTITLE, if any, on a smaller label in the secondary brand color under it.")
+                    + " No full-width bars, no rounded-rectangle frame.";
+            case TYPE_POSTER -> {
+                int desde = inicioDelTitulo(lienzo, layout, logo);
+                yield "A bold typographic poster. The upper part of the canvas is plain primary brand color and "
+                        + "holds a HUGE HEADLINE, left-aligned, whose top edge is at about y=" + desde + " and never "
+                        + "higher; the SUBTITLE under it. The hero photo fills the lower part of the canvas edge to "
+                        + "edge, edited as described in PHOTO, and meets the color with an organic, slightly curved edge (never a "
+                        + "straight line, never a rounded rectangle); the last line of the headline may overlap the "
+                        + "top of the photo a little, for depth."
+                        + (logo != null && logo.arriba()
+                                ? " Above y=" + desde + " there is only plain color: that band is reserved for the "
+                                        + "logo."
+                                : "")
+                        + (conBoton ? " The BUTTON sits on the photo near the bottom of the safe rectangle." : "");
+            }
         };
     }
 

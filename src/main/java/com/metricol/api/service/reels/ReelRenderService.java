@@ -95,6 +95,40 @@ public class ReelRenderService {
         }
     }
 
+    /** Usa el render durable y lo vincula con la propuesta automática del agente. */
+    @Transactional
+    public ReelRenderResponse createForAgent(ReelCreateRequest request, UUID workspaceId, String theme, String reason) {
+        ReelRenderResponse created = create(request, workspaceId);
+        ReelRenderJob job = owned(created.id(), workspaceId);
+        job.setAgentManaged(true);
+        job.setAgentTheme(cut(theme, 300));
+        job.setAgentReason(cut(reason, 500));
+        jobs.save(job);
+        return response(job);
+    }
+
+    /**
+     * Permite guardar el resultado dentro de un borrador del agente. La persona
+     * todavía debe aprobar la propuesta para que pueda programarse o publicarse.
+     */
+    @Transactional
+    public void allowAgentProposal(UUID id, UUID workspaceId) {
+        ReelRenderJob job = owned(id, workspaceId);
+        if (!job.isAgentManaged() || job.getStatus() != ReelRenderStatus.READY || job.getResultAssetId() == null) {
+            throw new IllegalStateException("El reel automático todavía no está listo.");
+        }
+        if (job.getApprovedAt() == null) {
+            job.setApprovedAt(LocalDateTime.now());
+            jobs.save(job);
+        }
+    }
+
+    private static String cut(String value, int max) {
+        if (value == null || value.isBlank()) return null;
+        String clean = value.strip();
+        return clean.length() <= max ? clean : clean.substring(0, max);
+    }
+
     @Transactional(readOnly = true)
     public List<ReelRenderResponse> list(UUID workspaceId) {
         return jobs.findByWorkspaceIdOrderByCreatedAtDesc(workspaceId).stream()

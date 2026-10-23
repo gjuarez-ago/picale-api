@@ -14,6 +14,17 @@ import com.metricol.api.enums.MediaAssetStatus;
 
 public interface MediaAssetRepository extends JpaRepository<MediaAsset, UUID> {
 
+    long countByUploadBatchIdAndStatus(UUID uploadBatchId, MediaAssetStatus status);
+
+    @Query("select count(m) from MediaAsset m where m.uploadBatchId = :batch "
+            + "and m.status = com.metricol.api.enums.MediaAssetStatus.PENDING "
+            + "and coalesce(m.uploadRenewedAt, m.createdAt) > :since")
+    long activeUploadsInBatch(UUID batch, LocalDateTime since);
+    /** Consulta interna global: el tenant es obligatorio en el propio SQL. */
+    @Query(value = "select * from media_assets where generation_job_id=:job and tenant_id=:workspace and status='READY' and archived_at is null order by generation_version,generation_index", nativeQuery = true)
+    List<MediaAsset> generatedForJob(@org.springframework.data.repository.query.Param("job") UUID job,
+            @org.springframework.data.repository.query.Param("workspace") String workspace);
+
     /**
      * La galería: solo lo que está de verdad en R2.
      *
@@ -150,6 +161,17 @@ public interface MediaAssetRepository extends JpaRepository<MediaAsset, UUID> {
     List<MediaAsset> findVideosSinMiniatura(@org.springframework.data.repository.query.Param("tope") int tope);
 
     /**
+     * Los videos que tienen miniatura apuntada, de todos los workspaces. Sirve
+     * para comprobar al arrancar que el archivo de esa miniatura siga en R2:
+     * una barrida equivocada las borró y las filas seguían apuntando a ellas.
+     */
+    @Query(value = "select * from media_assets"
+            + " where type = 'VIDEO' and status = 'READY' and thumbnail_url is not null"
+            + " and storage_key is not null order by created_at desc",
+            nativeQuery = true)
+    List<MediaAsset> findVideosConMiniatura();
+
+    /**
      * Bytes que lleva usados el workspace actual, contando los PENDING.
      *
      * <p>Los pendientes cuentan a propósito: son espacio apartado. Si no
@@ -187,7 +209,7 @@ public interface MediaAssetRepository extends JpaRepository<MediaAsset, UUID> {
             select cast(m.id as varchar), m.tenant_id, m.storage_key
             from media_assets m
             where m.status = 'PENDING'
-              and m.created_at < :limite
+              and coalesce(m.upload_renewed_at, m.created_at) < :limite
             order by m.created_at asc
             limit :tope
             """, nativeQuery = true)
@@ -319,6 +341,46 @@ public interface MediaAssetRepository extends JpaRepository<MediaAsset, UUID> {
             """)
     long porRevisarDelAgente(LocalDateTime desde);
 
+    /**
+     * Cuántos de {@link #porRevisarDelAgente} son videos. Con solo el total, la
+     * app decía "está revisando 1 foto" de un video que se acababa de mandar.
+     */
+    @Query("""
+            select count(m) from MediaAsset m
+            where m.status = com.metricol.api.enums.MediaAssetStatus.READY
+              and m.archivedAt is null
+              and m.type = com.metricol.api.enums.MediaType.VIDEO and m.thumbnailUrl is not null
+              and (m.generadaPorIa is null or m.generadaPorIa = false)
+              and (m.agenteEtapa is null or m.agenteEtapa in (com.metricol.api.enums.EtapaAgente.PENDIENTE,
+                                                             com.metricol.api.enums.EtapaAgente.REVISANDO,
+                                                             com.metricol.api.enums.EtapaAgente.ANALIZADA))
+              and m.createdAt >= :desde
+              and (m.storageKey is null or m.storageKey not like 'logos/%')
+              and not exists (select 1 from Workspace w where w.logoUrl = m.url)
+              and not exists (select 1 from Post p join p.mediaUrls u where u = m.url and p.deletedAt is null)
+            """)
+    long porRevisarVideosDelAgente(LocalDateTime desde);
+
+    /**
+     * Fotos que todavía no llegan a ANALIZADA. Se usa para no organizar una
+     * carga grande por pedazos mientras las siguientes cuatro siguen en fila.
+     * Los videos no bloquean: cada video es una pieza independiente.
+     */
+    @Query("""
+            select count(m) from MediaAsset m
+            where m.status = com.metricol.api.enums.MediaAssetStatus.READY
+              and m.archivedAt is null
+              and m.type = com.metricol.api.enums.MediaType.IMAGE
+              and (m.generadaPorIa is null or m.generadaPorIa = false)
+              and (m.agenteEtapa is null or m.agenteEtapa = com.metricol.api.enums.EtapaAgente.PENDIENTE
+                   or (m.agenteEtapa = com.metricol.api.enums.EtapaAgente.REVISANDO and m.agenteTomadoEn < :vencido))
+              and m.createdAt >= :desde
+              and (m.storageKey is null or m.storageKey not like 'logos/%')
+              and not exists (select 1 from Workspace w where w.logoUrl = m.url)
+              and not exists (select 1 from Post p join p.mediaUrls u where u = m.url and p.deletedAt is null)
+            """)
+    long fotosPorAnalizarDelAgente(LocalDateTime desde, LocalDateTime vencido);
+
     List<MediaAsset> findByAgenteEtapaOrderByCreatedAtDesc(com.metricol.api.enums.EtapaAgente etapa);
 
     /** Las fotos que el agente ya trabajó y tienen huella: contra ellas se buscan repetidas. */
@@ -341,6 +403,8 @@ public interface MediaAssetRepository extends JpaRepository<MediaAsset, UUID> {
     List<MediaAsset> rescatadas(org.springframework.data.domain.Pageable pagina);
 
     long countByAgenteEtapa(com.metricol.api.enums.EtapaAgente etapa);
+
+    long countByAgenteEtapaAndType(com.metricol.api.enums.EtapaAgente etapa, com.metricol.api.enums.MediaType type);
 
     /** Las que esperan a organizarse, en el orden en que se subieron. Hibernate filtra por tenant. */
     List<MediaAsset> findByAgenteEtapaOrderByCreatedAtAscIdAsc(com.metricol.api.enums.EtapaAgente etapa);

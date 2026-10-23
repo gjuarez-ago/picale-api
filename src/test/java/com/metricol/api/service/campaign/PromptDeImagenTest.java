@@ -175,9 +175,13 @@ class PromptDeImagenTest {
         String ninguna = PromptDeImagen.armar(datos(Lienzo.CUATRO_QUINTOS, Layout.PHOTO_BOTTOM_BAND, 0, null));
 
         assertThat(una).contains("Photo 1 is the hero").contains("REAL photographs").contains("Never add fog");
+        // La foto es la referencia de una EDICIÓN COMPLETA, no algo que solo se escala y se acomoda.
+        assertThat(una).contains("COMPLETE professional edit").contains("never change faces")
+                .doesNotContain("only scale and place").doesNotContain("unchanged");
         assertThat(una).doesNotContain("context only");
         assertThat(varias).contains("context only").contains("do not make a collage");
-        assertThat(ninguna).contains("No reference photo is given");
+        assertThat(ninguna).contains("No reference photo is given").contains("CREATE the hero image")
+                .contains("never an abstract pattern").contains("NO PEOPLE AT ALL");
         // Sin foto real no se inventa una persona (6 oct 2026).
         assertThat(ninguna).contains("NO PEOPLE AT ALL").doesNotContain("realistic, credible photographic scene");
     }
@@ -246,5 +250,47 @@ class PromptDeImagenTest {
         assertThat(PromptDeImagen.inicioDelTitulo(Lienzo.CUADRADO, Layout.PHOTO_TOP_TITLE, Posicion.TOP_RIGHT)).isEqualTo(290);
         assertThat(PromptDeImagen.inicioDelTitulo(Lienzo.HISTORIA, Layout.PHOTO_TOP_TITLE, Posicion.TOP_CENTER)).isEqualTo(465);
         assertThat(PromptDeImagen.inicioDelTitulo(Lienzo.HISTORIA, Layout.PHOTO_TOP_TITLE, null)).isEqualTo(280);
+    }
+    @Test
+    @DisplayName("hay composiciones sin panel ni marco: a sangre, con etiquetas y de póster")
+    void composicionesEditoriales() {
+        String sangre = PromptDeImagen.armar(datos(Lienzo.CUATRO_QUINTOS, Layout.FULL_BLEED, 1, Posicion.TOP_LEFT));
+        String etiqueta = PromptDeImagen.armar(datos(Lienzo.CUATRO_QUINTOS, Layout.STICKER_LABEL, 1, Posicion.TOP_LEFT));
+        String poster = PromptDeImagen.armar(datos(Lienzo.CUATRO_QUINTOS, Layout.TYPE_POSTER, 1, Posicion.TOP_LEFT));
+
+        assertThat(sangre).contains("NO panel, NO box, NO frame").doesNotContain("solid panel");
+        assertThat(etiqueta).contains("slightly tilted").contains("No full-width bars");
+        assertThat(poster).contains("HUGE HEADLINE").contains("never a rounded rectangle")
+                .contains("up to about 40% of the image height").doesNotContain("RESTRAINED");
+        // Las que no son póster siguen pidiendo un texto discreto.
+        assertThat(sangre).contains("RESTRAINED");
+    }
+
+    @Test
+    @DisplayName("el póster, con el logo arriba, empieza el titular debajo de su rincón")
+    void posterRespetaElLogo() {
+        String poster = PromptDeImagen.armar(datos(Lienzo.CUATRO_QUINTOS, Layout.TYPE_POSTER, 1, Posicion.TOP_LEFT));
+        int desde = PromptDeImagen.inicioDelTitulo(Lienzo.CUATRO_QUINTOS, Layout.TYPE_POSTER, Posicion.TOP_LEFT);
+
+        assertThat(desde).isGreaterThan(PromptDeImagen.rectanguloLogo(Posicion.TOP_LEFT, Lienzo.CUATRO_QUINTOS,
+                Layout.TYPE_POSTER).abajo());
+        assertThat(poster).contains("top edge is at about y=" + desde).contains("reserved for the logo");
+    }
+
+    @Test
+    @DisplayName("cada código del director tiene su composición")
+    void codigosDelDirector() {
+        for (String codigo : com.metricol.api.service.ai.ArtDirector.LAYOUTS) {
+            assertThat(Layout.de(codigo).codigo).as(codigo).isEqualTo(codigo);
+        }
+        assertThat(Layout.values()).hasSize(com.metricol.api.service.ai.ArtDirector.LAYOUTS.size());
+    }
+    @Test
+    @DisplayName("a sangre, el título tiene un límite exacto abajo: el recorte a 4:5 ya no se lo come")
+    void tituloASangreNoSeCorta() {
+        String sangre = PromptDeImagen.armar(datos(Lienzo.CUATRO_QUINTOS, Layout.FULL_BLEED, 1, Posicion.BOTTOM_RIGHT));
+        int limite = PromptDeImagen.abajoSeguro(Lienzo.CUATRO_QUINTOS, Layout.FULL_BLEED) - 40;
+        assertThat(sangre).contains("ends ABOVE y=" + limite);
+        assertThat(limite).isLessThan(1536 - PromptDeImagen.cortesVerticales(Lienzo.CUATRO_QUINTOS, Layout.FULL_BLEED)[1]);
     }
 }

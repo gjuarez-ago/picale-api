@@ -28,6 +28,15 @@ class AssistantRunEventsTest {
     private final ObjectMapper json = new ObjectMapper();
     private final AssistantRunEvents service = new AssistantRunEvents(eventRepository, runRepository, json);
 
+    @Test void activeTimeOnlyIncludesRecordedWorkSegmentsNotHumanWaits() {
+        UUID id = UUID.randomUUID();
+        when(eventRepository.findByRunIdAndSequenceGreaterThanOrderBySequenceAsc(id, 0)).thenReturn(java.util.List.of(
+                com.metricol.api.entity.AssistantRunEvent.builder().type("confirmation.required").payloadJson("{\"activeMs\":99999}").build(),
+                com.metricol.api.entity.AssistantRunEvent.builder().type("run.segment.completed").payloadJson("{\"activeMs\":100}").build(),
+                com.metricol.api.entity.AssistantRunEvent.builder().type("run.segment.completed").payloadJson("{\"activeMs\":200}").build()));
+        assertThat(service.activeMillis(id)).isEqualTo(300);
+    }
+
     @Test
     void asignaUnaSecuenciaDurablePorRun() {
         AssistantRun run = run(UUID.randomUUID(), UUID.randomUUID(), UUID.randomUUID());

@@ -136,4 +136,13 @@ class MediaDerivadosWorkerTest {
                 .endsWith(".jpg");
         assertThat(MiniaturaDeVideo.claveDe(video)).isEqualTo(MiniaturaDeVideo.claveDe(video));
     }
+    @Test
+    @DisplayName("si iba a borrar más de la mitad del bucket, no borra nada: es otra base")
+    void noBarreConOtraBase() {
+        // Oct 2026: una API local con el R2 de producción borró todas sus miniaturas.
+        assertThat(MediaDerivadosWorker.pareceOtraBase(140, 150)).isTrue();
+        assertThat(MediaDerivadosWorker.pareceOtraBase(30, 200)).isFalse();
+        // Con poquitos archivos sí puede tocar borrar casi todo.
+        assertThat(MediaDerivadosWorker.pareceOtraBase(5, 6)).isFalse();
+    }
 }

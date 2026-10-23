@@ -20,18 +20,22 @@ import org.springframework.transaction.annotation.Transactional;
 
 import com.metricol.api.entity.MediaAsset;
 import com.metricol.api.entity.Post;
+import com.metricol.api.entity.ReelRenderJob;
 import com.metricol.api.entity.SocialAccount;
 import com.metricol.api.entity.Workspace;
 import com.metricol.api.enums.EtapaAgente;
 import com.metricol.api.enums.Platform;
 import com.metricol.api.enums.PostFormat;
+import com.metricol.api.enums.ReelRenderStatus;
 import com.metricol.api.enums.SocialAccountStatus;
 import com.metricol.api.exception.ResourceNotFoundException;
 import com.metricol.api.models.request.PostSaveRequest;
+import com.metricol.api.models.request.ReelCreateRequest;
 import com.metricol.api.models.response.MediaAssetResponse;
 import com.metricol.api.models.response.PostResponse;
 import com.metricol.api.repository.MediaAssetRepository;
 import com.metricol.api.repository.PostRepository;
+import com.metricol.api.repository.ReelRenderJobRepository;
 import com.metricol.api.repository.SocialAccountRepository;
 import com.metricol.api.repository.WorkspaceRepository;
 import com.metricol.api.service.BrandService;
@@ -54,6 +58,7 @@ import com.metricol.api.service.media.MedidorDeVideo;
 import com.metricol.api.service.media.RetoqueDeFoto;
 import com.metricol.api.service.limits.LimitesConfigurables;
 import com.metricol.api.service.publishing.FormatRulesService;
+import com.metricol.api.service.reels.ReelRenderService;
 
 /**
  * El agente: la IA como community manager de una cuenta.
@@ -128,6 +133,8 @@ public class AgenteService {
     private final com.metricol.api.service.metricas.LoQueFunciona loQueFunciona;
     /** Quien arma la tanda: carruseles, posts e historias. */
     private final OrganizadorDeContenido organizador;
+    private final ReelRenderService reels;
+    private final ReelRenderJobRepository reelJobs;
 
     /**
      * Cuánto se espera sin fotos nuevas para organizar una tanda: subir veinte
@@ -135,6 +142,13 @@ public class AgenteService {
      */
     @org.springframework.beans.factory.annotation.Value("${app.agente.espera-minutos:10}")
     private int esperaMinutos = 10;
+
+    /**
+     * Pausa máxima entre archivos de una misma carga. En móvil una tanda grande
+     * puede tardar bastante; quince minutos separaban fotos del mismo trabajo.
+     */
+    @org.springframework.beans.factory.annotation.Value("${app.agente.sesion-minutos:60}")
+    private int sesionMinutos = 60;
 
     /**
      * Cuántas propuestas pueden esperar el sí a la vez. Un community manager
@@ -150,8 +164,8 @@ public class AgenteService {
         return posts.contarPropuestasDelAgente() >= topeFila;
     }
 
-    /** Dos fotos subidas con más de esto entre una y otra son de tandas distintas. */
-    static final int SESION_MINUTOS = 15;
+    /** Valor predeterminado usado también por las pruebas puras de agrupación. */
+    static final int SESION_MINUTOS = 60;
 
     private final com.metricol.api.service.avisos.AvisosPush avisos;
 
@@ -178,7 +192,8 @@ public class AgenteService {
             com.metricol.api.service.agente.foto.DirectorDeFoto director,
             PresupuestoDelAsistente presupuesto,
             com.metricol.api.service.ai.PerfiladorDelNegocio perfilador,
-            com.metricol.api.service.ai.RevisorDeLogo revisorDeLogo) {
+            com.metricol.api.service.ai.RevisorDeLogo revisorDeLogo,
+            ReelRenderService reels, ReelRenderJobRepository reelJobs) {
         this.revisorDeLogo = revisorDeLogo;
         this.presupuesto = presupuesto;
         this.perfilador = perfilador;
@@ -208,6 +223,8 @@ public class AgenteService {
         this.formatos = formatos;
         this.limites = limites;
         this.cupoIa = cupoIa;
+        this.reels = reels;
+        this.reelJobs = reelJobs;
     }
 
     // ------------------------------------------------------------ el switch
@@ -216,10 +233,12 @@ public class AgenteService {
      * @param dias      días en que publica, 1 = lunes … 7 = domingo
      * @param programadas lo que el agente ya dejó programado y todavía no sale: lo que congela la pausa
      * @param enReserva   ya revisadas, guardadas porque la fila del sí está llena: entran conforme se aprueba
+     * @param porRevisarVideos cuántos de {@code porRevisar} son videos, para nombrarlos bien
+     * @param enReservaVideos  cuántos de {@code enReserva} son videos
      */
     public record Estado(boolean activo, LocalDateTime desde, long porRevisar, long propuestas,
             long enObservacion, long descartadas, int marcaPercent, List<Integer> dias, int horaDesde,
-            int horaHasta, long programadas, long enReserva) {
+            int horaHasta, long programadas, long enReserva, long porRevisarVideos, long enReservaVideos) {
     }
 
     public Estado estado(UUID workspaceId) {
@@ -228,17 +247,23 @@ public class AgenteService {
                 ? assets.porRevisarDelAgente(w.getAgenteDesde())
                 : 0;
         // Con la fila llena, las ya revisadas no están "revisándose": esperan su turno.
+        long porRevisarVideos = porRevisar > 0 ? assets.porRevisarVideosDelAgente(w.getAgenteDesde()) : 0;
         long enReserva = 0;
+        long enReservaVideos = 0;
         if (porRevisar > 0 && filaLlena()) {
             enReserva = assets.countByAgenteEtapa(EtapaAgente.ANALIZADA);
+            enReservaVideos = assets.countByAgenteEtapaAndType(EtapaAgente.ANALIZADA,
+                    com.metricol.api.enums.MediaType.VIDEO);
             porRevisar = Math.max(0, porRevisar - enReserva);
+            porRevisarVideos = Math.max(0, porRevisarVideos - enReservaVideos);
         }
         CalendarioDelAgente.Horario h = horario(w);
         return new Estado(w.conAgente(), w.getAgenteDesde(), porRevisar, posts.contarPropuestasDelAgente(),
                 assets.countByAgenteEtapa(EtapaAgente.OBSERVACION), assets.countByAgenteEtapa(EtapaAgente.DESCARTADA),
                 BrandService.completitud(w).percent(),
                 h.dias().stream().map(java.time.DayOfWeek::getValue).sorted().toList(), h.desde(), h.hasta(),
-                posts.contarProgramadasDelAgente(), enReserva);
+                posts.contarProgramadasDelAgente(), enReserva, Math.min(porRevisarVideos, porRevisar),
+                Math.min(enReservaVideos, enReserva));
     }
 
     /**
@@ -380,6 +405,7 @@ public class AgenteService {
         if (!w.conAgente() || w.getAgenteDesde() == null) {
             return 0;
         }
+        int reelsTerminados = finalizarReels(w);
         reacomodarVencidas(w);
 
         List<SocialAccount> destino = cuentasParaFotos();
@@ -416,7 +442,15 @@ public class AgenteService {
                 hechas++;
             }
         }
-        organizar(w, destino, ahoraMismo);
+        // No organices una carga a la mitad. Una vuelta revisa cuatro archivos;
+        // si se subieron veinte, organizar aquí creaba cinco grupos parciales y
+        // se perdía la historia que contaban juntos. Primero se analizan todas
+        // las fotos y después se decide carrusel/post/historia como una tanda.
+        long fotosSinAnalizar = assets.fotosPorAnalizarDelAgente(
+                w.getAgenteDesde(), LocalDateTime.now().minusMinutes(CANDADO_MINUTOS));
+        if (fotosSinAnalizar == 0) {
+            organizar(w, destino, ahoraMismo);
+        }
         // La caducidad de lo recién propuesto, ya: así la app sabe desde el
         // principio hasta cuándo puede esperar, con la fecha original intacta.
         for (Post p : posts.propuestasDelAgente()) {
@@ -429,7 +463,7 @@ public class AgenteService {
         } catch (RuntimeException ex) {
             log.warn("No se pudieron mandar los avisos de {}: {}", workspaceId, ex.toString());
         }
-        return hechas;
+        return hechas + reelsTerminados;
     }
 
     // ------------------------------------------------------------ analizar y organizar
@@ -516,8 +550,13 @@ public class AgenteService {
         }
         LocalDateTime ahora = LocalDateTime.now();
         int propuestas = 0;
-        for (List<MediaAsset> tanda : tandas(analizadas)) {
-            LocalDateTime ultima = tanda.get(tanda.size() - 1).getCreatedAt();
+        for (List<MediaAsset> tanda : tandas(analizadas, sesionMinutos)) {
+            UUID uploadBatch = tanda.get(0).getUploadBatchId();
+            if (uploadBatch != null && assets.activeUploadsInBatch(uploadBatch, ahora.minusHours(1)) > 0) {
+                continue; // A slow video/photo from this selection is still uploading.
+            }
+            LocalDateTime ultima = tanda.stream().map(MediaAsset::getCreatedAt)
+                    .filter(java.util.Objects::nonNull).max(LocalDateTime::compareTo).orElse(null);
             if (!ahoraMismo && ultima != null && ultima.isAfter(ahora.minusMinutes(esperaMinutos))) {
                 continue;
             }
@@ -543,7 +582,9 @@ public class AgenteService {
                 }
                 fotos.add(new EnTanda(a, rev, RevisorDeMarca.forzada(a.getAgenteAnalisis())));
             }
-            fotos = sinRafagas(fotos);
+            // Las copias reales ya se quitaron en revisarFoto. Dos tomas
+            // parecidas pero distintas se conservan: pueden ser el recorrido,
+            // proceso o antes/después que vuelve valioso un carrusel.
             if (!fotos.isEmpty()) {
                 propuestas += organizarTanda(w, destino, fotos, null);
             }
@@ -551,96 +592,35 @@ public class AgenteService {
         return propuestas;
     }
 
-    /**
-     * De cada ráfaga (tomas seguidas de lo mismo), la mejor; las demás a
-     * Descartadas, de donde se rescatan si se prefiere otra. Es lo primero que
-     * hace un community manager con lo que le mandan: no publica diez veces la
-     * misma foto ni mete cinco casi iguales en un carrusel.
-     */
-    private List<EnTanda> sinRafagas(List<EnTanda> fotos) {
-        List<EnTanda> quedan = new ArrayList<>();
-        for (List<EnTanda> rafaga : rafagas(fotos)) {
-            EnTanda mejor = mejorDe(rafaga, huellas::nitidez);
-            quedan.add(mejor);
-            for (EnTanda otra : rafaga) {
-                if (otra != mejor) {
-                    marcar(otra.asset(), EtapaAgente.DESCARTADA, "Es de la misma ráfaga que «"
-                            + mejor.asset().getFileName() + "»: me quedé con esa, que se ve mejor. "
-                            + "Si prefieres esta, rescátala.");
-                }
-            }
-        }
-        quedan.sort(java.util.Comparator.comparingInt(fotos::indexOf));
-        return quedan;
-    }
-
-    /**
-     * Las fotos de una tanda agrupadas por ráfaga, en su orden. Una foto entra
-     * a una ráfaga si se parece a la primera de ella ({@link HuellaDeImagen#RAFAGA}).
-     * No entran las que no tienen huella, las que la persona dijo que van, ni
-     * las piezas diseñadas: dos flyers con la misma plantilla se parecen y son
-     * dos mensajes distintos.
-     */
-    static List<List<EnTanda>> rafagas(List<EnTanda> fotos) {
-        List<List<EnTanda>> grupos = new ArrayList<>();
-        for (EnTanda f : fotos) {
-            Long h = f.asset().getHuella();
-            boolean puede = h != null && !f.forzada() && !f.revision().diagnostico().esArte();
-            List<EnTanda> suya = null;
-            if (puede) {
-                for (List<EnTanda> g : grupos) {
-                    EnTanda primera = g.get(0);
-                    Long hp = primera.asset().getHuella();
-                    if (hp != null && !primera.forzada() && !primera.revision().diagnostico().esArte()
-                            && HuellaDeImagen.distancia(h, hp) <= HuellaDeImagen.RAFAGA) {
-                        suya = g;
-                        break;
-                    }
-                }
-            }
-            if (suya == null) {
-                suya = new ArrayList<>();
-                grupos.add(suya);
-            }
-            suya.add(f);
-        }
-        return grupos;
-    }
-
-    /**
-     * La mejor toma de una ráfaga: la que la IA calificó mejor (calidad y
-     * fuerza) y, si empatan, la más nítida. La nitidez solo se mide aquí, en
-     * las pocas que compiten.
-     */
-    static EnTanda mejorDe(List<EnTanda> rafaga, java.util.function.Function<MediaAsset, Double> nitidez) {
-        if (rafaga.size() == 1) {
-            return rafaga.get(0);
-        }
-        Map<EnTanda, Double> nitidas = new java.util.IdentityHashMap<>();
-        java.util.function.Function<EnTanda, Double> nitidezDe = f -> nitidas.computeIfAbsent(f, x -> {
-            Double n = nitidez.apply(x.asset());
-            return n == null ? -1.0 : n;
-        });
-        java.util.Comparator<EnTanda> mejor = java.util.Comparator
-                .comparingInt((EnTanda f) -> f.revision().diagnostico().calidad() + f.revision().diagnostico().fuerza())
-                .thenComparing(nitidezDe::apply);
-        EnTanda gana = rafaga.get(0);
-        for (EnTanda f : rafaga) {
-            if (mejor.compare(f, gana) > 0) {
-                gana = f;
-            }
-        }
-        return gana;
-    }
-
-    /** Las analizadas partidas en tandas: una pausa de más de {@link #SESION_MINUTOS} corta. */
+    /** Las analizadas partidas en tandas: una pausa mayor a la ventana corta. */
     static List<List<MediaAsset>> tandas(List<MediaAsset> enOrden) {
+        return tandas(enOrden, SESION_MINUTOS);
+    }
+
+    static List<List<MediaAsset>> tandas(List<MediaAsset> enOrden, int sesionMinutos) {
         List<List<MediaAsset>> tandas = new ArrayList<>();
+        Map<UUID, List<MediaAsset>> explicitas = new java.util.LinkedHashMap<>();
         List<MediaAsset> actual = new ArrayList<>();
         LocalDateTime previa = null;
+        int ventana = Math.max(1, sesionMinutos);
         for (MediaAsset a : enOrden) {
+            if (a.getUploadBatchId() != null) {
+                if (!actual.isEmpty()) {
+                    tandas.add(actual);
+                    actual = new ArrayList<>();
+                }
+                previa = null;
+                List<MediaAsset> grupo = explicitas.get(a.getUploadBatchId());
+                if (grupo == null) {
+                    grupo = new ArrayList<>();
+                    explicitas.put(a.getUploadBatchId(), grupo);
+                    tandas.add(grupo);
+                }
+                grupo.add(a);
+                continue;
+            }
             LocalDateTime t = a.getCreatedAt();
-            if (previa != null && t != null && t.isAfter(previa.plusMinutes(SESION_MINUTOS)) && !actual.isEmpty()) {
+            if (previa != null && t != null && t.isAfter(previa.plusMinutes(ventana)) && !actual.isEmpty()) {
                 tandas.add(actual);
                 actual = new ArrayList<>();
             }
@@ -652,6 +632,8 @@ public class AgenteService {
         if (!actual.isEmpty()) {
             tandas.add(actual);
         }
+        explicitas.values().forEach(grupo -> grupo.sort(java.util.Comparator.comparing(
+                MediaAsset::getUploadBatchIndex, java.util.Comparator.nullsLast(Integer::compareTo))));
         return tandas;
     }
 
@@ -674,10 +656,16 @@ public class AgenteService {
         for (OrganizadorDeContenido.Grupo g : grupos) {
             List<EnTanda> suyas = g.fotos().stream().map(n -> fotos.get(n - 1)).toList();
             try {
-                boolean ok = g.formato() == OrganizadorDeContenido.Formato.CARRUSEL
-                        ? proponerCarrusel(w, destino, suyas, g.tema(), g.porque())
-                        : proponerFoto(suyas.get(0).asset(), w, destino, suyas.get(0).revision(),
-                                suyas.get(0).forzada(), null, g.formato() == OrganizadorDeContenido.Formato.HISTORIA);
+                boolean ok;
+                if (g.formato() == OrganizadorDeContenido.Formato.REEL) {
+                    ok = proponerReel(w, suyas, g.tema(), g.porque());
+                    if (!ok) ok = proponerCarrusel(w, destino, suyas, g.tema(), g.porque());
+                } else if (g.formato() == OrganizadorDeContenido.Formato.CARRUSEL) {
+                    ok = proponerCarrusel(w, destino, suyas, g.tema(), g.porque());
+                } else {
+                    ok = proponerFoto(suyas.get(0).asset(), w, destino, suyas.get(0).revision(),
+                            suyas.get(0).forzada(), null, g.formato() == OrganizadorDeContenido.Formato.HISTORIA);
+                }
                 if (ok) {
                     hechas++;
                 }
@@ -688,6 +676,121 @@ public class AgenteService {
             }
         }
         return hechas;
+    }
+
+    /**
+     * Inicia el render sin bloquear al agente. Las fotos quedan en una etapa
+     * explícita y la siguiente vuelta materializa el video como propuesta.
+     */
+    private boolean proponerReel(Workspace w, List<EnTanda> fotos, String tema, String porque) {
+        if (fotos.size() < 4 || fotos.size() > 8 || cuentasParaVideo(PostFormat.REEL, true).isEmpty()) return false;
+        try {
+            ReelCreateRequest request = new ReelCreateRequest();
+            request.setAssetIds(fotos.stream().map(f -> f.asset().getId()).toList());
+            request.setDurationSeconds(20);
+            request.setTitle(tema == null || tema.isBlank() ? null : tema.strip());
+            reels.createForAgent(request, w.getId(), tema, porque);
+            String motivo = "Agrupé " + fotos.size() + " fotos relacionadas y estoy creando un reel"
+                    + (tema == null || tema.isBlank() ? "." : " sobre " + sinPunto(tema) + ".");
+            fotos.forEach(f -> marcar(f.asset(), EtapaAgente.GENERANDO_REEL, motivo));
+            return true;
+        } catch (RuntimeException ex) {
+            log.warn("El agente no pudo iniciar el reel automático: {}", ex.toString());
+            return false;
+        }
+    }
+
+    /** Convierte renders automáticos terminados en la misma propuesta que ya conoce el usuario. */
+    private int finalizarReels(Workspace w) {
+        int terminados = 0;
+        for (ReelRenderJob job : reelJobs
+                .findByWorkspaceIdAndAgentManagedTrueAndAgentFinalizedAtIsNullOrderByCreatedAtAsc(w.getId())) {
+            if (job.getStatus() == ReelRenderStatus.PENDING || job.getStatus() == ReelRenderStatus.RUNNING) continue;
+            List<EnTanda> fuentes = fuentesDelReel(job);
+            if (fuentes.isEmpty()) {
+                job.setAgentFinalizedAt(LocalDateTime.now());
+                reelJobs.save(job);
+                continue;
+            }
+            try {
+                if (job.getStatus() == ReelRenderStatus.READY && job.getResultAssetId() != null) {
+                    materializarReel(w, job, fuentes);
+                } else {
+                    // Un fallo de video no pierde la tanda: conserva el contenido como carrusel.
+                    if (!proponerCarrusel(w, cuentasPara(PostFormat.PHOTO), fuentes,
+                            job.getAgentTheme(), "El reel no pudo renderizarse; conservé las fotos como carrusel.")) {
+                        fuentes.forEach(f -> marcar(f.asset(), EtapaAgente.PENDIENTE,
+                                "No pude terminar el reel; volveré a preparar estas fotos."));
+                    }
+                }
+                job.setAgentFinalizedAt(LocalDateTime.now());
+                reelJobs.save(job);
+                terminados++;
+            } catch (RuntimeException ex) {
+                log.warn("El agente no pudo convertir el reel {} en propuesta: {}", job.getId(), ex.toString());
+                fuentes.forEach(f -> marcar(f.asset(), EtapaAgente.GENERANDO_REEL,
+                        "El reel ya se procesó; estoy terminando su propuesta."));
+            }
+        }
+        return terminados;
+    }
+
+    private List<EnTanda> fuentesDelReel(ReelRenderJob job) {
+        Map<UUID, MediaAsset> porId = new LinkedHashMap<>();
+        assets.findAllById(job.getSourceAssetIds()).forEach(a -> porId.put(a.getId(), a));
+        List<EnTanda> salida = new ArrayList<>();
+        for (UUID id : job.getSourceAssetIds()) {
+            MediaAsset asset = porId.get(id);
+            if (asset == null) continue;
+            RevisorDeMarca.Revision revision = RevisorDeMarca.deJson(asset.getAgenteAnalisis());
+            if (revision != null) salida.add(new EnTanda(asset, revision, RevisorDeMarca.forzada(asset.getAgenteAnalisis())));
+        }
+        return salida;
+    }
+
+    private void materializarReel(Workspace w, ReelRenderJob job, List<EnTanda> fuentes) {
+        MediaAsset video = assets.findById(job.getResultAssetId())
+                .orElseThrow(() -> new IllegalStateException("El video generado ya no está disponible."));
+        List<SocialAccount> destino = cuentasParaVideo(PostFormat.REEL, true).stream()
+                .filter(c -> !videoLimites.excede(c.getPlatform(), job.getDurationSeconds())).toList();
+        if (destino.isEmpty()) throw new IllegalStateException("No hay una red conectada que acepte el reel.");
+
+        Set<Platform> redes = destino.stream().map(SocialAccount::getPlatform)
+                .collect(Collectors.toCollection(LinkedHashSet::new));
+        String tema = job.getAgentTheme() == null ? fuentes.get(0).revision().tema() : job.getAgentTheme();
+        String encargo = "Haz una publicación para este reel creado con " + fuentes.size() + " fotos relacionadas"
+                + (tema == null || tema.isBlank() ? "." : " sobre " + tema + ".");
+        List<String> escenas = fuentes.stream().map(f -> f.revision().descripcion())
+                .filter(s -> s != null && !s.isBlank()).toList();
+        Redactor.Borrador borrador = redactor.redactar(encargo, escenas, redes, negocio(w));
+        CalendarioDelAgente.Categoria categoria = categoria(fuentes.get(0).revision().diagnostico());
+        CalendarioDelAgente.Hueco hueco = hueco(w, categoria);
+
+        // El borrador del agente es la vista previa humana; habilitar el activo no publica nada.
+        reels.allowAgentProposal(job.getId(), w.getId());
+        PostSaveRequest pedido = new PostSaveRequest();
+        pedido.setCaption(texto(borrador));
+        pedido.setTitulo(borrador.titulo());
+        pedido.setBrief(encargo);
+        pedido.setMediaUrls(List.of(video.getUrl()));
+        pedido.setFormat(PostFormat.REEL.name());
+        pedido.setVideoDurationSeconds(job.getDurationSeconds());
+        pedido.setSocialAccountIds(destino.stream().map(SocialAccount::getId).toList());
+        Map<String, String> porRed = new LinkedHashMap<>();
+        borrador.textos().forEach((red, t) -> porRed.put(red.name(), t));
+        pedido.setCaptionsPorRed(porRed);
+        ConUbicacion lugar = ubicacionPara(w, redes, fuentes.get(0).revision().tipo());
+        pedido.setConUbicacion(lugar.va());
+
+        String motivo = "Convertí " + fuentes.size() + " fotos relacionadas en un reel"
+                + (tema == null || tema.isBlank() ? "." : " sobre " + sinPunto(tema) + ".")
+                + (job.getAgentReason() == null || job.getAgentReason().isBlank() ? "" : " " + job.getAgentReason())
+                + lugar.frase() + " " + cuandoYDonde(redes, hueco);
+        Post propuesta = postService.crearPropuesta(pedido, hueco.cuando(), motivo,
+                fuentes.get(0).asset().getUrl(), "REEL_AUTOMATICO", categoria.name());
+        propuesta.setAgenteFotosUrls(String.join("\n", fuentes.stream().map(f -> f.asset().getUrl()).toList()));
+        posts.save(propuesta);
+        fuentes.forEach(f -> marcar(f.asset(), EtapaAgente.PROPUESTA, motivo));
     }
 
     /**

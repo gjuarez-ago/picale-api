@@ -162,6 +162,17 @@ public class GlobalExceptionHandler {
         return ResponseEntity.status(HttpStatus.CONFLICT).body(ApiResponse.error(ex.getCode(), ex.getMessage()));
     }
 
+    /**
+     * El navegador cerró la conexión antes de recibir la respuesta: recargó, cerró la pestaña
+     * o cortó el canal en vivo del chat. No es un error del servidor y no hay a quién
+     * contestarle; registrarlo como "falla no controlada" escondía los errores de verdad.
+     */
+    @ExceptionHandler({org.springframework.web.context.request.async.AsyncRequestNotUsableException.class,
+            org.apache.catalina.connector.ClientAbortException.class})
+    public void conexionCerradaPorElCliente(Exception ex, jakarta.servlet.http.HttpServletRequest request) {
+        log.debug("El cliente cerró la conexión en {} {}", request.getMethod(), request.getRequestURI());
+    }
+
     @ExceptionHandler(Exception.class)
     public ResponseEntity<ApiResponse<Void>> handleGeneric(Exception ex, jakarta.servlet.http.HttpServletRequest request) {
         log.error("Falla no controlada en {} {}", request.getMethod(), request.getRequestURI(), ex);

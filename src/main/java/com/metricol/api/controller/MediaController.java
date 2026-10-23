@@ -92,6 +92,13 @@ public class MediaController {
         return ResponseEntity.ok(ApiResponse.success(service.confirm(id)));
     }
 
+    @PostMapping("/{id}/presign")
+    public ResponseEntity<ApiResponse<MediaPresignResponse>> renewUpload(
+            @AuthenticationPrincipal User currentUser, @PathVariable UUID id) {
+        permisos.exigir(currentUser, Permission.POST_CREATE);
+        return ResponseEntity.ok(ApiResponse.success(service.renewUpload(id, currentUser.getWorkspace().getId())));
+    }
+
     /**
      * Sube el archivo a través de la API, en una sola petición.
      *

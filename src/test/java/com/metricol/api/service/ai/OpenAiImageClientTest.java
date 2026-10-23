@@ -176,6 +176,23 @@ class OpenAiImageClientTest {
     }
 
     @Test
+    void image2OmiteFidelidadYRespetaCalidadConfiguradaSinReintento() {
+        OpenAiProperties props = new OpenAiProperties();
+        props.setApiKey("sk-de-prueba");
+        props.setImageModel("gpt-image-2");
+        props.setImageQuality("high");
+        RestClient.Builder builder = RestClient.builder().baseUrl(BASE);
+        var server = MockRestServiceServer.bindTo(builder).build();
+        server.expect(requestTo(BASE + "/images/edits"))
+                .andExpect(content().string(not(containsString("input_fidelity"))))
+                .andExpect(content().string(containsString("gpt-image-2")))
+                .andExpect(content().string(containsString("high")))
+                .andRespond(withSuccess(respuestaOk(), MediaType.APPLICATION_JSON));
+        new OpenAiImageClient(props, builder.build()).editar("Logo de referencia", List.of(foto()), "1024x1024");
+        server.verify();
+    }
+
+    @Test
     @DisplayName("editar pide fidelidad alta a las fotos de referencia")
     void pideFidelidad() {
         servidor.expect(requestTo(BASE + "/images/edits"))

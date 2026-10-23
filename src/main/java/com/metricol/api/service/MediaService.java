@@ -301,6 +301,8 @@ public class MediaService {
 
         MediaAsset asset = repository.save(MediaAsset.builder()
                 .fileName(nombreODefecto(request.getFileName(), key))
+                .uploadBatchId(request.getUploadBatchId())
+                .uploadBatchIndex(request.getUploadBatchIndex())
                 .storageKey(key)
                 .url(url)
                 .type(storage.tipoDe(key, contentType))
@@ -349,10 +351,34 @@ public class MediaService {
         // el archivo y pasarlo por ffmpeg tarda, y hacerlo con una conexión de
         // la base en la mano es lo que congela la aplicación bajo carga. Lo
         // que escribe en la base va después, en `cerrarConfirmacion`.
+        // Validate the original transfer BEFORE any photo repair changes its size.
+        // A smaller object is incomplete too; never expose it as a ready video.
+        if (asset.getSizeBytes() != null && enR2.sizeBytes() < asset.getSizeBytes()) {
+            throw new IllegalStateException("La subida quedó incompleta. Reintenta este archivo.");
+        }
         enR2 = sanearSiHaceFalta(asset, enR2);
 
         R2StorageService.Consulta real = enR2;
         return transaccion.execute(estado -> cerrarConfirmacion(assetId, real));
+    }
+
+    /** Renew the same pending upload; never create another asset or charge quota again. */
+    @Transactional
+    public MediaPresignResponse renewUpload(UUID assetId, UUID workspaceId) {
+        MediaAsset asset = repository.findById(assetId)
+                .orElseThrow(() -> new ResourceNotFoundException("Esa subida ya no está pendiente. Revisa Contenido."));
+        if (!workspaceId.toString().equals(asset.getTenantId())) {
+            throw new ResourceNotFoundException("Esa subida no existe en este negocio.");
+        }
+        if (asset.getStatus() != MediaAssetStatus.PENDING) {
+            throw new IllegalStateException("El archivo ya está confirmado. Revisa Contenido.");
+        }
+        asset.setUploadRenewedAt(LocalDateTime.now());
+        repository.save(asset);
+        return MediaPresignResponse.builder().assetId(asset.getId())
+                .uploadUrl(storage.firmarSubida(asset.getStorageKey(), asset.getContentType()))
+                .method("PUT").contentType(asset.getContentType())
+                .expiresInSeconds(storage.ttlSegundos()).url(asset.getUrl()).build();
     }
 
     /**
@@ -512,7 +538,9 @@ public class MediaService {
 
     private MediaAssetResponse upload(MultipartFile file, UUID workspaceId, String carpeta) {
         exigirTipoDeMedio(normalizar(file.getContentType()));
-        cuota.verificar(file.getSize(), file.getOriginalFilename());
+        // Este camino cruza nginx y el multipart de Spring, asi que tiene su
+        // propio tope, mas bajo que el del presign.
+        cuota.verificarSubidaDirecta(file.getSize(), file.getOriginalFilename());
 
         R2StorageService.UploadedFile subido = storage.upload(file, workspaceId, carpeta);
 

@@ -13,6 +13,8 @@ import org.springframework.transaction.event.TransactionPhase;
 import org.springframework.transaction.event.TransactionalEventListener;
 
 import com.metricol.api.config.TenantIdentifierResolver;
+import com.fasterxml.jackson.databind.ObjectMapper;
+import jakarta.annotation.PostConstruct;
 
 /** Arranca un run solo despues de que su mensaje y su id hayan hecho commit. */
 @Component
@@ -31,11 +33,31 @@ public class AssistantRunDispatcher {
         this.orchestrator = orchestrator;
     }
 
+    /** Detecta un despliegue incompleto antes de aceptar conversaciones, sin invocar proveedores. */
+    @PostConstruct
+    void verifyRuntime() {
+        ObjectMapper json = new ObjectMapper();
+        AssistantToolResult.message(json, "startup-check", json.createObjectNode());
+        AssistantReadCache.key("startup-check", json.createObjectNode());
+        try (var budget = AssistantExecutionBudget.open(1000, 0, null)) {
+            AssistantExecutionBudget.check();
+            new AssistantExecutionBudget.Expired(); // Resolver también el tipo usado en recuperación.
+        }
+    }
+
     @TransactionalEventListener(phase = TransactionPhase.AFTER_COMMIT)
     public void dispatch(Requested requested) {
         try {
-            executor.execute(() -> TenantIdentifierResolver.comoTenant(requested.workspaceId().toString(),
-                    () -> orchestrator.getObject().process(requested)));
+            executor.execute(() -> TenantIdentifierResolver.comoTenant(requested.workspaceId().toString(), () -> {
+                try {
+                    orchestrator.getObject().process(requested);
+                } catch (RuntimeException | LinkageError error) {
+                    // La llamada transaccional ya hizo rollback. Persistir el fallo en otra transaccion.
+                    // No capturar errores fatales de la JVM ni reintentar acciones de pago automaticamente.
+                    log.error("Fallo no recuperable del trabajador del asistente. run={}", requested.runId(), error);
+                    orchestrator.getObject().workerFailed(requested);
+                }
+            }));
         } catch (RejectedExecutionException error) {
             log.warn("No hubo capacidad para el run {} del asistente", requested.runId());
             TenantIdentifierResolver.comoTenant(requested.workspaceId().toString(),

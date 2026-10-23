@@ -49,6 +49,8 @@ class PerfilDelNegocioTest {
     private static BrandService servicio(Workspace w) {
         WorkspaceRepository repo = mock(WorkspaceRepository.class);
         when(repo.findById(w.getId())).thenReturn(Optional.of(w));
+        // Guardar la marca bloquea la fila mientras escribe (BrandService.guardar).
+        when(repo.findLockedById(w.getId())).thenReturn(Optional.of(w));
         when(repo.save(any(Workspace.class))).thenAnswer(i -> i.getArgument(0));
         return new BrandService(repo);
     }

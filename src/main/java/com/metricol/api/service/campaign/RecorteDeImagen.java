@@ -23,6 +23,14 @@ import javax.imageio.stream.MemoryCacheImageOutputStream;
  *
  * <p>Sale siempre como JPEG: pesa una fracción del PNG que suele devolver la
  * IA, y estas imágenes cuentan contra el espacio del workspace.
+ *
+ * <p><b>Nunca se corta a través del contenido.</b> El prompt pide dejar libres las
+ * franjas que se van a quitar, pero la IA no siempre obedece: el 22 oct 2026 un
+ * titular gigante quedó a medias ("Pasteles" sin su parte de arriba). Ahora el corte
+ * vertical se elige mirando la imagen —se quitan las franjas con menos detalle— y,
+ * si arriba y abajo hay contenido, no se corta nada: la imagen entera se encaja y los
+ * lados se rellenan con su propio fondo desenfocado. Un relleno se nota menos que un
+ * texto cortado.
  */
 final class RecorteDeImagen {
 
@@ -67,6 +75,13 @@ final class RecorteDeImagen {
         }
         int x = (ancho - anchoFinal) / 2;
         int y = (int) Math.round((alto - altoFinal) * Math.max(0, Math.min(1, cortaArriba)));
+        if (altoFinal < alto) {
+            int mejor = mejorCorteVertical(imagen, altoFinal, y);
+            if (mejor < 0) {
+                return aJpeg(encajar(imagen, objetivo), calidad);
+            }
+            y = mejor;
+        }
 
         // RGB y sobre blanco: JPEG no tiene canal alfa y un PNG con
         // transparencia se guardaría con el fondo en negro.
@@ -80,6 +95,105 @@ final class RecorteDeImagen {
             g.dispose();
         }
         return aJpeg(salida, calidad);
+    }
+
+    /**
+     * Detalle medio a partir del cual una franja "tiene contenido" (letras, platillos,
+     * personas). Un fondo liso o un degradado suave quedan muy por debajo.
+     */
+    static final double CON_CONTENIDO = 4.0;
+
+    /**
+     * El renglón donde empieza el recorte que quita menos contenido; entre los que
+     * quitan lo mismo, el más cercano al preferido por la composición. {@code -1} si
+     * cualquier recorte se llevaría contenido: entonces no se corta.
+     */
+    static int mejorCorteVertical(BufferedImage imagen, int altoFinal, int preferido) {
+        int alto = imagen.getHeight();
+        int sobra = alto - altoFinal;
+        double[] acumulado = new double[alto + 1];
+        double[] fila = detallePorFila(imagen);
+        for (int y = 0; y < alto; y++) {
+            acumulado[y + 1] = acumulado[y] + fila[y];
+        }
+        int mejor = -1;
+        double menor = Double.MAX_VALUE;
+        for (int y = 0; y <= sobra; y++) {
+            double quitado = acumulado[y] + (acumulado[alto] - acumulado[y + altoFinal]);
+            if (quitado < menor - 1e-9 || (Math.abs(quitado - menor) <= 1e-9
+                    && Math.abs(y - preferido) < Math.abs(mejor - preferido))) {
+                menor = quitado;
+                mejor = y;
+            }
+        }
+        return sobra > 0 && menor / sobra > CON_CONTENIDO ? -1 : mejor;
+    }
+
+    /**
+     * Cuánto cambia la imagen en cada renglón: diferencia media de luz con el pixel de
+     * arriba y con el de al lado (0 = liso). Las letras y los objetos dan mucho; un
+     * fondo de color, casi nada.
+     */
+    static double[] detallePorFila(BufferedImage imagen) {
+        int ancho = imagen.getWidth();
+        int alto = imagen.getHeight();
+        double[] detalle = new double[alto];
+        int paso = Math.max(1, ancho / 256);
+        int[] previa = luzDeFila(imagen, 0, paso);
+        for (int y = 0; y < alto; y++) {
+            int[] actual = y == 0 ? previa : luzDeFila(imagen, y, paso);
+            double suma = 0;
+            for (int i = 0; i < actual.length; i++) {
+                suma += Math.abs(actual[i] - previa[i]);
+                if (i > 0) suma += Math.abs(actual[i] - actual[i - 1]);
+            }
+            detalle[y] = suma / actual.length;
+            previa = actual;
+        }
+        if (alto > 1) detalle[0] = detalle[1];
+        return detalle;
+    }
+
+    private static int[] luzDeFila(BufferedImage imagen, int y, int paso) {
+        int[] luz = new int[(imagen.getWidth() + paso - 1) / paso];
+        for (int i = 0, x = 0; x < imagen.getWidth(); i++, x += paso) {
+            int rgb = imagen.getRGB(x, y);
+            luz[i] = (((rgb >> 16) & 0xFF) * 299 + ((rgb >> 8) & 0xFF) * 587 + (rgb & 0xFF) * 114) / 1000;
+        }
+        return luz;
+    }
+
+    /**
+     * La imagen entera dentro de la proporción pedida, sin cortar nada: centrada, con
+     * los lados rellenos de la misma imagen ampliada y desenfocada (y un poco más
+     * oscura, para que el borde no compita con el anuncio).
+     */
+    static BufferedImage encajar(BufferedImage imagen, double objetivo) {
+        int alto = imagen.getHeight();
+        int ancho = imagen.getWidth();
+        int anchoFinal = Math.max(ancho, (int) Math.round(alto * objetivo));
+        BufferedImage salida = new BufferedImage(anchoFinal, alto, BufferedImage.TYPE_INT_RGB);
+        Graphics2D g = salida.createGraphics();
+        try {
+            // Desenfoque barato y suficiente: reducir mucho y volver a ampliar suavizado.
+            int chicoAncho = Math.max(1, anchoFinal / 24);
+            int chicoAlto = Math.max(1, alto / 24);
+            BufferedImage chico = new BufferedImage(chicoAncho, chicoAlto, BufferedImage.TYPE_INT_RGB);
+            Graphics2D gc = chico.createGraphics();
+            gc.setRenderingHint(java.awt.RenderingHints.KEY_INTERPOLATION,
+                    java.awt.RenderingHints.VALUE_INTERPOLATION_BILINEAR);
+            gc.drawImage(imagen, 0, 0, chicoAncho, chicoAlto, null);
+            gc.dispose();
+            g.setRenderingHint(java.awt.RenderingHints.KEY_INTERPOLATION,
+                    java.awt.RenderingHints.VALUE_INTERPOLATION_BICUBIC);
+            g.drawImage(chico, 0, 0, anchoFinal, alto, null);
+            g.setColor(new Color(0, 0, 0, 40));
+            g.fillRect(0, 0, anchoFinal, alto);
+            g.drawImage(imagen, (anchoFinal - ancho) / 2, 0, null);
+        } finally {
+            g.dispose();
+        }
+        return salida;
     }
 
     private static byte[] aJpeg(BufferedImage imagen, float calidad) {

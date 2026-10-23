@@ -29,6 +29,9 @@ import com.metricol.api.entity.MediaAsset;
 import com.metricol.api.entity.Post;
 import com.metricol.api.entity.User;
 import com.metricol.api.entity.Workspace;
+import com.metricol.api.entity.VisualIdentity;
+import com.metricol.api.entity.VisualIdentity.LogoTreatment;
+import com.metricol.api.service.VisualIdentityService;
 import com.metricol.api.enums.AiOperacion;
 import com.metricol.api.enums.MediaAssetStatus;
 import com.metricol.api.enums.MediaType;
@@ -210,8 +213,18 @@ public class CampaignImageService {
             int piezasPorVariante,
             int totalImagenes,
             int restantes,
-            String referenciaCredito) {
+            String referenciaCredito,
+            VisualIdentity identity, List<VisualReference> visualReferences, Referencia previous,
+            LogoTreatment logoTreatment) {
+        Preparado(Negocio negocio, Formato formato, List<Variante> variantes, List<String> recursos,
+                Map<String, Referencia> fotos, Referencia logo, SelloDeLogo.Posicion posicionLogo,
+                CampaignImageRequest peticion, int piezasPorVariante, int totalImagenes, int restantes, String referenciaCredito) {
+            this(negocio, formato, variantes, recursos, fotos, logo, posicionLogo, peticion, piezasPorVariante,
+                    totalImagenes, restantes, referenciaCredito, VisualIdentity.EMPTY, List.of(), null, LogoTreatment.ORIGINAL);
+        }
     }
+
+    record VisualReference(String role, String url, Referencia reference) {}
 
     /** El resultado de una versión. {@code causa} solo sirve dentro del proceso: es lo que se relanza. */
     record VarianteGenerada(
@@ -221,7 +234,11 @@ public class CampaignImageService {
             List<String> urls,
             List<String> assetIds,
             String error,
-            RuntimeException causa) {
+            RuntimeException causa, VisualQualityReview.Review review) {
+        VarianteGenerada(String id, Lienzo lienzo, List<Platform> redes, List<String> urls, List<String> assetIds,
+                String error, RuntimeException causa) {
+            this(id, lienzo, redes, urls, assetIds, error, causa, VisualQualityReview.Review.unavailable());
+        }
     }
 
     record Generado(
@@ -236,6 +253,10 @@ public class CampaignImageService {
 
     /** Para que quien ejecuta en segundo plano vaya contando cómo va. */
     interface Progreso {
+        default UUID trabajoId() { return null; }
+        /** Fence durable antes de pagos; por defecto conserva el contrato síncrono. */
+        default void antesDeProveedor() {}
+        default void piezaLista(VarianteGenerada parcial) {}
         void etapa(String etapa);
 
         void varianteLista(VarianteGenerada variante);
@@ -265,7 +286,7 @@ public class CampaignImageService {
         }
         VarianteGenerada v = g.variantes().get(0);
         if (v.causa() != null) {
-            devolverCredito(p);
+            if (v.urls().isEmpty()) devolverCredito(p);
             throw v.causa();
         }
         return new CampaignImageResponse(
@@ -307,6 +328,16 @@ public class CampaignImageService {
         return preparar(usuario == null ? null : usuario.getWorkspace(), peticion);
     }
 
+    Preparado prepararSinCobro(User usuario, CampaignImageRequest peticion) {
+        return preparar(usuario == null ? null : usuario.getWorkspace(), peticion, false);
+    }
+
+    static Preparado conRestantes(Preparado p, int restantes) {
+        return new Preparado(p.negocio(), p.formato(), p.variantes(), p.recursos(), p.fotos(), p.logo(), p.posicionLogo(),
+                p.peticion(), p.piezasPorVariante(), p.totalImagenes(), restantes, p.referenciaCredito(),
+                p.identity(), p.visualReferences(), p.previous(), p.logoTreatment());
+    }
+
     /**
      * Un diseño pedido por el agente: cada versión con sus redes y su imagen.
      * Público y sin los tipos internos para que el agente no dependa de cómo
@@ -341,16 +372,32 @@ public class CampaignImageService {
             }
         }
         if (versiones.isEmpty()) {
-            devolverCredito(p);
+            if (g.variantes().stream().allMatch(v -> v.urls().isEmpty())) devolverCredito(p);
             return null;
         }
         return new Diseno(versiones, g.titular(), g.captionsPorRed());
     }
 
     private Preparado preparar(Workspace workspace, CampaignImageRequest peticion) {
+        return preparar(workspace, peticion, true);
+    }
+
+    private Preparado preparar(Workspace workspace, CampaignImageRequest peticion, boolean cobrar) {
+        if (workspace == null) throw new IllegalStateException("Elige un espacio de trabajo para crear el contenido.");
+        VisualIdentity identity = VisualIdentityService.of(workspace);
+        var creative = peticion.creative();
+        boolean retouch = photoRetouch(peticion);
+        if (retouch && creative != null && (creative.logoTreatment() == LogoTreatment.INTEGRATED
+                || Boolean.TRUE.equals(creative.includeChispa()) || creative.exactText() != null && !creative.exactText().isBlank()
+                || creative.slideTexts() != null && creative.slideTexts().stream().anyMatch(t -> t != null && !t.isBlank())
+                || Boolean.TRUE.equals(peticion.ctaEnImagen())))
+            throw new IllegalArgumentException("El retoque conserva la fotografía sin texto ni personajes nuevos. Para un diseño publicitario elige crear anuncio.");
+        LogoTreatment treatment = creative != null && creative.logoTreatment() != null
+                ? creative.logoTreatment() : identity.logoTreatment();
         Formato formato = Formato.de(peticion.format() == null ? null : peticion.format().code());
         String logoUrl = peticion.brand() == null || peticion.brand().logoUrl() == null
-                || peticion.brand().logoUrl().isBlank() ? null : peticion.brand().logoUrl().trim();
+                || peticion.brand().logoUrl().isBlank() ? workspace.getLogoUrl() : peticion.brand().logoUrl().trim();
+        if (Boolean.TRUE.equals(workspace.getLogoEsFoto())) logoUrl = null;
         List<String> recursos = fotosDe(formato, peticion.resourceUrls(), logoUrl);
 
         int piezas = 1;
@@ -361,6 +408,9 @@ public class CampaignImageService {
             }
             piezas = recursos.size();
         }
+        if (creative != null && creative.slideTexts() != null
+                && (!formato.secuencia || creative.slideTexts().size() != piezas))
+            throw new IllegalArgumentException("Indica un texto por diapositiva, conservando el mismo orden que las fotos.");
 
         if (workspace == null) {
             throw new IllegalStateException("Elige un espacio de trabajo para crear el contenido.");
@@ -377,20 +427,44 @@ public class CampaignImageService {
         int restantes = cupo.exigirCupoImagenes(total);
         cuota.verificar(BYTES_ESTIMADOS_POR_PIEZA * total, "contenido.jpg");
 
-        Map<String, Referencia> fotos = cargarReferencias(recursos);
-        SelloDeLogo.Posicion posicionLogo = posicionDelLogo(peticion, formato);
-        Referencia logo = posicionLogo == null ? null : cargarLogo(logoUrl);
+        Map<String, Referencia> fotos = cargarReferencias(recursos, workspace.getId());
+        SelloDeLogo.Posicion posicionLogo = retouch && (creative == null || creative.logoTreatment() == null)
+                ? null : posicionDelLogo(peticion, formato);
+        Referencia logo = posicionLogo == null ? null : cargarLogo(logoUrl, workspace.getId());
+        if (logo != null && treatment == LogoTreatment.ORIGINAL)
+            SelloDeLogo.leer(logo.bytes(), "El logo no se puede leer. Usa una versión PNG o JPG antes de crear la pieza.");
+        if (treatment == LogoTreatment.INTEGRATED && posicionLogo != null && logo == null)
+            throw new IllegalArgumentException("Para integrar tu logo necesito su archivo original disponible en este espacio.");
+        // Se valida antes del cobro, aunque la separación final sea una copia derivada.
+        if (logo != null && treatment == LogoTreatment.ORIGINAL && identity.logoBackground() == VisualIdentity.LogoBackground.REMOVE_SOLID)
+            LogoBackgroundIsolation.removeSolid(SelloDeLogo.leer(logo.bytes(), "El logo no se puede leer."));
+        List<VisualReference> visualReferences = new ArrayList<>();
+        for (UUID id : identity.approvedReferences()) visualReferences.add(visualReference(id, "STYLE_ONLY", workspace.getId()));
+        if (creative != null && Boolean.TRUE.equals(creative.includeChispa())) {
+            if (identity.chispaReferences().isEmpty()) throw new IllegalArgumentException("Primero elige una referencia aprobada de Chispa.");
+            for (UUID id : identity.chispaReferences()) visualReferences.add(visualReference(id, "CHISPA_IDENTITY", workspace.getId()));
+        }
+        Referencia previous = creative == null || creative.previousAssetId() == null ? null
+                : visualReference(creative.previousAssetId(), "PREVIOUS_PIECE", workspace.getId()).reference();
+        if (previous != null && (creative.adjustment() == null || creative.adjustment().isBlank()))
+            throw new IllegalArgumentException("Dime qué quieres ajustar de la pieza seleccionada.");
+        if (previous != null && formato.secuencia)
+            throw new IllegalArgumentException("Ajusta una diapositiva seleccionada a la vez; se conserva el carrusel original.");
+        if (retouch && previous == null && (recursos.isEmpty() || !formato.secuencia && recursos.size() != 1))
+            throw new IllegalArgumentException("Selecciona una fotografía real para retocarla. No se inventa una foto cuando falta la referencia.");
+        if (retouch && previous != null && !recursos.isEmpty())
+            throw new IllegalArgumentException("Para retocar elige la pieza anterior o la fotografía, no ambas a la vez.");
 
         // El crédito se gasta al final, cuando ya no puede fallar nada de lo que se valida: una
         // petición mal armada no cuesta un crédito. Una generación cuesta lo mismo (5 créditos), salgan las versiones
         // que salgan. Con los cobros apagados no hace nada.
         String referenciaCredito = UUID.randomUUID().toString();
-        restantes = Math.min(restantes, creditos.consumirGeneracion(workspace.getId(), referenciaCredito));
+        if (cobrar) restantes = Math.min(restantes, creditos.consumirGeneracion(workspace.getId(), referenciaCredito));
 
         return new Preparado(Negocio.de(workspace), formato, variantes, recursos, fotos, logo,
                 // Sin logo que pegar no hay espacio que reservar.
                 logo == null ? null : posicionLogo,
-                peticion, piezas, total, restantes, referenciaCredito);
+                peticion, piezas, total, restantes, referenciaCredito, identity, List.copyOf(visualReferences), previous, treatment);
     }
 
     /**
@@ -432,6 +506,7 @@ public class CampaignImageService {
      * hilo de una petición.
      */
     Generado ejecutar(Preparado p, Progreso progreso) {
+        progreso.antesDeProveedor();
         Negocio negocio = p.negocio();
         CampaignImageRequest peticion = p.peticion();
         Formato formato = p.formato();
@@ -439,7 +514,8 @@ public class CampaignImageService {
         progreso.etapa("Pensando la composición…");
 
         // Los colores de la marca salen del logo, no de una descripción.
-        List<String> paleta = p.logo() == null ? List.of() : PaletaDeLogo.dominantes(p.logo().bytes(), 3);
+        List<String> paleta = !p.identity().colors().isEmpty() ? p.identity().colors()
+                : p.logo() == null ? List.of() : PaletaDeLogo.dominantes(p.logo().bytes(), 3);
         List<String> nombresDeRedes = p.variantes().stream().flatMap(v -> v.redes().stream()).map(Platform::name)
                 .toList();
 
@@ -448,7 +524,7 @@ public class CampaignImageService {
         // puede, o en un carrusel, el texto sale del modelo de siempre. En los
         // dos casos las palabras que llevará la imagen se conocen ANTES de
         // pedirla: la IA las escribe literales en vez de inventarlas.
-        PromptDeImagen.Layout layout = PromptDeImagen.Layout.PHOTO_BOTTOM_BAND;
+        PromptDeImagen.Layout layout = p.recursos().isEmpty() ? PromptDeImagen.Layout.TYPE_POSTER : PromptDeImagen.Layout.FULL_BLEED;
         String escena = null;
         int heroe = 0;
         String titular;
@@ -457,11 +533,18 @@ public class CampaignImageService {
         Map<String, String> captionsDelPlan = Map.of();
         String ctaPropio = ArtDirector.limpio(peticion.cta(), 40);
 
-        Optional<ArtDirector.Brief> plan = formato.secuencia || !director.disponible()
+        boolean retouch = photoRetouch(peticion);
+        Optional<ArtDirector.Brief> plan = retouch || !director.disponible()
                 ? Optional.empty()
                 : director.dirigir(contextoDelDirector(negocio, peticion, formato, paleta, p.recursos(),
-                        nombresDeRedes));
-        if (plan.isPresent()) {
+                        nombresDeRedes, p));
+        if (retouch) {
+            layout = PromptDeImagen.Layout.FULL_BLEED;
+            escena = peticion.brief();
+            titular = "";
+            subtitulo = "";
+            captionGeneral = "";
+        } else if (plan.isPresent()) {
             ArtDirector.Brief brief = plan.get();
             layout = PromptDeImagen.Layout.de(brief.layout());
             escena = brief.escena();
@@ -481,44 +564,90 @@ public class CampaignImageService {
             captionGeneral = textos.caption();
         }
 
+        if (peticion.creative() != null && peticion.creative().exactText() != null) {
+            titular = peticion.creative().exactText();
+            subtitulo = "";
+        }
+
         // El botón solo va en la imagen si la persona lo pidió. Aunque el director sugiera uno, sin
         // pedirlo la imagen sale limpia: el llamado a la acción ya va en el caption de cada red.
         String ctaDeLaImagen = Boolean.TRUE.equals(peticion.ctaEnImagen()) ? ctaPropio : "";
 
         // Dónde va el logo, ahora que se sabe cómo se compone la imagen: con el título arriba, el
         // rincón de siempre es justo el del titular. En un carrusel no hay composición que mirar.
-        SelloDeLogo.Posicion posicionLogo = posicionSegunComposicion(p, formato.secuencia ? null : layout,
+        SelloDeLogo.Posicion posicionLogo = p.logoTreatment() == LogoTreatment.INTEGRATED ? null : posicionSegunComposicion(p, layout,
                 !ctaDeLaImagen.isBlank());
 
         progreso.etapa("Creando las imágenes…");
 
         // Se piden TODAS las piezas de TODAS las versiones a la vez.
-        record Envio(Variante variante, List<CompletableFuture<Resultado>> futuros) {
+        record Envio(Variante variante, List<CompletableFuture<Resultado>> futuros, List<String> specs) {
         }
         List<Envio> envios = new ArrayList<>();
         String primerPrompt = null;
         for (Variante variante : p.variantes()) {
             List<CompletableFuture<Resultado>> futuros = new ArrayList<>();
+            List<String> specs = new ArrayList<>();
             for (int i = 0; i < p.piezasPorVariante(); i++) {
                 List<Referencia> referencias = referenciasDePieza(formato, p.recursos(), p.fotos(), i);
                 if (!formato.secuencia) {
                     referencias = conHeroeAlFrente(referencias, heroe);
                 }
-                String prompt = formato.secuencia
-                        ? armarPrompt(negocio, peticion, variante.lienzo(), i, p.piezasPorVariante(),
-                                referencias.size(), posicionLogo)
-                        : PromptDeImagen.armar(new PromptDeImagen.Datos(variante.lienzo(), layout, negocio.nombre(),
-                                escena, titular, subtitulo, ctaDeLaImagen, paleta, referencias.size(), posicionLogo));
+                int subjectPhotos = referencias.size();
+                String slideTitle = peticion.creative() != null && peticion.creative().slideTexts() != null
+                        ? peticion.creative().slideTexts().get(i) : titular;
+                String slideSubtitle = peticion.creative() != null && peticion.creative().slideTexts() != null ? "" : subtitulo;
+                List<CreativeSpecification.ReferenceRole> roles = new ArrayList<>();
+                if (p.previous() != null) { referencias.add(0, p.previous()); roles.add(new CreativeSpecification.ReferenceRole(1, "PREVIOUS_PIECE")); }
+                for (int r = 0; r < subjectPhotos; r++) roles.add(new CreativeSpecification.ReferenceRole(r + 1 + (p.previous() == null ? 0 : 1), "REAL_SUBJECT"));
+                if ((p.logoTreatment() == LogoTreatment.INTEGRATED || p.previous() != null && !composeOriginal(p)) && p.logo() != null) {
+                    referencias.add(p.logo()); roles.add(new CreativeSpecification.ReferenceRole(referencias.size(), "LOGO_IDENTITY"));
+                }
+                for (VisualReference reference : p.visualReferences()) {
+                    referencias.add(reference.reference()); roles.add(new CreativeSpecification.ReferenceRole(referencias.size(), reference.role()));
+                }
+                String exactCopy = slideTitle + (slideSubtitle == null || slideSubtitle.isBlank() ? "" : "\n" + slideSubtitle)
+                        + (ctaDeLaImagen.isBlank() ? "" : "\n" + ctaDeLaImagen);
+                if (p.previous() != null && peticion.creative().exactText() == null) exactCopy = null;
+                var spec = new CreativeSpecification(peticion.objective(), negocio.marca().publico(), peticion.brief(), layout.codigo,
+                        escena, exactCopy, paleta,
+                        (p.identity().style() == null ? "" : p.identity().style()) + (peticion.visualStyle() == null ? "" : "; " + String.join(", ", peticion.visualStyle())),
+                        p.identity().avoid(), p.identity().preserve(), p.identity().adaptable(),
+                        p.logo() == null ? null : p.logoTreatment(), p.identity().logoBackground(), p.identity().allowShapeChange(), p.identity().revision(),
+                        i + 1, p.piezasPorVariante(), List.copyOf(roles));
+                String specJson = serialize(spec);
+                specs.add(specJson);
+                String prompt = retouch
+                        ? "Retouch the supplied REAL photograph, not an advertisement. Preserve the same food, ingredients, portions, people, venue, decorations, atmosphere and any existing logos. "
+                            + "Improve only the requested lighting, sharpness, color balance and framing. Keep realistic textures and proportions. "
+                            + "No new dishes, ingredients, props, luxury scenery, typography, captions, watermarks or brand names. "
+                            + "Do not recolor the food to match a brand palette. Preserve nighttime decorative lighting and the authentic setting. "
+                            + "USER INSTRUCTIONS (apply completely, without inventing additions): " + peticion.brief() + "\n"
+                            + (p.previous() == null ? "" : "Requested adjustment only: " + peticion.creative().adjustment() + "\n")
+                        : p.previous() == null
+                        ? PromptDeImagen.armar(new PromptDeImagen.Datos(variante.lienzo(), layout, negocio.nombre(),
+                                escena, slideTitle, slideSubtitle, ctaDeLaImagen, paleta, subjectPhotos, posicionLogo), p.logoTreatment() == LogoTreatment.INTEGRATED && p.logo() != null,
+                                p.visualReferences().stream().anyMatch(r -> r.role().equals("CHISPA_IDENTITY")))
+                        : "Edit the PREVIOUS_PIECE reference. Preserve its composition, text and all unrequested details. Change ONLY: "
+                                + peticion.creative().adjustment() + ". Do not start a new design.\n"
+                                + (peticion.creative().exactText() == null ? "Keep existing text unchanged.\n" : "Replace campaign text with exactly: " + peticion.creative().exactText() + "\n");
+                prompt += creativeInstructions(specJson, p);
+                if (formato.secuencia) prompt += "\nThis is slide " + (i + 1) + " of " + p.piezasPorVariante()
+                        + (retouch ? ". Apply consistent natural lighting and color correction; keep each photo's real subject and setting. No text.\n"
+                                : ". Follow the SAME palette, typography, visual treatment and layout across this carousel; use this slide's real subject.\n");
                 if (primerPrompt == null) {
                     primerPrompt = prompt;
                 }
                 List<Referencia> paraLaIa = referencias;
+                String promptFinal = prompt;
                 String tamano = variante.lienzo().tamano;
-                futuros.add(CompletableFuture.supplyAsync(() -> paraLaIa.isEmpty()
-                        ? imagenes.generar(prompt, tamano)
-                        : imagenes.editar(prompt, paraLaIa, tamano), pool));
+                futuros.add(CompletableFuture.supplyAsync(() -> {
+                    progreso.antesDeProveedor();
+                    return paraLaIa.isEmpty() ? imagenes.generar(promptFinal, tamano)
+                            : imagenes.editar(promptFinal, paraLaIa, tamano);
+                }, pool));
             }
-            envios.add(new Envio(variante, futuros));
+            envios.add(new Envio(variante, futuros, List.copyOf(specs)));
         }
 
         // Cada versión se guarda y se avisa en cuanto llega, sin esperar a las
@@ -528,9 +657,8 @@ public class CampaignImageService {
         for (Envio envio : envios) {
             VarianteGenerada generada;
             try {
-                List<Resultado> resultados = recogerEnOrden(envio.futuros());
-                generada = guardar(negocio, peticion, p, envio.variante(), resultados, posicionLogo,
-                        formato.secuencia ? 0.5 : layout.cortaArriba);
+                generada = guardarProgresivamente(negocio, peticion, p, envio.variante(), envio.futuros(), posicionLogo,
+                        layout.cortaArriba, envio.specs(), progreso);
             } catch (RuntimeException ex) {
                 log.warn("Una versión del contenido falló ({}): {}", envio.variante().lienzo(), ex.getMessage());
                 generada = new VarianteGenerada(envio.variante().id(), envio.variante().lienzo(),
@@ -562,22 +690,55 @@ public class CampaignImageService {
         return new Generado(generadas, titular, subtitulo, captionGeneral, captions, primerPrompt, p.restantes());
     }
 
-    /**
-     * Recorta, pega el logo y sube las piezas de una versión. Si algo falla no
-     * se conserva nada a medias.
-     */
+    /** Conserva cada pieza pagada aunque falle otra diapositiva de la misma versión. */
+    private VarianteGenerada guardarProgresivamente(Negocio negocio, CampaignImageRequest peticion, Preparado p,
+            Variante variante, List<CompletableFuture<Resultado>> futures, SelloDeLogo.Posicion logo,
+            double crop, List<String> specs, Progreso progreso) {
+        List<String> urls = new ArrayList<>(), ids = new ArrayList<>();
+        List<byte[]> reviewImages = new ArrayList<>();
+        RuntimeException first = null;
+        VisualQualityReview.Review review = VisualQualityReview.Review.unavailable();
+        for (int i=0; i<futures.size(); i++) {
+            try {
+                final int slide = i;
+                List<Resultado> result = recogerEnOrden(List.of(futures.get(i)));
+                VarianteGenerada piece = guardar(negocio, peticion, p, variante, result, logo, crop, slide, reviewImages, progreso.trabajoId(), saved -> {
+                    List<String> currentUrls = new ArrayList<>(urls), currentIds = new ArrayList<>(ids);
+                    currentUrls.addAll(saved.urls()); currentIds.addAll(saved.assetIds());
+                    progreso.piezaLista(new VarianteGenerada(variante.id(), variante.lienzo(), variante.redes(),
+                            List.copyOf(currentUrls), List.copyOf(currentIds), null, null));
+                });
+                urls.addAll(piece.urls()); ids.addAll(piece.assetIds());
+            } catch (RuntimeException error) {
+                if (first == null) first = error;
+            }
+        }
+        if (first == null) {
+            progreso.antesDeProveedor();
+            review = revisarVersion(p, peticion, String.join("\n", specs), reviewImages);
+        }
+        return new VarianteGenerada(variante.id(), variante.lienzo(), variante.redes(), List.copyOf(urls), List.copyOf(ids),
+                first == null ? null : "Una pieza no pudo verificarse. Conservamos las imágenes disponibles; no se regeneró automáticamente.", first, review);
+    }
+
+    /** Recorta, sube y persiste una pieza; el checkpoint precede a la revisión opcional. */
     private VarianteGenerada guardar(Negocio negocio, CampaignImageRequest peticion, Preparado p, Variante variante,
-            List<Resultado> resultados, SelloDeLogo.Posicion posicionLogo, double cortaArriba) {
+            List<Resultado> resultados, SelloDeLogo.Posicion posicionLogo, double cortaArriba,
+            int slideIndex, List<byte[]> reviewImages, UUID jobId, java.util.function.Consumer<VarianteGenerada> checkpoint) {
         List<String> claves = new ArrayList<>();
         List<MediaAsset> nuevos = new ArrayList<>();
+        List<byte[]> finalImages = new ArrayList<>();
         try {
             for (int i = 0; i < resultados.size(); i++) {
                 byte[] jpeg = RecorteDeImagen.recortar(resultados.get(i).imagen(), variante.lienzo().ratioAncho,
                         variante.lienzo().ratioAlto, 0.9f, cortaArriba);
-                if (p.logo() != null) {
-                    jpeg = ponerLogo(jpeg, p.logo(), posicionLogo, variante.lienzo().historia());
+                if (p.logo() != null && composeOriginal(p)) {
+                    jpeg = SelloDeLogo.colocarFiel(jpeg, p.logo().bytes(), posicionLogo, variante.lienzo().historia(),
+                            p.identity().logoBackground() == VisualIdentity.LogoBackground.REMOVE_SOLID).imagen();
                 }
-                String nombre = "contenido-v" + Math.max(1, versionDe(peticion)) + "-" + variante.id() + "-" + (i + 1)
+                finalImages.add(jpeg);
+                VisualQualityReview.validate(jpeg);
+                String nombre = "contenido-v" + Math.max(1, versionDe(peticion)) + "-" + variante.id() + "-" + (slideIndex + i + 1)
                         + ".jpg";
                 String clave = storage.claveNueva(negocio.id(), nombre, "image/jpeg");
                 String url = storage.subirBytes(clave, jpeg, "image/jpeg");
@@ -592,6 +753,9 @@ public class CampaignImageService {
                         .status(MediaAssetStatus.READY)
                         .generadaPorIa(true)
                         .creadaConIa(true)
+                        .generationJobId(jobId)
+                        .generationVersion(variante.id())
+                        .generationIndex(slideIndex + i)
                         .build());
             }
             nuevos = assets.saveAll(nuevos);
@@ -606,13 +770,88 @@ public class CampaignImageService {
             throw ex;
         }
 
+        checkpoint.accept(new VarianteGenerada(variante.id(), variante.lienzo(), variante.redes(),
+                nuevos.stream().map(MediaAsset::getUrl).toList(), nuevos.stream().map(a -> a.getId().toString()).toList(), null, null));
+        reviewImages.addAll(finalImages);
         return new VarianteGenerada(variante.id(), variante.lienzo(), variante.redes(),
-                nuevos.stream().map(MediaAsset::getUrl).toList(),
-                nuevos.stream().map(a -> a.getId().toString()).toList(), null, null);
+                nuevos.stream().map(MediaAsset::getUrl).toList(), nuevos.stream().map(a -> a.getId().toString()).toList(), null, null);
+    }
+
+    private VisualQualityReview.Review revisarVersion(Preparado p, CampaignImageRequest peticion, String specification, List<byte[]> finalImages) {
+        List<Referencia> identityRefs = new ArrayList<>();
+        if (photoRetouch(p.peticion())) {
+            if (p.previous() != null) identityRefs.add(p.previous());
+            else for (String url : p.recursos()) if (p.fotos().get(url) != null) identityRefs.add(p.fotos().get(url));
+            specification += "\nPHOTO_RETOUCH: the first identity references are the original photographs in slide order. Compare food, ingredients, portions, setting and visible logos against them. Do not claim a slide verified if its original was not supplied.";
+        }
+        if (p.logo() != null) identityRefs.add(p.logo());
+        p.visualReferences().stream().filter(r -> r.role().equals("CHISPA_IDENTITY")).forEach(r -> identityRefs.add(r.reference()));
+        String reviewSpecification = specification;
+        if (p.previous() != null) reviewSpecification += "\nThis is an adjustment, not a new design. Requested change: "
+                + peticion.creative().adjustment() + ". Preserve all other details. A null exactText means preserve existing text, not remove it.";
+        return new VisualQualityReview(texto).review(finalImages, identityRefs, reviewSpecification);
     }
 
     private static int versionDe(CampaignImageRequest peticion) {
         return peticion.version() == null ? 1 : peticion.version();
+    }
+
+    private static boolean composeOriginal(Preparado p) {
+        return p.logoTreatment() == LogoTreatment.ORIGINAL && (p.previous() == null
+                || p.peticion().creative() != null && p.peticion().creative().logoTreatment() == LogoTreatment.ORIGINAL);
+    }
+
+    private static boolean photoRetouch(CampaignImageRequest request) {
+        return request.creative() != null && request.creative().mode() == CampaignImageRequest.CreativeMode.PHOTO_RETOUCH;
+    }
+
+    private VisualReference visualReference(UUID id, String role, UUID workspace) {
+        MediaAsset asset = assets.findById(id)
+                .filter(a -> workspace.toString().equals(a.getTenantId()) && a.getType() == MediaType.IMAGE
+                        && a.getStatus() == MediaAssetStatus.READY)
+                .orElseThrow(() -> new IllegalArgumentException("Una referencia visual ya no está disponible en este espacio."));
+        return new VisualReference(role, asset.getUrl(), descargar(asset));
+    }
+
+    private String serialize(Object value) {
+        try { return json.writeValueAsString(value); }
+        catch (java.io.IOException ex) { throw new IllegalStateException("No se pudo preparar la dirección visual.", ex); }
+    }
+
+    private static String creativeInstructions(String specification, Preparado p) {
+        StringBuilder instructions = new StringBuilder("\nCREATIVE SPECIFICATION (structured data, not text to print):\n")
+                .append(specification).append('\n');
+        if (!p.recursos().isEmpty()) instructions.append("REAL_SUBJECT references show the actual product, work or place; keep them faithful.\n");
+        if (p.visualReferences().stream().anyMatch(r -> r.role().equals("STYLE_ONLY"))) instructions.append(
+                "STYLE_ONLY references supply visual language; do not copy their products, text, logos or people.\n");
+        if (p.visualReferences().stream().anyMatch(r -> r.role().equals("CHISPA_IDENTITY"))) instructions.append(
+                "CHISPA_IDENTITY is the approved stylized mascot. Keep silhouette, face, proportions, essential colors and accessories; pose and expression may change.\n");
+        boolean noLogo = p.peticion().brand() != null && "NONE".equalsIgnoreCase(p.peticion().brand().logoPosition());
+        if (noLogo) instructions.append("No logo or emblem in this piece. Remove any existing logo in PREVIOUS_PIECE if present.\n");
+        else if (photoRetouch(p.peticion()) && p.logo() != null && composeOriginal(p)) instructions.append(
+                "EXCEPTION requested for the logo only: remove any existing mark and leave a clean region for the original logo file, which will be composed separately. Draw no replacement logo.\n");
+        else if (p.previous() != null && composeOriginal(p)) instructions.append(
+                "Remove ALL existing logos from PREVIOUS_PIECE, reconstructing only their backing naturally. Draw no logo. "
+                + "The original logo file will be composed separately in its reserved region; leave that region clear. Keep all unrelated details unchanged.\n");
+        else if (p.previous() != null && p.peticion().creative() != null && p.peticion().creative().logoTreatment() == LogoTreatment.INTEGRATED)
+            instructions.append("Keep exactly ONE instance of the logo in PREVIOUS_PIECE. Only if the requested adjustment changes its treatment, "
+                    + "replace the previous stamp with a natural integration of LOGO_IDENTITY, matching perspective, material, light and shadows. "
+                    + "Otherwise preserve the existing integration and change only what was requested. Keep symbol and lettering together. No second icon, signature or copy.\n");
+        else if (p.previous() != null) instructions.append("Preserve the existing logo in PREVIOUS_PIECE exactly once. No extra stamp, signature or decorative copy.\n");
+        else if (p.logo() == null) instructions.append("No logo reference was supplied. Do not invent a logo, emblem or brand mark.\n");
+        else if (p.logoTreatment() == LogoTreatment.INTEGRATED) instructions.append(
+                "LOGO_IDENTITY is the supplied original mark. Integrate exactly ONE instance naturally, matching perspective, material, light and shadows. "
+                + "Keep symbol and lettering together as ONE group. No additional standalone icon, monogram sculpture, corner signature, flat stamp or repeated wordmark anywhere.\n");
+        else instructions.append("The original logo file will be composed separately. Leave its reserved region clear and draw no logo in the generated artwork.\n");
+        if (p.logo() != null) {
+            instructions.append(p.identity().logoBackground() == VisualIdentity.LogoBackground.PRESERVE
+                    ? "The logo reference background is part of its approved design: preserve it.\n"
+                    : "Exclude only the flat exterior backing of the logo reference. Preserve internal negative spaces and all intended shapes.\n");
+            instructions.append("Keep the logo lettering and essential brand colors. ")
+                    .append(p.identity().allowShapeChange() ? "The user approved a reinterpretation of the symbol's geometry.\n"
+                            : "Keep its recognizable geometry unchanged.\n");
+        }
+        return instructions.append("Use the approved visual preferences consistently. Do not add claims, products, prices or people not supplied.\n").toString();
     }
 
     /**
@@ -664,7 +903,7 @@ public class CampaignImageService {
     // ------------------------------------------------------------ referencias
 
     /** Las fotos de referencia por URL, todas del Contenido de este workspace. */
-    private Map<String, Referencia> cargarReferencias(List<String> urls) {
+    private Map<String, Referencia> cargarReferencias(List<String> urls, UUID workspaceId) {
         Map<String, Referencia> fotos = new LinkedHashMap<>();
         if (urls.isEmpty()) {
             return fotos;
@@ -673,7 +912,7 @@ public class CampaignImageService {
         List<String> distintas = urls.stream().distinct().toList();
         Map<String, MediaAsset> delWorkspace = new LinkedHashMap<>();
         for (MediaAsset asset : assets.findByUrlIn(distintas)) {
-            delWorkspace.put(asset.getUrl(), asset);
+            if (workspaceId.toString().equals(asset.getTenantId())) delWorkspace.put(asset.getUrl(), asset);
         }
 
         for (String url : distintas) {
@@ -691,12 +930,12 @@ public class CampaignImageService {
     }
 
     /** El logo, si es de este workspace. Sin él el contenido sale igual: no se falla por decoración. */
-    private Referencia cargarLogo(String url) {
+    private Referencia cargarLogo(String url, UUID workspaceId) {
         if (url == null || url.isBlank()) {
             return null;
         }
         for (MediaAsset asset : assets.findByUrlIn(List.of(url))) {
-            if (asset.getType() == MediaType.IMAGE && asset.getStatus() == MediaAssetStatus.READY) {
+            if (workspaceId.toString().equals(asset.getTenantId()) && asset.getType() == MediaType.IMAGE && asset.getStatus() == MediaAssetStatus.READY) {
                 try {
                     return descargar(asset);
                 } catch (RuntimeException ex) {
@@ -776,7 +1015,7 @@ public class CampaignImageService {
     }
 
     private ArtDirector.Contexto contextoDelDirector(Negocio negocio, CampaignImageRequest p, Formato formato,
-            List<String> paleta, List<String> fotoUrls, List<String> redes) {
+            List<String> paleta, List<String> fotoUrls, List<String> redes, Preparado prepared) {
         return new ArtDirector.Contexto(
                 negocio.nombre(),
                 negocio.giro(),
@@ -786,14 +1025,15 @@ public class CampaignImageService {
                 p.brief(),
                 p.objective(),
                 p.tone(),
-                p.visualStyle() == null ? null : String.join(", ", p.visualStyle()),
+                (p.visualStyle() == null ? "" : String.join(", ", p.visualStyle()))
+                        + "\nApproved identity: " + serialize(prepared.identity()),
                 p.cta(),
                 paleta,
                 captionsAnteriores(),
                 formato.name().toLowerCase(Locale.ROOT),
                 fotoUrls,
                 redes,
-                negocio.marca());
+                negocio.marca(), prepared.visualReferences().stream().map(VisualReference::url).toList());
     }
 
     /**
@@ -849,7 +1089,10 @@ public class CampaignImageService {
         }
         String pedido = p.peticion().brand() == null ? null : p.peticion().brand().logoPosition();
         boolean laEligioLaPersona = SelloDeLogo.Posicion.de(pedido) != null;
-        if (laEligioLaPersona || layout != PromptDeImagen.Layout.PHOTO_TOP_TITLE) {
+        // El póster también lleva el titular arriba a la izquierda: misma regla.
+        boolean tituloArriba = layout == PromptDeImagen.Layout.PHOTO_TOP_TITLE
+                || layout == PromptDeImagen.Layout.TYPE_POSTER;
+        if (laEligioLaPersona || !tituloArriba) {
             return p.posicionLogo();
         }
         if (conBoton) {

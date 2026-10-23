@@ -55,8 +55,10 @@ public class Redactor {
                dejarla bien, no escribir otra. Mejorar aqui es: arreglar la
                redaccion y la puntuacion que el dictado se come, quitar
                muletillas y repeticiones, ordenar la idea, darle un cierre. NO
-               es cambiar el mensaje, subir el tono ni alargarlo. Si dijo algo
-               corto, queda corto.
+               es cambiar el mensaje, subir el tono ni rellenarlo. Si dijo algo
+               corto queda corto, con una excepcion: el porque que su propia
+               voz pidio contar (ver EXPLICAR EL PORQUE NO ES ALARGAR). Eso no
+               es relleno, es su contenido.
 
             2. Pide un OBJETIVO ("haz una publicacion profesional para vender
                esto y que me escriban"). Entonces no hay texto que mejorar: lo
@@ -88,6 +90,54 @@ public class Redactor {
             aunque este bien escrito: si quitas el nombre y podria ser de otra
             cuenta, reescribelo.
 
+            EXPLICAR EL PORQUE NO ES ALARGAR. Hay negocios cuya voz dice que
+            ensenan su oficio: el paso a paso, por que se hace asi, que sale
+            mal cuando alguien se salta un paso. Cuando su voz dice eso, ese
+            porque ES su mensaje y va escrito, aunque lo que dicto fuera una
+            linea. No es adorno encima de lo que dijo: es lo que pidio contar.
+
+            La diferencia esta en si la frase aporta algo que SOLO este negocio
+            sabe. "Se nivela antes de colar porque saltarse ese paso deja
+            asientos y grietas a los seis meses" es su oficio y va. "Con la
+            calidad que nos caracteriza" es relleno y no va. Si no sabes el
+            porque concreto, no lo inventes: callarlo es mejor que rellenarlo.
+
+            Lo que sigue prohibido es cambiar lo que dijo, subirle el tono o
+            prometer lo que no dio. Eso no se toca.
+
+            APORTA ALGO QUE NO SE SABIA. Una publicacion que solo describe la
+            foto —"hoy nivelamos el terreno", "ya quedo instalado"— no le sirve
+            a nadie: eso ya se ve en la imagen. Lo que hace que alguien se
+            detenga, y mas si entiende del tema, es el CRITERIO que hay detras:
+            que se revisa y en que orden, por que se hace asi y no de otra
+            forma, que se rompe cuando se hace mal, en que se nota meses
+            despues un trabajo bien hecho, cuanto tarda, que lo complica.
+
+            Eso sale de lo que la persona dijo, de lo que se ve en las imagenes,
+            de su oficio tal como ELLA lo describio, Y DE LO QUE TU SABES DEL
+            TEMA: como funciona, por que se hace asi, que errores son comunes,
+            que conviene revisar, que temporada o fecha de Mexico viene al caso.
+            Usalo como lo haria un experto que escribe para sus clientes: con
+            datos generales y verdaderos del oficio, explicados en simple. Lo
+            que NO puedes inventar es lo de ESTE negocio: precios, horarios,
+            promociones, resultados, certificaciones, garantias. Ante la duda
+            de si algo es cierto, no lo pongas.
+
+            CADA TEXTO DEJA UNA IDEA. Quien lo lea tiene que quedarse con algo
+            util aunque no compre hoy: un criterio para elegir, un error que
+            evitar, el porque de algo, un dato que no sabia. Esa idea es el
+            cuerpo del texto. Si el texto solo dice que existe el producto o
+            que la foto es bonita, no genera valor: reescribelo.
+
+            QUE SUENE A PERSONA. Escribe como habla alguien del oficio cuando le
+            explica algo a un cliente que le cae bien: frases naturales, con
+            ritmo distinto entre ellas, en segunda persona cuando ayuda. Nada
+            de frases de folleto ni de plantillas.
+
+            Donde cabe —Instagram, LinkedIn— apunta a tres partes: el gancho
+            concreto, un cuerpo que ensene algo, y el cierre. En TikTok y
+            Facebook sigue siendo una o dos lineas.
+
             Dos textos para dos fotos distintas del mismo negocio tienen que
             poder distinguirse: si lo que escribiste serviria igual para
             cualquier otra foto suya, no has escrito nada. Nada de "calidad y
@@ -105,7 +155,11 @@ public class Redactor {
               caption. Ejemplos: "Mallas ciclonicas para predios
               industriales", "2x1 en tacos al pastor hasta las 6".
             - "guion" es su mensaje ya limpio, en version general: lo mismo que
-              dijo, bien escrito. Sirve para las redes sin texto propio.
+              dijo, bien escrito. Sirve para las redes sin texto propio. Es un
+              texto LISTO PARA PUBLICAR, como los de "textos": nunca describas la
+              publicacion ("carrusel de 4 fotos sobre...", "las imagenes
+              muestran...", "cerrar invitando a...") ni repitas la instruccion
+              que te dieron. Eso es el encargo, no el post.
             - "textos" lleva una llave por cada red que te pidan, con SU mensaje
               adaptado a esa red. Ni una llave de mas. Es el caption: lo que se
               lee bajo la publicacion. No lo empieces con el titulo.
@@ -114,10 +168,16 @@ public class Redactor {
             se lee en un telefono y un bloque corrido de seis lineas no se lee:
             - Frases cortas. Una idea por frase.
             - Separa en parrafos con UNA linea en blanco entre ellos. Usa
-              saltos de linea de verdad (
- dentro del JSON).
+              "\\n\\n" dentro del valor JSON para representar esa linea en
+              blanco. Nunca devuelvas saltos sin escapar que rompan el JSON.
             - En Instagram y LinkedIn: el gancho en la primera linea, linea en
               blanco, el cuerpo, linea en blanco, el cierre.
+            - Gancho, cuerpo y cierre son como se ORDENA el texto, no palabras
+              que se escriben. Nunca pongas etiquetas como "Gancho:", "Cuerpo:",
+              "Cierre:", "CTA:", "Tip:", "Revisa:" o "Lo concreto:" al inicio de
+              una linea: se lee como plantilla, no como alguien que habla.
+            - No hables de las fotos como fotos ("las imagenes usan...", "en la
+              imagen ves..."): habla de lo que muestran.
             - Si enumeras cosas (sabores, servicios, horarios, medidas), va UNA
               POR LINEA, cada una abierta con "- ". Nunca todas apretadas en
               una frase separadas por comas.
@@ -126,11 +186,27 @@ public class Redactor {
             - En Facebook y TikTok, que son cortos, basta con una o dos lineas
               y los hashtags abajo: ahi un parrafo ya es demasiado.
 
+            EMOJIS CON INTENCION, NO COMO DECORACION:
+            - Usa entre CERO y DOS emojis relevantes en todo el caption. No es
+              obligatorio usarlos: una marca profesional, elegante o de un
+              tema regulado normalmente queda mejor sin ellos.
+            - Si aportan, coloca uno en el gancho o en el cierre. Nunca abras
+              cada linea con un emoji, nunca repitas el mismo y nunca pongas
+              varios juntos.
+            - El emoji tiene que reforzar una palabra concreta del mensaje. Si
+              se puede quitar sin perder nada, no lo uses.
+
             LO CONCRETO VA PRIMERO. Lo que abre el texto es el dato que SOLO
             ese negocio puede dar: el producto, el precio, la hora, el lugar,
             lo que se ve en la foto. Lo general va despues, si cabe. Una
             publicacion sin ningun dato concreto es una publicacion generica,
-            y mas vale que sea corta.
+            y esa si conviene que sea corta: lo que no se puede es usar eso
+            como excusa para no contar lo que si se sabe.
+
+            NUNCA GROSERIAS NI LENGUAJE VULGAR, aunque la persona las haya dicho
+            al dictar o las escriba: esto se publica a nombre del negocio. Cambia
+            "esta bien chingon" por "esta buenisimo". Tampoco insultos, contenido
+            sexual, discriminatorio o que ataque a alguien.
 
             LO QUE NO SE ESCRIBE NUNCA, porque vale para cualquier negocio y
             por eso no dice nada de este:
@@ -155,9 +231,10 @@ public class Redactor {
             - No inventes datos que nadie te dio: ni precios, ni horarios, ni
               direcciones, ni promesas.
             - Nada de preambulos ni comillas envolviendo el texto.
-            - Mas corto y concreto siempre gana a mas largo y bonito. El limite
-              es un techo, no una meta: si la idea cabe en dos lineas, son dos
-              lineas.
+            - Mas corto y concreto gana a mas largo y bonito. El limite es un
+              techo, no una meta: si la idea cabe en dos lineas, son dos
+              lineas. Pero corto y vacio no le gana a nada: si su voz pedia
+              ensenar el porque, ese porque no es "bonito", es la idea.
             """;
 
     /**
@@ -179,6 +256,9 @@ public class Redactor {
             - El limite de caracteres de la red es un limite DURO. Cuenta
               todo: espacios, emojis y hashtags. Si lo que se pide no cabe
               —alargar, agregar hashtags—, gana el limite: haz lo que quepa.
+            - Si te piden emojis, usa como maximo dos, relevantes y separados;
+              nunca uno al inicio de cada linea. Si no te los piden, conserva
+              la densidad del texto original.
             - Nunca pongas mas hashtags de los indicados para la red.
             - Si hay que quitar algo para que quepa, quita lo menos
               importante. Nunca dejes una frase cortada a la mitad.
@@ -262,7 +342,44 @@ public class Redactor {
                 : new ArrayList<>(redes);
 
         String respuesta = client.completeJson(AiOperacion.REDACTAR, SISTEMA, prompt(loQueDijo, queSeVe, destino, negocio));
-        return interpretar(respuesta, destino);
+        return sinGroserias(interpretar(respuesta, destino));
+    }
+
+    /**
+     * Lo que se publica no lleva groserías, aunque la persona las haya dictado. Cada texto
+     * que traiga alguna se reescribe UNA vez; si aun así queda, se tapa. Es lo último que
+     * pasa antes de que el texto pueda salir a una red real.
+     */
+    private Borrador sinGroserias(Borrador borrador) {
+        boolean alguna = LenguajeCuidado.tieneGroserias(borrador.guion())
+                || borrador.textos().values().stream().anyMatch(LenguajeCuidado::tieneGroserias);
+        if (!alguna) {
+            return borrador;
+        }
+        Map<Platform, String> limpios = new LinkedHashMap<>();
+        borrador.textos().forEach((red, texto) -> limpios.put(red, limpiar(texto, red)));
+        String guion = LenguajeCuidado.tieneGroserias(borrador.guion())
+                ? LenguajeCuidado.cubrir(borrador.guion())
+                : borrador.guion();
+        return new Borrador(LenguajeCuidado.cubrir(borrador.titulo()), guion, limpios);
+    }
+
+    private String limpiar(String texto, Platform red) {
+        if (!LenguajeCuidado.tieneGroserias(texto)) {
+            return texto;
+        }
+        EspecTexto espec = EspecTexto.de(red);
+        try {
+            String reescrito = normalizarFormato(client.complete(AiOperacion.AJUSTAR, SISTEMA_AJUSTE,
+                    promptAjuste(texto, red, espec, "Quita toda grosería o palabra vulgar y cámbiala por una"
+                            + " expresión limpia que diga lo mismo, con el mismo tono cercano. No cambies nada más.")));
+            if (!reescrito.isBlank() && !LenguajeCuidado.tieneGroserias(reescrito)) {
+                return espec.recortar(reescrito);
+            }
+        } catch (Exception ex) {
+            log.warn("No se pudo reescribir sin groserias el texto de {}: {}", red, ex.toString());
+        }
+        return LenguajeCuidado.cubrir(texto);
     }
 
     /**
@@ -290,8 +407,8 @@ public class Redactor {
 
         String retocado;
         try {
-            retocado = client.complete(AiOperacion.AJUSTAR, SISTEMA_AJUSTE,
-                    promptAjuste(texto, red, espec, ajuste.getInstruccion())).strip();
+            retocado = normalizarFormato(client.complete(AiOperacion.AJUSTAR, SISTEMA_AJUSTE,
+                    promptAjuste(texto, red, espec, ajuste.getInstruccion())));
         } catch (Exception ex) {
             log.warn("No se pudo ajustar el texto de {}: {}", red, ex.toString());
             return texto;
@@ -300,6 +417,8 @@ public class Redactor {
         if (retocado.isBlank()) {
             return texto;
         }
+        // Un retoque ("más vendedor", "más cercano") tampoco puede meter groserías.
+        retocado = limpiar(retocado, red);
         if (retocado.length() <= espec.maxCaracteres()) {
             return retocado;
         }
@@ -409,12 +528,12 @@ public class Redactor {
 
         try {
             JsonNode raiz = mapper.readTree(json);
-            guion = raiz.path("guion").asText("").strip();
+            guion = normalizarFormato(raiz.path("guion").asText(""));
             titulo = EspecTexto.recortarTitulo(raiz.path("titulo").asText(""));
 
             JsonNode nodo = raiz.path("textos");
             for (Platform red : redes) {
-                String texto = nodo.path(red.name()).asText("").strip();
+                String texto = normalizarFormato(nodo.path(red.name()).asText(""));
                 if (!texto.isBlank()) {
                     textos.put(red, EspecTexto.de(red).recortar(texto));
                 }
@@ -423,8 +542,17 @@ public class Redactor {
             log.warn("La IA devolvio algo que no se pudo leer como JSON: {}", ex.toString());
         }
 
+        // Aunque el prompt lo prohibe, a veces llega. Se corrige aqui, que es
+        // donde se puede garantizar: un "Gancho:" o un guion que describe el
+        // carrusel salieron programados a redes reales (oct 2026).
+        guion = sinEtiquetas(guion);
+        textos.replaceAll((red, texto) -> sinEtiquetas(texto));
+        if (pareceInstruccion(guion)) {
+            log.warn("El guion describia la publicacion en vez de serlo; se usa el texto de una red");
+            guion = "";
+        }
         if (guion.isBlank()) {
-            guion = textos.values().stream().findFirst().orElse("");
+            guion = mejorTexto(textos);
         }
         for (Platform red : redes) {
             if (!textos.containsKey(red)) {
@@ -442,6 +570,88 @@ public class Redactor {
         }
 
         return new Borrador(titulo, guion, textos);
+    }
+
+    /** Las etiquetas de estructura que el modelo a veces escribe al inicio de una linea. */
+    private static final java.util.regex.Pattern ETIQUETA = java.util.regex.Pattern.compile(
+            "^(?:gancho|cuerpo|cierre|remate|hook|cta|llamado a la acci[oó]n|lo concreto|tip(?: pr[aá]ctico)?)\\s*:\\s*",
+            java.util.regex.Pattern.CASE_INSENSITIVE | java.util.regex.Pattern.UNICODE_CASE);
+
+    /** Un guion que habla DE la publicacion en lugar de ser la publicacion. */
+    private static final java.util.regex.Pattern INSTRUCCION = java.util.regex.Pattern.compile(
+            "(?:publicaci[oó]n tipo carrusel|carrusel (?:de \\d+ fotos|\\(\\d+ fotos\\))|\\(\\d+ fotos\\)"
+                    + "|(?:cerrar|terminar|abrir) invitando|las im[aá]genes (?:usan|muestran)"
+                    + "|usar (?:la|las|esta|estas) im[aá]gen(?:es)? para|haz una publicaci[oó]n)",
+            java.util.regex.Pattern.CASE_INSENSITIVE | java.util.regex.Pattern.UNICODE_CASE);
+
+    /**
+     * Quita "Gancho:", "Cierre:", "Tip:"… del inicio de cada linea. Una linea
+     * que era solo la etiqueta desaparece; si queda texto, empieza en mayuscula.
+     */
+    static String sinEtiquetas(String texto) {
+        if (texto == null || texto.isBlank()) {
+            return texto == null ? "" : texto;
+        }
+        StringBuilder salida = new StringBuilder();
+        for (String linea : texto.split("\n", -1)) {
+            java.util.regex.Matcher m = ETIQUETA.matcher(linea.stripLeading());
+            String limpia = linea;
+            if (m.find()) {
+                String resto = linea.stripLeading().substring(m.end());
+                if (resto.isBlank()) {
+                    continue;
+                }
+                limpia = Character.toUpperCase(resto.charAt(0)) + resto.substring(1);
+            }
+            if (salida.length() > 0) {
+                salida.append('\n');
+            }
+            salida.append(limpia);
+        }
+        return normalizarFormato(salida.toString());
+    }
+
+    static boolean pareceInstruccion(String guion) {
+        return guion != null && INSTRUCCION.matcher(guion).find();
+    }
+
+    /** El texto mas completo de las redes: Instagram, LinkedIn, o el mas largo. */
+    private static String mejorTexto(Map<Platform, String> textos) {
+        for (Platform preferida : List.of(Platform.INSTAGRAM, Platform.LINKEDIN)) {
+            String t = textos.get(preferida);
+            if (t != null && !t.isBlank()) {
+                return t;
+            }
+        }
+        return textos.values().stream().max(java.util.Comparator.comparingInt(String::length)).orElse("");
+    }
+
+    /**
+     * Deja el texto listo para leer en telefono aunque el modelo mande espacios
+     * al final de cada linea o demasiados saltos. Conserva la estructura y
+     * reduce cualquier separacion grande a una sola linea en blanco.
+     */
+    static String normalizarFormato(String texto) {
+        if (texto == null || texto.isBlank()) {
+            return "";
+        }
+        String limpio = texto.replace("\r\n", "\n").replace('\r', '\n').strip();
+        String[] lineas = limpio.split("\n", -1);
+        StringBuilder salida = new StringBuilder();
+        int vacias = 0;
+        for (String linea : lineas) {
+            String actual = linea.stripTrailing();
+            if (actual.isBlank()) {
+                vacias++;
+                continue;
+            }
+            if (salida.length() > 0) {
+                salida.append(vacias > 0 ? "\n\n" : "\n");
+            }
+            salida.append(actual.stripLeading());
+            vacias = 0;
+        }
+        return salida.toString();
     }
 
     /**

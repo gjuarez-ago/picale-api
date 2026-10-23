@@ -88,9 +88,26 @@ public class MediaDerivadosWorker {
             log.debug("Derivados revisados: {}, ninguno sobra", derivados.size());
             return;
         }
+        if (pareceOtraBase(aBorrar.size(), derivados.size())) {
+            log.error("La barrida de derivados se detuvo: iba a borrar {} de {}. Eso no son huerfanos, es una "
+                    + "base que no conoce este bucket (¿una API de desarrollo apuntando a R2 de produccion?). "
+                    + "No se borro nada.", aBorrar.size(), derivados.size());
+            return;
+        }
 
         storage.borrarClaves(aBorrar);
         log.info("Derivados borrados: {} de {} revisados", aBorrar.size(), derivados.size());
+    }
+
+    /**
+     * Más de la mitad del bucket "huérfana" no es limpieza, es que la base que
+     * se consultó no es la de este bucket. Pasó en octubre de 2026: una API de
+     * desarrollo, con su base local y el R2 de producción, borró todas las
+     * miniaturas de producción en una noche. Con pocos archivos no se aplica:
+     * ahí borrar casi todo sí puede ser lo correcto.
+     */
+    static boolean pareceOtraBase(int aBorrar, int revisados) {
+        return aBorrar > 20 && aBorrar * 2 > revisados;
     }
 
     /**

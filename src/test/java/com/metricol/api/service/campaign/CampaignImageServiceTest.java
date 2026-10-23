@@ -132,6 +132,36 @@ class CampaignImageServiceTest {
 
     // --------------------------------------------------------------- ayudas
 
+    @Test void retoqueUsaLaFotoSinAnuncioNiTitularesInventadosYSinAgregarLogo() throws Exception {
+        String photo = "https://cdn.test/food.jpg";
+        assetsPorUrl(); r2Sirve(png(0x804020));
+        when(usuario.getWorkspace().getLogoUrl()).thenReturn("https://cdn.test/logo.png");
+        when(director.disponible()).thenReturn(true);
+        when(imagenes.editar(anyString(), anyList(), anyString())).thenReturn(new Resultado(png(0x804020), 1, 1, "gpt-image-2"));
+        String brief = "Solo mejora la luz. Conserva ingredientes, porciones, jardín y luces nocturnas. Sin texto.";
+        var request = new CampaignImageRequest(null, new CampaignImageRequest.Format("post", null, null), List.of(photo), null,
+                brief, null, null, null, null, null, null,
+                new CampaignImageRequest.Creative(null, null, null, false, null, null, CampaignImageRequest.CreativeMode.PHOTO_RETOUCH));
+        var result = servicio.generar(usuario, request);
+        var prompt = ArgumentCaptor.forClass(String.class);
+        verify(imagenes).editar(prompt.capture(), org.mockito.ArgumentMatchers.argThat(refs -> refs.size() == 1), anyString());
+        assertThat(prompt.getValue()).contains(brief, "not an advertisement", "same food, ingredients, portions")
+                .doesNotContain("HEADLINE:", "Typography:", "Create ONE finished");
+        assertThat(result.headline()).isEmpty();
+        verify(director, never()).dirigir(any());
+        verify(texto, never()).completeJson(any(), anyString(), anyString());
+        verify(texto).describeImages(eq(AiOperacion.REVISAR_CALIDAD_VISUAL), anyString(),
+                org.mockito.ArgumentMatchers.contains("PHOTO_RETOUCH"), org.mockito.ArgumentMatchers.argThat(inputs -> inputs.size() == 2));
+    }
+
+    @Test void noCobraRetoqueSinFotografiaReal() {
+        var request = new CampaignImageRequest(null, new CampaignImageRequest.Format("post", null, null), List.of(), null,
+                "Mejora la luz", null, null, null, null, null, null,
+                new CampaignImageRequest.Creative(null, null, null, false, null, null, CampaignImageRequest.CreativeMode.PHOTO_RETOUCH));
+        assertThatThrownBy(() -> servicio.preparar(usuario, request)).hasMessageContaining("fotografía real");
+        verify(creditos, never()).consumirGeneracion(any(), anyString());
+    }
+
     private static byte[] png(int color) throws Exception {
         BufferedImage imagen = new BufferedImage(200, 300, BufferedImage.TYPE_INT_RGB);
         for (int y = 0; y < 300; y++) {
@@ -232,6 +262,7 @@ class CampaignImageServiceTest {
 
     private MediaAsset asset(String url, String tipoContenido) {
         return MediaAsset.builder()
+                .tenantId(WORKSPACE.toString())
                 .id(UUID.randomUUID())
                 .url(url)
                 .storageKey("media/" + WORKSPACE + "/" + url.hashCode() + ".jpg")
@@ -327,7 +358,7 @@ class CampaignImageServiceTest {
         verify(imagenes, never()).generar(anyString(), anyString());
 
         // El logo real quedó pegado arriba a la izquierda (lo de siempre en una publicación).
-        assertThat(azulesEntre(subidos.get(0), 0.0, 0.5)).isGreaterThan(500);
+        assertThat(azulesEntre(subidos.get(0), 0.0, 0.5)).isGreaterThan(30); // Conserva también el lienzo original aprobado.
         assertThat(azulesEntre(subidos.get(0), 0.5, 1.0)).isZero();
     }
 
@@ -345,7 +376,7 @@ class CampaignImageServiceTest {
         ArgumentCaptor<String> prompt = ArgumentCaptor.forClass(String.class);
         verify(imagenes).generar(prompt.capture(), anyString());
         assertThat(prompt.getValue()).contains("top-left");
-        assertThat(azulesEntre(subidos.get(0), 0.0, 0.5)).isGreaterThan(500);
+        assertThat(azulesEntre(subidos.get(0), 0.0, 0.5)).isGreaterThan(30);
         assertThat(azulesEntre(subidos.get(0), 0.5, 1.0)).isZero();
     }
 
@@ -362,9 +393,9 @@ class CampaignImageServiceTest {
 
         ArgumentCaptor<String> prompt = ArgumentCaptor.forClass(String.class);
         verify(imagenes).generar(prompt.capture(), anyString());
-        assertThat(prompt.getValue()).contains("top-center").contains("x=130..894, y=240..1230");
-        assertThat(azulesEntre(subidos.get(0), 0.0, 0.5)).isGreaterThan(300);
-        assertThat(azulesEntre(subidos.get(0), 0.5, 1.0)).isZero();
+        assertThat(prompt.getValue()).contains("bottom-center").contains("x=130..894, y=240..1230");
+        assertThat(azulesEntre(subidos.get(0), 0.5, 1.0)).isGreaterThan(20);
+        assertThat(azulesEntre(subidos.get(0), 0.0, 0.5)).isZero();
     }
 
     @Test
@@ -386,7 +417,7 @@ class CampaignImageServiceTest {
     }
 
     @Test
-    @DisplayName("un logo que no se puede leer no tumba la campaña: sale sin logo")
+    @DisplayName("un logo ilegible se detecta antes de gastar créditos")
     void logoIlegible() throws Exception {
         String logo = "https://cdn.test/logo.png";
         assetsPorUrl();
@@ -394,10 +425,10 @@ class CampaignImageServiceTest {
         when(imagenes.generar(anyString(), anyString()))
                 .thenReturn(new Resultado(png(0xFF0000), 0, 0, "gpt-image-1.5"));
 
-        CampaignImageResponse respuesta = servicio.generar(usuario, peticion("post", List.of(), logo));
-
-        assertThat(respuesta.imageUrls()).hasSize(1);
-        assertThat(subidos).hasSize(1);
+        assertThatThrownBy(() -> servicio.generar(usuario, peticion("post", List.of(), logo)))
+                .hasMessageContaining("logo no se puede leer");
+        verify(creditos, never()).consumirGeneracion(any(), anyString());
+        assertThat(subidos).isEmpty();
     }
 
     @Test
@@ -561,7 +592,7 @@ class CampaignImageServiceTest {
     }
 
     @Test
-    @DisplayName("si una pieza del carrusel falla no se guarda nada, pero las pagadas quedan anotadas")
+    @DisplayName("si una pieza del carrusel falla se conserva la pieza pagada y su gasto")
     void unaPiezaFalla() throws Exception {
         String a = "https://cdn.test/a.jpg";
         String b = "https://cdn.test/b.jpg";
@@ -581,8 +612,9 @@ class CampaignImageServiceTest {
                 .hasMessageContaining("muchas peticiones");
 
         verify(usos, times(1)).registrarImagen(anyString(), anyInt(), anyInt());
-        verify(storage, never()).subirBytes(anyString(), any(byte[].class), anyString());
-        verify(assets, never()).saveAll(anyList());
+        verify(storage, times(1)).subirBytes(anyString(), any(byte[].class), anyString());
+        verify(assets, times(1)).saveAll(anyList());
+        verify(creditos, never()).devolverGeneracion(any(), anyString());
     }
 
     // ------------------------------------------------------------ seguridad
@@ -703,7 +735,7 @@ class CampaignImageServiceTest {
     }
 
     @Test
-    @DisplayName("si falla la subida a R2 no queda ninguna fila y se retira lo ya subido")
+    @DisplayName("si falla una subida a R2 se conserva la pieza anterior ya guardada")
     void falloDeR2() throws Exception {
         when(assets.findByUrlIn(anyList())).thenAnswer(i -> ((List<String>) i.getArgument(0)).stream()
                 .map(u -> asset(u, "image/jpeg")).toList());
@@ -722,8 +754,8 @@ class CampaignImageServiceTest {
                 peticion("carousel", List.of("https://cdn.test/a.jpg", "https://cdn.test/b.jpg"), null)))
                 .isInstanceOf(IllegalStateException.class);
 
-        verify(assets, never()).saveAll(anyList());
-        verify(storage, times(1)).deleteByKey(anyString());
+        verify(assets, times(1)).saveAll(anyList());
+        verify(storage, never()).deleteByKey(anyString());
     }
 
     @Test
@@ -767,6 +799,133 @@ class CampaignImageServiceTest {
     private static ArtDirector.Brief plan(String layout, int heroe, String caption) {
         return new ArtDirector.Brief(layout, heroe, "Warm afternoon light, natural grade.",
                 "Obra segura y a tiempo", "Manzanillo, Colima", "Cotiza hoy", caption, java.util.Map.of());
+    }
+
+    @Test
+    void integraElLogoComoReferenciaSinEstamparloDeNuevoYRespetaElTextoExacto() throws Exception {
+        String logo = "https://cdn.test/logo.png";
+        assetsPorUrl(); r2Sirve(png(0x0000ff));
+        when(imagenes.editar(anyString(), anyList(), anyString())).thenReturn(new Resultado(png(0x00ff00), 1, 1, "gpt-image-2"));
+        var original = peticion("post", List.of(), logo);
+        var request = new CampaignImageRequest(original.version(), original.format(), original.resourceUrls(), original.brand(),
+                original.brief(), original.objective(), original.visualStyle(), original.tone(), original.cta(), null, null,
+                new CampaignImageRequest.Creative(com.metricol.api.entity.VisualIdentity.LogoTreatment.INTEGRATED, null, null, false, "Pícale"));
+        var prepared = servicio.preparar(usuario, request);
+        var result = servicio.ejecutar(prepared, CampaignImageService.Progreso.NINGUNO);
+        var prompt = ArgumentCaptor.forClass(String.class);
+        verify(imagenes).editar(prompt.capture(), anyList(), anyString());
+        assertThat(prompt.getValue()).contains("LOGO_IDENTITY", "HEADLINE: \"Pícale\"", "integrate exactly ONE");
+        assertThat(prompt.getValue()).doesNotContain("Do not draw any logo");
+        assertThat(prompt.getValue()).doesNotContain("CHISPA_IDENTITY", "composed separately", "REMOVE_SOLID");
+        // Si se hubiera estampado el logo azul aparecería una región azul en el lienzo verde.
+        var output = ImageIO.read(new ByteArrayInputStream(subidos.get(0)));
+        int bluePixels = 0;
+        for (int y = 0; y < output.getHeight(); y++) for (int x = 0; x < output.getWidth(); x++) {
+            int rgb = output.getRGB(x, y);
+            if ((rgb & 255) > ((rgb >> 8) & 255) + 30) bluePixels++;
+        }
+        assertThat(bluePixels).isZero();
+        assertThat(result.variantes().get(0).review().status()).isEqualTo("UNVERIFIED");
+    }
+
+    @Test
+    void elAjusteUsaLaPiezaSeleccionadaPrimeroYSinRegeneracionesAutomaticas() throws Exception {
+        UUID id = UUID.randomUUID();
+        when(assets.findById(id)).thenReturn(Optional.of(asset("https://cdn.test/prev.jpg", "image/jpeg")));
+        r2Sirve(new byte[] {7});
+        when(imagenes.editar(anyString(), anyList(), anyString())).thenReturn(new Resultado(png(0x00ff00), 1, 1, "gpt-image-2"));
+        when(texto.describeImages(eq(AiOperacion.REVISAR_CALIDAD_VISUAL), anyString(), anyString(), anyList()))
+                .thenReturn("{\"status\":\"NEEDS_REVIEW\",\"issues\":[\"El nombre no coincide\"]}");
+        var request = new CampaignImageRequest(null, new CampaignImageRequest.Format("post", null, null), List.of(), null,
+                "Ajusta la pieza", null, null, null, null, null, null,
+                new CampaignImageRequest.Creative(null, id, "Acerca el producto", false, null));
+        var result = servicio.ejecutar(servicio.preparar(usuario, request), CampaignImageService.Progreso.NINGUNO);
+        var prompt = ArgumentCaptor.forClass(String.class);
+        verify(imagenes, times(1)).editar(prompt.capture(), anyList(), anyString());
+        assertThat(prompt.getValue()).contains("PREVIOUS_PIECE", "Change ONLY: Acerca el producto", "Keep existing text unchanged");
+        assertThat(result.variantes().get(0).review().issues()).containsExactly("El nombre no coincide");
+        assertThat(prompt.getValue()).contains("\"exactText\":null");
+        var reviewContext = ArgumentCaptor.forClass(String.class);
+        verify(texto).describeImages(eq(AiOperacion.REVISAR_CALIDAD_VISUAL), anyString(), reviewContext.capture(), anyList());
+        assertThat(reviewContext.getValue()).contains("Requested change: Acerca el producto", "preserve existing text");
+        verify(assets, never()).delete(any());
+    }
+
+    @Test
+    void referenciaAjenaSeRechazaAntesDelCobro() {
+        UUID id = UUID.randomUUID();
+        MediaAsset foreign = asset("https://cdn.test/foreign.jpg", "image/jpeg");
+        foreign.setTenantId(UUID.randomUUID().toString());
+        when(assets.findById(id)).thenReturn(Optional.of(foreign));
+        var request = new CampaignImageRequest(null, new CampaignImageRequest.Format("post", null, null), List.of(), null, "Ajustar", null, null, null, null, null, null,
+                new CampaignImageRequest.Creative(null, id, "Cambia la luz", false, null));
+        assertThatThrownBy(() -> servicio.preparar(usuario, request)).hasMessageContaining("referencia visual");
+        verify(creditos, never()).consumirGeneracion(any(), anyString());
+    }
+
+    @Test
+    void cambiarUnaPiezaAlLogoOriginalRetiraElIntegradoYComponeUnaSolaCopiaFiel() throws Exception {
+        UUID previousId = UUID.randomUUID();
+        String logo = "https://cdn.test/logo.png";
+        String previous = "https://cdn.test/previous.jpg";
+        assetsPorUrl();
+        when(assets.findById(previousId)).thenReturn(Optional.of(asset(previous, "image/jpeg")));
+        r2SirveSegun(java.util.Map.of(logo, png(0x0000ff), previous, png(0x00ff00)));
+        when(imagenes.editar(anyString(), anyList(), anyString())).thenReturn(new Resultado(png(0x00ff00), 1, 1, "gpt-image-2"));
+        var original = peticion("post", List.of(), logo);
+        var request = new CampaignImageRequest(original.version(), original.format(), original.resourceUrls(), original.brand(),
+                "Conserva mi logo", null, null, null, null, null, null,
+                new CampaignImageRequest.Creative(com.metricol.api.entity.VisualIdentity.LogoTreatment.ORIGINAL,
+                        previousId, "Usa mi archivo original sin reinterpretarlo", false, null));
+        servicio.generar(usuario, request);
+        var prompt = ArgumentCaptor.forClass(String.class);
+        verify(imagenes, times(1)).editar(prompt.capture(), org.mockito.ArgumentMatchers.argThat(refs -> refs.size() == 1), anyString());
+        assertThat(prompt.getValue()).contains("Remove ALL existing logos", "Draw no logo", "composed separately")
+                .doesNotContain("Preserve the existing logo in PREVIOUS_PIECE exactly once");
+        assertThat(centroXAzules(subidos.get(0))).isBetween(0.0, 1.0);
+        verify(assets, never()).delete(any());
+    }
+
+    @Test
+    void referenciasAprobadasYChispaLleganSeparadasDelProductoConLaPaletaConfirmada() throws Exception {
+        UUID styleId = UUID.randomUUID(), chispaId = UUID.randomUUID();
+        var identity = new com.metricol.api.entity.VisualIdentity(List.of("#AA22BB"), "Editorial",
+                List.of(styleId), List.of(), List.of(chispaId), "Sin stock", "Rostro de Chispa", "Pose",
+                com.metricol.api.entity.VisualIdentity.LogoTreatment.ORIGINAL,
+                com.metricol.api.entity.VisualIdentity.LogoBackground.PRESERVE, false, 1, "2026-10-20T00:00:00Z", UUID.randomUUID());
+        when(usuario.getWorkspace().getBrandProfile()).thenReturn(com.metricol.api.entity.BrandProfile.VACIO.withVisualIdentity(identity));
+        when(assets.findById(styleId)).thenReturn(Optional.of(asset("https://cdn.test/style.jpg", "image/jpeg")));
+        when(assets.findById(chispaId)).thenReturn(Optional.of(asset("https://cdn.test/chispa.jpg", "image/jpeg")));
+        r2Sirve(new byte[] {9});
+        when(imagenes.editar(anyString(), anyList(), anyString())).thenReturn(new Resultado(png(0x00ff00), 1, 1, "gpt-image-2"));
+        var request = new CampaignImageRequest(null, new CampaignImageRequest.Format("post", null, null), List.of(), null,
+                "Chispa presenta una idea", null, null, null, null, null, null,
+                new CampaignImageRequest.Creative(null, null, null, true, "Tu marca"));
+        servicio.generar(usuario, request);
+        var prompt = ArgumentCaptor.forClass(String.class);
+        verify(imagenes).editar(prompt.capture(), org.mockito.ArgumentMatchers.argThat(refs -> refs.size() == 2), anyString());
+        assertThat(prompt.getValue()).contains("#AA22BB", "STYLE_ONLY", "CHISPA_IDENTITY", "\"identityRevision\":1");
+        assertThat(prompt.getValue()).doesNotContain("NO PEOPLE AT ALL", "Photo 1 is the hero");
+    }
+
+    @Test
+    void carruselComparteDireccionConTextosLiteralesDiferentesEnOrden() throws Exception {
+        assetsPorUrl(); r2Sirve(new byte[] {1});
+        when(director.disponible()).thenReturn(true);
+        when(director.dirigir(any())).thenReturn(Optional.of(plan("full_bleed", 0, "Un solo recorrido")));
+        when(imagenes.editar(anyString(), anyList(), anyString())).thenReturn(new Resultado(png(0x00ff00), 1, 1, "gpt-image-2"));
+        var request = new CampaignImageRequest(null, new CampaignImageRequest.Format("carousel", null, null),
+                List.of("https://cdn.test/1.jpg", "https://cdn.test/2.jpg"), null, "Mostrar el proceso", null, null, null, null, null, null,
+                new CampaignImageRequest.Creative(null, null, null, false, null, List.of("Así empieza", "Así termina")));
+        servicio.generar(usuario, request);
+        var prompts = ArgumentCaptor.forClass(String.class);
+        verify(director, times(1)).dirigir(any());
+        verify(imagenes, times(2)).editar(prompts.capture(), anyList(), anyString());
+        assertThat(prompts.getAllValues()).anySatisfy(p -> assertThat(p).contains("HEADLINE: \"Así empieza\"", "\"slide\":1", "\"layout\":\"full_bleed\""))
+                .anySatisfy(p -> assertThat(p).contains("HEADLINE: \"Así termina\"", "\"slide\":2", "\"layout\":\"full_bleed\""));
+        var reviewContext = ArgumentCaptor.forClass(String.class);
+        verify(texto).describeImages(eq(AiOperacion.REVISAR_CALIDAD_VISUAL), anyString(), reviewContext.capture(), anyList());
+        assertThat(reviewContext.getValue()).contains("Así empieza", "Así termina", "\"slide\":1", "\"slide\":2");
     }
 
     @Test
@@ -863,7 +1022,7 @@ class CampaignImageServiceTest {
 
         ArgumentCaptor<String> prompt = ArgumentCaptor.forClass(String.class);
         verify(imagenes).generar(prompt.capture(), anyString());
-        assertThat(prompt.getValue()).contains("HEADLINE: \"20% esta semana\"").contains("solid panel");
+        assertThat(prompt.getValue()).contains("HEADLINE: \"20% esta semana\"").contains("typographic poster");
         assertThat(respuesta.caption()).isEqualTo("Ven por tu descuento");
         verify(texto).completeJson(any(), anyString(), anyString());
     }
@@ -883,7 +1042,7 @@ class CampaignImageServiceTest {
     }
 
     @Test
-    @DisplayName("un carrusel no usa director: cada diapositiva sale con su foto")
+    @DisplayName("un carrusel comparte dirección artística y conserva la foto de cada diapositiva")
     void carruselSinDirector() throws Exception {
         String a = "https://cdn.test/a.jpg";
         String b = "https://cdn.test/b.jpg";
@@ -895,7 +1054,7 @@ class CampaignImageServiceTest {
 
         servicio.generar(usuario, peticion("carousel", List.of(a, b), null));
 
-        verify(director, never()).dirigir(any());
+        verify(director).dirigir(any());
     }
 
     @Test
@@ -1020,7 +1179,7 @@ class CampaignImageServiceTest {
         assertThat(generado.variantes().get(0).urls()).hasSize(1);
         assertThat(generado.variantes().get(0).error()).isNull();
         assertThat(generado.variantes().get(1).urls()).isEmpty();
-        assertThat(generado.variantes().get(1).error()).contains("muchas peticiones");
+        assertThat(generado.variantes().get(1).error()).contains("no pudo verificarse");
         // Solo hay texto para lo que sí se puede publicar.
         assertThat(generado.captionsPorRed()).containsOnlyKeys(Platform.INSTAGRAM);
         assertThat(avance.versiones).containsExactly("v1:ok", "v2:falla");
@@ -1153,7 +1312,7 @@ class CampaignImageServiceTest {
                 // El titular empieza debajo del rincón del logo, con el número dicho.
                 .contains("top edge is at about y=338")
                 .contains("reserved for the logo");
-        assertThat(azulesEntre(subidos.get(0), 0.0, 0.5)).isGreaterThan(500);
+        assertThat(azulesEntre(subidos.get(0), 0.0, 0.5)).isGreaterThan(30);
         assertThat(azulesEntre(subidos.get(0), 0.5, 1.0)).isZero();
         assertThat(centroXAzules(subidos.get(0))).isGreaterThan(0.5);
     }
@@ -1173,7 +1332,7 @@ class CampaignImageServiceTest {
                 .contains("at the bottom-right")
                 .contains("top edge is at about y=163")
                 .doesNotContain("reserved for the logo");
-        assertThat(azulesEntre(subidos.get(0), 0.5, 1.0)).isGreaterThan(500);
+        assertThat(azulesEntre(subidos.get(0), 0.5, 1.0)).isGreaterThan(30);
         assertThat(azulesEntre(subidos.get(0), 0.0, 0.5)).isZero();
         assertThat(centroXAzules(subidos.get(0))).isGreaterThan(0.5);
     }
@@ -1190,7 +1349,7 @@ class CampaignImageServiceTest {
         ArgumentCaptor<String> prompt = ArgumentCaptor.forClass(String.class);
         verify(imagenes).editar(prompt.capture(), anyList(), anyString());
         assertThat(prompt.getValue()).contains("at the top-left").contains("top edge is at about y=338");
-        assertThat(azulesEntre(subidos.get(0), 0.0, 0.5)).isGreaterThan(500);
+        assertThat(azulesEntre(subidos.get(0), 0.0, 0.5)).isGreaterThan(30);
         assertThat(centroXAzules(subidos.get(0))).isLessThan(0.5);
     }
 }

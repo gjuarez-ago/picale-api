@@ -7,7 +7,9 @@ import java.util.Map;
  * Cómo va la creación de contenido: la app la consulta cada par de segundos y
  * va pintando cada versión en cuanto está lista.
  *
- * <p>{@code status}: QUEUED, THINKING, CREATING, READY o FAILED. READY puede
+ * <p>{@code status}: QUEUED, THINKING, CREATING, READY, FAILED o UNAVAILABLE.
+ * UNAVAILABLE conserva resultados parciales sin afirmar que se canceló el proveedor ni repetirlo.
+ * READY puede
  * traer versiones que fallaron (cada una lo dice en su propio {@code status});
  * FAILED es que no salió ninguna.
  *
@@ -32,6 +34,9 @@ public record ContenidoEstadoResponse(
             List<String> networks,
             String status,
             List<String> imageUrls,
-            String error) {
+            String error, com.metricol.api.service.campaign.VisualQualityReview.Review review) {
+        public Version(String id, String ratio, List<String> networks, String status, List<String> imageUrls, String error) {
+            this(id, ratio, networks, status, imageUrls, error, null);
+        }
     }
 }

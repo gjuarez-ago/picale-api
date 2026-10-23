@@ -62,6 +62,12 @@ public class MediaAssetReconciler {
             return false;
         }
 
+        // Do not undo the confirm endpoint's integrity check in background.
+        // Keep the original/reservation for investigation or a same-ID retry.
+        if (enR2.sizeBytes() <= 0 || (asset.getSizeBytes() != null
+                && enR2.sizeBytes() < asset.getSizeBytes())) {
+            return false;
+        }
         asset.setSizeBytes(enR2.sizeBytes());
         asset.setStatus(MediaAssetStatus.READY);
         if (enR2.contentType() != null && !enR2.contentType().isBlank()) {

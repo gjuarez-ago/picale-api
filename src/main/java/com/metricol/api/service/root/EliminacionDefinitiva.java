@@ -284,6 +284,15 @@ public class EliminacionDefinitiva {
         if (existe("hilos_de_imagen")) {
             sql.update("delete from hilos_de_imagen where workspace_id = :ws", ws);
         }
+        // Las reservas de idempotencia y la cola durable son globales (sin
+        // @TenantId) para poder recuperarse entre instancias. También deben
+        // desaparecer explícitamente con el espacio.
+        if (existe("assistant_generation_requests")) {
+            sql.update("delete from assistant_generation_requests where workspace_id = :ws", ws);
+        }
+        if (existe("contenido_jobs")) {
+            sql.update("delete from contenido_jobs where workspace_id = :ws", ws);
+        }
         // El asistente conserva conversaciones, ejecuciones, eventos y recibos
         // de herramientas. Se eliminan de hojas a raiz para no dejar historial
         // ni auditoria perteneciente a un espacio que ya no existe.
@@ -291,6 +300,10 @@ public class EliminacionDefinitiva {
             sql.update("delete from assistant_tool_calls where run_id in "
                     + "(select id from assistant_runs where workspace_id = :ws)", ws);
             sql.update("delete from assistant_run_events where workspace_id = :ws", ws);
+            if (existe("assistant_run_paradas")) {
+                sql.update("delete from assistant_run_paradas where run_id in "
+                        + "(select id from assistant_runs where workspace_id = :ws)", ws);
+            }
             sql.update("delete from assistant_messages where thread_id in "
                     + "(select id from assistant_threads where workspace_id = :ws)", ws);
             sql.update("delete from assistant_runs where workspace_id = :ws", ws);
@@ -361,6 +374,11 @@ public class EliminacionDefinitiva {
             sql.update("delete from assistant_run_events where run_id in "
                     + "(select id from assistant_runs where user_id = :u or thread_id in "
                     + "(select id from assistant_threads where created_by = :u))", u);
+            if (existe("assistant_run_paradas")) {
+                sql.update("delete from assistant_run_paradas where run_id in "
+                        + "(select id from assistant_runs where user_id = :u or thread_id in "
+                        + "(select id from assistant_threads where created_by = :u))", u);
+            }
             sql.update("delete from assistant_messages where run_id in "
                     + "(select id from assistant_runs where user_id = :u) or thread_id in "
                     + "(select id from assistant_threads where created_by = :u)", u);

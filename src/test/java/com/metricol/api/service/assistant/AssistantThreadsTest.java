@@ -4,6 +4,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
@@ -58,8 +59,38 @@ class AssistantThreadsTest {
         AssistantThreads.Detail detail = service.create(user, "  Resultados  ");
 
         assertThat(detail.thread().getWorkspaceId()).isEqualTo(workspaceId);
+        verify(threads).save(org.mockito.ArgumentMatchers.argThat(thread ->
+                workspaceId.equals(thread.getWorkspaceId()) && AssistantThreads.GLOBAL.equals(thread.getTitle())));
         verify(messages).save(org.mockito.ArgumentMatchers.argThat(message ->
                 "ASSISTANT".equals(message.getRole()) && AssistantThreads.WELCOME.equals(message.getContent())));
+    }
+
+    @Test
+    void abrirDeNuevoDevuelveLaConversacionGlobalSinCrearOtra() {
+        UUID threadId = UUID.randomUUID();
+        AssistantThread existing = AssistantThread.builder().id(threadId).workspaceId(workspaceId)
+                .createdBy(userId).title(AssistantThreads.GLOBAL).closedAt(java.time.LocalDateTime.now())
+                .createdAt(java.time.LocalDateTime.now()).updatedAt(java.time.LocalDateTime.now()).build();
+        when(threads.findFirstByWorkspaceIdAndDeletedAtIsNullOrderByUpdatedAtDesc(workspaceId))
+                .thenReturn(Optional.of(existing));
+        when(threads.findById(threadId)).thenReturn(Optional.of(existing));
+        when(threads.save(any())).thenAnswer(invocation -> invocation.getArgument(0));
+
+        AssistantThreads.Detail detail = service.create(user, "Un titulo que ya no crea otro hilo");
+
+        assertThat(detail.thread().getId()).isEqualTo(threadId);
+        assertThat(detail.thread().getClosedAt()).isNull();
+        verify(messages, never()).save(any());
+    }
+
+    @Test
+    void laListaSoloExponeLaContinuidadGlobalMasReciente() {
+        AssistantThread current = AssistantThread.builder().id(UUID.randomUUID()).workspaceId(workspaceId)
+                .title(AssistantThreads.GLOBAL).build();
+        when(threads.findFirstByWorkspaceIdAndDeletedAtIsNullOrderByUpdatedAtDesc(workspaceId))
+                .thenReturn(Optional.of(current));
+
+        assertThat(service.list(user)).containsExactly(current);
     }
 
     @Test

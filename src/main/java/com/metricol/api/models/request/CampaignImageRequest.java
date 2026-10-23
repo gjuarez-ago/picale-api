@@ -34,7 +34,43 @@ public record CampaignImageRequest(
          * Las redes donde va a publicarse (INSTAGRAM, FACEBOOK, LINKEDIN...). Con ellas se crea una
          * versión por cada proporción distinta. Sin ellas (la app anterior) sale una sola imagen.
          */
-        @Size(max = 5) List<@Size(max = 30) String> networks) {
+        @Size(max = 5) List<@Size(max = 30) String> networks,
+        @jakarta.validation.Valid Creative creative) {
+
+    public CampaignImageRequest {
+        // Mismo contrato que MCP: [] no solicita textos por diapositiva. En una
+        // pieza individual [""] tampoco convierte un retoque en un carrusel.
+        if (creative != null && creative.slideTexts() != null && creative.slideTexts().size() <= 5) {
+            boolean carousel = format != null && "carousel".equalsIgnoreCase(format.code());
+            boolean blank = creative.slideTexts().stream().allMatch(text -> text != null && text.isBlank());
+            if (creative.slideTexts().isEmpty() || !carousel && blank) {
+                creative = new Creative(creative.logoTreatment(), creative.previousAssetId(), creative.adjustment(),
+                        creative.includeChispa(), creative.exactText(), null, creative.mode());
+            }
+        }
+    }
+
+    public CampaignImageRequest(Integer version, Format format, List<String> resourceUrls, Brand brand, String brief,
+            String objective, List<String> visualStyle, String tone, String cta, Boolean ctaEnImagen, List<String> networks) {
+        this(version, format, resourceUrls, brand, brief, objective, visualStyle, tone, cta, ctaEnImagen, networks, null);
+    }
+
+    /** Ajustes de ESTA pieza; no cambian preferencias permanentes. */
+    public record Creative(com.metricol.api.entity.VisualIdentity.LogoTreatment logoTreatment,
+            java.util.UUID previousAssetId, @Size(max = 600) String adjustment,
+            Boolean includeChispa, @Size(max = 300) String exactText,
+            @Size(max = 5) List<@jakarta.validation.constraints.NotNull @Size(max = 300) String> slideTexts, CreativeMode mode) {
+        public Creative(com.metricol.api.entity.VisualIdentity.LogoTreatment logoTreatment, java.util.UUID previousAssetId,
+                String adjustment, Boolean includeChispa, String exactText, List<String> slideTexts) {
+            this(logoTreatment, previousAssetId, adjustment, includeChispa, exactText, slideTexts, null);
+        }
+        public Creative(com.metricol.api.entity.VisualIdentity.LogoTreatment logoTreatment, java.util.UUID previousAssetId,
+                String adjustment, Boolean includeChispa, String exactText) {
+            this(logoTreatment, previousAssetId, adjustment, includeChispa, exactText, null);
+        }
+    }
+
+    public enum CreativeMode { AD, PHOTO_RETOUCH }
 
     /** {@code code}: post, carousel o story. */
     @JsonIgnoreProperties(ignoreUnknown = true)

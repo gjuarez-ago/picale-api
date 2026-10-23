@@ -43,9 +43,15 @@ public class MiniaturasEnSegundoPlano {
      */
     @Async("mediaExecutor")
     public void sacar(UUID assetId, String tenantId) {
+        sacar(assetId, tenantId, false);
+    }
+
+    /** @param rehacer la miniatura apuntada ya no existe en R2: se vuelve a sacar */
+    @Async("mediaExecutor")
+    public void sacar(UUID assetId, String tenantId, boolean rehacer) {
         if (tenantId == null || tenantId.isBlank()) {
             return;
         }
-        TenantIdentifierResolver.comoTenant(tenantId, () -> miniaturas.generar(assetId));
+        TenantIdentifierResolver.comoTenant(tenantId, () -> miniaturas.generar(assetId, rehacer));
     }
 }

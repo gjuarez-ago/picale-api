@@ -65,16 +65,6 @@ public class MiniaturaDeVideo {
         return PREFIJO + storageKey.replaceAll("[^A-Za-z0-9]", "_") + ".jpg";
     }
 
-    /**
-     * De qué segundo se saca el fotograma.
-     *
-     * <p>Un segundo, no cero. El primer cuadro de un video grabado con el
-     * teléfono suele ser el que se capturó mientras la mano todavía se movía
-     * o el sensor no había ajustado la luz: sale negro o borroso. Al segundo
-     * ya hay imagen de verdad.
-     */
-    private static final String SEGUNDO = "1";
-
     /** Ancho de la miniatura. Se pinta en una cuadrícula, no a pantalla completa. */
     private static final int ANCHO = 480;
 
@@ -82,16 +72,19 @@ public class MiniaturaDeVideo {
     private final FfmpegImagen ffmpeg;
     private final R2StorageService storage;
     private final MediaAssetRepository repository;
+    private final MejorCuadroDeVideo mejorCuadro;
 
     public MiniaturaDeVideo(
             MediaAdaptProperties props,
             FfmpegImagen ffmpeg,
             R2StorageService storage,
-            MediaAssetRepository repository) {
+            MediaAssetRepository repository,
+            MejorCuadroDeVideo mejorCuadro) {
         this.props = props;
         this.ffmpeg = ffmpeg;
         this.storage = storage;
         this.repository = repository;
+        this.mejorCuadro = mejorCuadro;
     }
 
     /**
@@ -110,6 +103,17 @@ public class MiniaturaDeVideo {
      */
     @Transactional(propagation = Propagation.REQUIRES_NEW)
     public void generar(java.util.UUID assetId) {
+        generar(assetId, false);
+    }
+
+    /**
+     * @param rehacer la fila ya apunta a una miniatura, pero el archivo no
+     *                está en R2: se vuelve a sacar. Cae en la misma clave, así
+     *                que la URL no cambia y las portadas que la usan —en la
+     *                fila del video y en sus publicaciones— vuelven a verse.
+     */
+    @Transactional(propagation = Propagation.REQUIRES_NEW)
+    public void generar(java.util.UUID assetId, boolean rehacer) {
         if (!props.isEnabled()) {
             return;
         }
@@ -118,7 +122,7 @@ public class MiniaturaDeVideo {
         if (asset == null || asset.getType() != MediaType.VIDEO) {
             return;
         }
-        if (asset.getThumbnailUrl() != null && !asset.getThumbnailUrl().isBlank()) {
+        if (!rehacer && asset.getThumbnailUrl() != null && !asset.getThumbnailUrl().isBlank()) {
             return;
         }
 
@@ -144,7 +148,16 @@ public class MiniaturaDeVideo {
                 return;
             }
 
-            byte[] imagen = ffmpeg.fotograma(video, SEGUNDO, ANCHO, props.getCalidad());
+            // El mejor de varios candidatos en vez del segundo uno a ciegas:
+            // esta miniatura es la que se ve en la cuadricula de Contenido, y
+            // con el segundo fijo salian negras. Aqui se puede gastar el rato
+            // de probar cuadros porque corre en segundo plano, cuando quien
+            // subio el video ya recibio su respuesta.
+            // Sin duracion: la fila del archivo no la guarda. No hace falta,
+            // porque un segundo que no existe no devuelve cuadro y se descarta.
+            double segundo = mejorCuadro.segundoDe(video, null);
+            String cuando = String.format(java.util.Locale.US, "%.3f", segundo);
+            byte[] imagen = ffmpeg.fotograma(video, cuando, ANCHO, props.getCalidad());
             if (imagen == null) {
                 log.warn("ffmpeg no devolvió fotograma del video {} ({}).",
                         assetId, asset.getStorageKey());

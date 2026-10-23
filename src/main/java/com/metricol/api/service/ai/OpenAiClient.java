@@ -99,6 +99,9 @@ public class OpenAiClient {
      */
     public String describeImages(AiOperacion operacion, String systemPrompt, String userPrompt,
             List<String> imageUrls) {
+        if (operacion == AiOperacion.REVISAR_CALIDAD_VISUAL) {
+            return mirar(operacion, props.getModel(), null, systemPrompt, userPrompt, imageUrls, "high", props.getPricing());
+        }
         List<Map<String, Object>> partes = new ArrayList<>();
         partes.add(Map.of("type", "text", "text", userPrompt));
         for (String url : imageUrls) {
@@ -224,12 +227,21 @@ public class OpenAiClient {
      * Mandarla igual era lo que impedía subir el modelo de texto: la variable
      * se cambiaba y dejaba de escribirse una sola publicación.
      */
+    /**
+     * Qué modelos aceptan {@code temperature}.
+     *
+     * <p>La lista va al revés a propósito: se nombran los que SÍ la admiten, no los
+     * que razonan. Antes se enumeraban las familias que razonan (gpt-5, o1, o3, o4) y
+     * cada modelo nuevo entraba por el lado equivocado: a gpt-6 se le mandaba
+     * temperature, que rechaza con un 400, y nunca el esfuerzo de razonamiento. Con
+     * esta forma, un modelo que no conocemos se trata como lo que ya es la norma.
+     */
     static boolean admiteTemperatura(String modelo) {
         if (modelo == null || modelo.isBlank()) {
             return true;
         }
         String m = modelo.trim().toLowerCase(java.util.Locale.ROOT);
-        return !m.startsWith("gpt-5") && !m.startsWith("o1") && !m.startsWith("o3") && !m.startsWith("o4");
+        return m.startsWith("gpt-4") || m.startsWith("gpt-3") || m.startsWith("chatgpt-4");
     }
 
     /** Sin temperature: los modelos que razonan solo aceptan la de fábrica. */
@@ -261,13 +273,16 @@ public class OpenAiClient {
         // LinkedHashMap y no Map.of porque el formato solo va cuando toca, y
         // Map.of no admite construir un mapa a medias.
         Map<String, Object> body = new LinkedHashMap<>();
-        body.put("model", props.getModel());
-        if (admiteTemperatura(props.getModel())) {
+        boolean redactor = props.usaRedactor(operacion);
+        String modelo = redactor ? props.getRedactorModel().trim() : props.getModel();
+        String esfuerzo = redactor ? props.getRedactorReasoningEffort() : props.getReasoningEffort();
+        body.put("model", modelo);
+        if (admiteTemperatura(modelo)) {
             body.put("temperature", temperatura);
-        } else if (props.getReasoningEffort() != null && !props.getReasoningEffort().isBlank()) {
+        } else if (esfuerzo != null && !esfuerzo.isBlank()) {
             // Un modelo que razona y nadie le dice cuánto se pone a pensar de
-            // más: aquí se escribe un pie de publicación, no se resuelve nada.
-            body.put("reasoning_effort", props.getReasoningEffort().trim());
+            // más. El redactor sí piensa más: decide qué le aporta el texto a quien lo lee.
+            body.put("reasoning_effort", esfuerzo.trim());
         }
         body.put("messages", List.of(
                 Map.of("role", "system", "content", systemPrompt),
@@ -315,9 +330,12 @@ public class OpenAiClient {
             // El que contestó y no el que se pidió: OpenAI devuelve la versión
             // concreta ("gpt-4.1-mini-2025-04-14"), que es la que se cobra.
             Object modelo = respuesta.get("model");
-            usos.registrar(operacion,
-                    modelo instanceof String nombre && !nombre.isBlank() ? nombre : props.getModel(),
-                    uso.entrada(), uso.salida());
+            String cobrado = modelo instanceof String nombre && !nombre.isBlank() ? nombre : props.getModel();
+            if (props.usaRedactor(operacion)) {
+                usos.registrar(operacion, cobrado, uso.entrada(), uso.salida(), props.getRedactorPricing());
+            } else {
+                usos.registrar(operacion, cobrado, uso.entrada(), uso.salida());
+            }
         } catch (Exception ex) {
             log.warn("No se pudo anotar el uso de IA ({}): {}", operacion, ex.toString());
         }

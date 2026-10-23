@@ -37,7 +37,7 @@ public class OrganizadorDeContenido {
 
     private static final Logger log = LoggerFactory.getLogger(OrganizadorDeContenido.class);
 
-    public enum Formato { CARRUSEL, POST, HISTORIA }
+    public enum Formato { REEL, CARRUSEL, POST, HISTORIA }
 
     /** Lo que se sabe de cada foto de la tanda, numerada desde 1. */
     public record Foto(int n, RevisorDeMarca.Revision revision) {
@@ -57,6 +57,10 @@ public class OrganizadorDeContenido {
               lugar, el mismo evento, un antes y despues). Nunca mezcles temas.
               Ordenalas: primero la mas fuerte (la portada que detiene el scroll),
               luego un recorrido logico (vista general, detalles, uso, cierre).
+            - REEL: 4 a 8 fotos del MISMO tema cuando juntas muestran un recorrido,
+              proceso, transformacion, evento o secuencia con principio y cierre.
+              Elige REEL cuando el movimiento entre fotos cuenta mejor la historia;
+              no lo elijas solo por tener cuatro fotos. Ordenalas narrativamente.
             - HISTORIA: una sola foto VERTICAL de algo del momento (la promocion de
               hoy, un evento en curso, detras de camaras, el dia a dia).
             - POST: una foto que se sostiene sola y no tiene pareja de su tema.
@@ -66,7 +70,7 @@ public class OrganizadorDeContenido {
 
             Contestas SOLO un JSON:
             {"publicaciones": [
-              {"formato": "CARRUSEL" | "POST" | "HISTORIA",
+              {"formato": "REEL" | "CARRUSEL" | "POST" | "HISTORIA",
                "fotos": [numeros de foto, en orden],
                "tema": "de que trata, pocas palabras",
                "porque": "una frase para el dueno"}
@@ -179,6 +183,20 @@ public class OrganizadorDeContenido {
                     continue;
                 }
                 switch (g.formato()) {
+                    case REEL -> {
+                        if (suyas.size() >= 4 && suyas.size() <= 8) {
+                            salida.add(new Grupo(Formato.REEL, List.copyOf(suyas), g.tema(), g.porque()));
+                        } else {
+                            for (int i = 0; i < suyas.size(); i += tope) {
+                                List<Integer> trozo = suyas.subList(i, Math.min(i + tope, suyas.size()));
+                                if (trozo.size() >= 2) {
+                                    salida.add(new Grupo(Formato.CARRUSEL, List.copyOf(trozo), g.tema(), g.porque()));
+                                } else {
+                                    salida.add(sola(fotoDe(fotos, trozo.get(0)), hayHistorias, false));
+                                }
+                            }
+                        }
+                    }
                     case CARRUSEL -> {
                         for (int i = 0; i < suyas.size(); i += tope) {
                             List<Integer> trozo = suyas.subList(i, Math.min(i + tope, suyas.size()));

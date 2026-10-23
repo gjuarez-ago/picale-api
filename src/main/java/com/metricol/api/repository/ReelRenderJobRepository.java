@@ -22,6 +22,9 @@ public interface ReelRenderJobRepository extends JpaRepository<ReelRenderJob, UU
 
     List<ReelRenderJob> findByWorkspaceIdOrderByCreatedAtDesc(UUID workspaceId);
 
+    List<ReelRenderJob> findByWorkspaceIdAndAgentManagedTrueAndAgentFinalizedAtIsNullOrderByCreatedAtAsc(
+            UUID workspaceId);
+
     boolean existsByResultAssetIdInAndApprovedAtIsNull(List<UUID> resultAssetIds);
 
     @Query("""

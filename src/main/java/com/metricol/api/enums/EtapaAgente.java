@@ -34,5 +34,8 @@ public enum EtapaAgente {
      * Revisada y aprobada por la marca, esperando a que se organice con las
      * demás de su tanda (carrusel, post o historia). Ver {@code OrganizadorDeContenido}.
      */
-    ANALIZADA
+    ANALIZADA,
+
+    /** Las fotos ya fueron organizadas y el render del reel trabaja en segundo plano. */
+    GENERANDO_REEL
 }

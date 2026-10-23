@@ -25,6 +25,12 @@ services:
       # ademas a la JVM con -Duser.timezone.
       TZ: ${TZ:-America/Mexico_City}
       SPRING_PROFILES_ACTIVE: ${SPRING_PROFILES_ACTIVE:-prod}
+      # El asistente delega herramientas al MCP. Compose debe fallar antes de
+      # recrear el contenedor si falta cualquiera de estos valores; permitir
+      # una llave vacia deja la interfaz arriba, pero todos los turnos fallan
+      # cuando intentan ejecutar una herramienta.
+      ASSISTANT_MCP_URL: ${ASSISTANT_MCP_URL:?Falta ASSISTANT_MCP_URL en .env.vps.}
+      ASSISTANT_DELEGATION_KEY: ${ASSISTANT_DELEGATION_KEY:?Falta ASSISTANT_DELEGATION_KEY en .env.vps.}
       # La base viaja por el mismo proxy de Cloud SQL que usa direccion360,
       # contra la MISMA instancia y una base distinta. La instancia ya esta
       # pagada y dimensionada; levantar un Postgres aparte en el VPS seria un

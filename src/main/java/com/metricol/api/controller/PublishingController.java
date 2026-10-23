@@ -12,6 +12,7 @@ import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
 
 import com.metricol.api.config.DailyQuotaProperties;
+import com.metricol.api.config.MediaLimitsProperties;
 import com.metricol.api.config.VideoLimitsProperties;
 import com.metricol.api.entity.User;
 import com.metricol.api.enums.Platform;
@@ -101,6 +102,11 @@ public class PublishingController {
             entrada.put("maxVideoSeconds", regla.maxSegundos());
             entrada.put("maxVideoLabel", regla.maxSegundos() == null
                     ? null : VideoLimitsProperties.legible(regla.maxSegundos()));
+            // El peso que admite el formato, cuando tiene uno propio: una
+            // historia 100 MB aunque la red acepte 300 MB en el feed.
+            entrada.put("maxVideoBytes", regla.maxBytes());
+            entrada.put("maxVideoSizeLabel", regla.maxBytes() == null
+                    ? null : MediaLimitsProperties.legible(regla.maxBytes()));
             // La proporcion la exige el cliente y no el servidor: aqui solo
             // llegan URLs, y medir un video pediria descargarlo antes de
             // aceptar nada. Ver FormatRulesService.comprobarFormato.
@@ -121,6 +127,13 @@ public class PublishingController {
             // cliente distinga "no hay tope" de "esta red no vino".
             entrada.put("maxVideoSeconds", tope);
             entrada.put("maxVideoLabel", tope == null ? null : VideoLimitsProperties.legible(tope));
+            // Lo que PESA el video que acepta esta red. Se manda con el mismo
+            // trato que los segundos: null = sin tope conocido, y la llave va
+            // igual para distinguirlo de "esta red no vino".
+            Long topeBytes = videoLimits.maxBytesFor(platform);
+            entrada.put("maxVideoBytes", topeBytes);
+            entrada.put("maxVideoSizeLabel", topeBytes == null
+                    ? null : MediaLimitsProperties.legible(topeBytes));
             entrada.put("reelMaxVideoSeconds", platform == Platform.FACEBOOK
                     ? VideoLimitsProperties.FACEBOOK_REEL_MAX_SECONDS : null);
             entrada.put("longVideoFallback", platform == Platform.FACEBOOK);

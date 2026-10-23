@@ -22,12 +22,15 @@ import com.metricol.api.enums.Platform;
 import com.metricol.api.models.request.AjusteRequest;
 import com.metricol.api.models.request.AnalyzeMediaRequest;
 import com.metricol.api.models.request.CaptionSuggestionRequest;
+import com.metricol.api.models.request.BusinessDescriptionSuggestionRequest;
 import com.metricol.api.models.request.ComposeRequest;
 import com.metricol.api.models.response.ApiResponse;
 import com.metricol.api.models.response.CaptionSuggestionResponse;
+import com.metricol.api.models.response.BusinessDescriptionSuggestionResponse;
 import com.metricol.api.models.response.ComposeResponse;
 import com.metricol.api.service.ai.Ajuste;
 import com.metricol.api.service.ai.CaptionCopywriter;
+import com.metricol.api.service.ai.DescripcionDelNegocio;
 import com.metricol.api.service.ai.MarcaDelNegocio;
 import com.metricol.api.service.ai.Redactor;
 import com.metricol.api.service.ai.VisorDeMedios;
@@ -39,21 +42,42 @@ import jakarta.validation.Valid;
 public class AiController {
 
     private final CaptionCopywriter copywriter;
+    private final DescripcionDelNegocio descripcionDelNegocio;
     private final VisorDeMedios visor;
     private final Redactor redactor;
     private final AiQuotaGuard cupo;
     private final PermissionService permisos;
     private final com.metricol.api.service.metricas.LoQueFunciona loQueFunciona;
 
-    public AiController(CaptionCopywriter copywriter, VisorDeMedios visor, Redactor redactor,
+    public AiController(CaptionCopywriter copywriter, DescripcionDelNegocio descripcionDelNegocio,
+            VisorDeMedios visor, Redactor redactor,
             AiQuotaGuard cupo, PermissionService permisos,
             com.metricol.api.service.metricas.LoQueFunciona loQueFunciona) {
         this.loQueFunciona = loQueFunciona;
         this.copywriter = copywriter;
+        this.descripcionDelNegocio = descripcionDelNegocio;
         this.visor = visor;
         this.redactor = redactor;
         this.cupo = cupo;
         this.permisos = permisos;
+    }
+
+    /** Propone o mejora el texto "a qué se dedica tu negocio" sin guardarlo. */
+    @PostMapping("/suggest-business-description")
+    public ResponseEntity<ApiResponse<BusinessDescriptionSuggestionResponse>> suggestBusinessDescription(
+            @AuthenticationPrincipal User currentUser,
+            @Valid @RequestBody BusinessDescriptionSuggestionRequest request) {
+        permisos.exigir(currentUser, Permission.WORKSPACE_EDIT);
+        cupo.exigirCupo();
+        // Con su marca: lo que ya escribio de su negocio es lo unico que puede
+        // hacer que la descripcion sea suya y no de cualquiera de su giro. En el
+        // registro todavia no hay marca y queda VACIA, como antes.
+        String descripcion = descripcionDelNegocio.sugerir(
+                request.getNombre(), request.getGiro(), request.getCiudad(), request.getDescripcionActual(),
+                currentUser == null || currentUser.getWorkspace() == null
+                        ? MarcaDelNegocio.VACIA
+                        : MarcaDelNegocio.delEspacio(currentUser.getWorkspace()));
+        return ResponseEntity.ok(ApiResponse.success(new BusinessDescriptionSuggestionResponse(descripcion)));
     }
 
     @PostMapping("/suggest-caption")

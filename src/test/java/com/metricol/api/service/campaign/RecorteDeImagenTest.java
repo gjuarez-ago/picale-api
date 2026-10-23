@@ -108,4 +108,43 @@ class RecorteDeImagenTest {
         assertThatThrownBy(() -> RecorteDeImagen.recortar(new byte[] { 1, 2, 3 }, 4, 5, 0.9f))
                 .isInstanceOf(IllegalStateException.class);
     }
+    /** Una imagen lisa con "letras" (rayas de alto contraste) entre dos renglones. */
+    private static BufferedImage conLetras(int ancho, int alto, int desde, int hasta) {
+        BufferedImage imagen = new BufferedImage(ancho, alto, BufferedImage.TYPE_INT_RGB);
+        for (int y = 0; y < alto; y++) {
+            for (int x = 0; x < ancho; x++) {
+                boolean letra = y >= desde && y < hasta && (x / 3) % 2 == 0;
+                imagen.setRGB(x, y, letra ? 0xFFFFFF : 0x5A3000);
+            }
+        }
+        return imagen;
+    }
+
+    @Test
+    @DisplayName("con el titular arriba y fondo liso abajo, corta abajo aunque la composición pidiera arriba")
+    void noCortaElTitular() throws Exception {
+        // 100x150 a 1:1: sobran 50. Letras en y 5..40; la composición pedía quitar casi todo de arriba.
+        ByteArrayOutputStream origen = new ByteArrayOutputStream();
+        ImageIO.write(conLetras(100, 150, 5, 40), "png", origen);
+
+        BufferedImage r = leer(RecorteDeImagen.recortar(origen.toByteArray(), 1, 1, 1f, 0.8));
+
+        assertThat(r.getHeight()).isEqualTo(100);
+        // Las letras (35 renglones) siguen completas: hay 35 renglones con detalle.
+        long conLetras = java.util.Arrays.stream(RecorteDeImagen.detallePorFila(r)).filter(d -> d > 20).count();
+        assertThat(conLetras).as("renglones con letras").isGreaterThanOrEqualTo(34);
+    }
+
+    @Test
+    @DisplayName("si arriba y abajo hay contenido, no corta: encaja la imagen entera")
+    void siTodoTieneContenidoNoCorta() throws Exception {
+        ByteArrayOutputStream origen = new ByteArrayOutputStream();
+        ImageIO.write(conLetras(100, 150, 0, 150), "png", origen);
+
+        BufferedImage r = leer(RecorteDeImagen.recortar(origen.toByteArray(), 4, 5, 1f, 0.8));
+
+        // Entera: conserva los 150 renglones y crece a lo ancho hasta 4:5 (120x150).
+        assertThat(r.getHeight()).isEqualTo(150);
+        assertThat(r.getWidth()).isEqualTo(120);
+    }
 }

@@ -8,6 +8,7 @@ package com.metricol.api.enums;
  * que dice qué se puede recortar.
  */
 public enum AiOperacion {
+    REVISAR_CALIDAD_VISUAL,
 
     /** Mirar las fotos al subirlas (VisorDeMedios). */
     DESCRIBIR_IMAGENES,
@@ -68,6 +69,9 @@ public enum AiOperacion {
 
     /** Sugerir la voz de la marca (historia, valores, frases, pilares) en Marca. */
     SUGERIR_MARCA,
+
+    /** Proponer o mejorar la descripción del negocio durante el registro. */
+    SUGERIR_DESCRIPCION_NEGOCIO,
 
     /** Revisar si el logo subido es un logotipo o la foto de una persona. */
     REVISAR_LOGO,

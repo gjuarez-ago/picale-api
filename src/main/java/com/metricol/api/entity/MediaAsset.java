@@ -25,7 +25,7 @@ import lombok.NoArgsConstructor;
 import lombok.Setter;
 
 @Entity
-@Table(name = "media_assets")
+@Table(name = "media_assets", indexes = @jakarta.persistence.Index(name = "ix_media_generation_job", columnList = "generation_job_id,tenant_id"))
 @Getter
 @Setter
 @NoArgsConstructor
@@ -41,6 +41,16 @@ public class MediaAsset {
     private String tenantId;
 
     private String fileName;
+
+    /** Explicit mobile selection, independent of upload speed. */
+    private UUID uploadBatchId;
+    private Integer uploadBatchIndex;
+    private LocalDateTime uploadRenewedAt;
+
+    /** Vincula la pieza pagada al trabajo incluso si cae antes de guardar el checkpoint. */
+    private UUID generationJobId;
+    private String generationVersion;
+    private Integer generationIndex;
 
     private String url;
 

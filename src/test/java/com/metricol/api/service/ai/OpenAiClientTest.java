@@ -44,4 +44,14 @@ class OpenAiClientTest {
         // Sin modelo configurado se manda como siempre: no se rompe nada.
         assertThat(OpenAiClient.admiteTemperatura(null)).isTrue();
     }
+
+    @Test
+    @DisplayName("un modelo nuevo se trata como los que razonan, no al reves")
+    void losModelosNuevosNoRecibenTemperatura() {
+        // Comprobado contra la API: los dos rechazan temperature con un 400.
+        assertThat(OpenAiClient.admiteTemperatura("gpt-6-luna")).isFalse();
+        assertThat(OpenAiClient.admiteTemperatura("gpt-6.1-sol")).isFalse();
+        // Y el que todavia no existe tambien, que es el punto de la regla.
+        assertThat(OpenAiClient.admiteTemperatura("gpt-7-loquesea")).isFalse();
+    }
 }

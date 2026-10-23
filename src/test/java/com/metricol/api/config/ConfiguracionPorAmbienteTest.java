@@ -176,7 +176,7 @@ class ConfiguracionPorAmbienteTest {
 
         for (String perfil : List.of("dev", "qa")) {
             StandardEnvironment env = entorno(perfil, OBLIGATORIAS);
-            assertThat(env.getProperty("openai.image-model")).as(perfil).isEqualTo("gpt-image-1.5");
+            assertThat(env.getProperty("openai.image-model")).as(perfil).isEqualTo("gpt-image-2");
             assertThat(env.getProperty("openai.image-input-fidelity")).as(perfil).isEqualTo("high");
             assertThat(env.getProperty("openai.image-pricing.input-usd-per-million")).as(perfil).isEqualTo("0");
         }

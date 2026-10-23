@@ -39,7 +39,8 @@ public class MiniaturasPendientes {
     public ApplicationRunner generarMiniaturasQueFaltan(
             MediaAssetRepository repository,
             MiniaturasEnSegundoPlano miniaturas,
-            com.metricol.api.repository.PostRepository posts) {
+            com.metricol.api.repository.PostRepository posts,
+            com.metricol.api.service.storage.R2StorageService storage) {
         return args -> {
             // Primero se pegan a su publicacion las portadas que ya existen:
             // mientras vivan solo en la fila del archivo, borrar ese archivo
@@ -55,13 +56,50 @@ public class MiniaturasPendientes {
             }
 
             List<MediaAsset> pendientes = repository.findVideosSinMiniatura(TOPE);
-            if (pendientes.isEmpty()) {
-                return;
+            if (!pendientes.isEmpty()) {
+                log.info("Sacando miniatura a {} videos que no la tenian", pendientes.size());
+                // Con su workspace: este hilo no tiene usuario del cual deducirlo,
+                // y sin el la fila no se encuentra (ver MiniaturasEnSegundoPlano).
+                pendientes.forEach(asset -> miniaturas.sacar(asset.getId(), asset.getTenantId()));
             }
-            log.info("Sacando miniatura a {} videos que no la tenian", pendientes.size());
-            // Con su workspace: este hilo no tiene usuario del cual deducirlo,
-            // y sin el la fila no se encuentra (ver MiniaturasEnSegundoPlano).
-            pendientes.forEach(asset -> miniaturas.sacar(asset.getId(), asset.getTenantId()));
+
+            rehacerLasPerdidas(repository, miniaturas, storage);
         };
     }
+
+    /**
+     * Las miniaturas que la fila apunta pero que ya no están en R2.
+     *
+     * <p>Pasó en octubre de 2026: una API de desarrollo, con su base local
+     * pero el bucket de producción, barrió {@code derivados/} contra SU base
+     * —que no conocía los videos de producción— y borró todas las
+     * miniaturas. Las filas siguieron apuntando a ellas y la galería se llenó
+     * de imágenes rotas, sin que nada las fuera a rehacer: la regla de arriba
+     * solo mira las que no tienen URL.
+     *
+     * <p>Una sola lista de R2 para todas, no una consulta por video.
+     */
+    static void rehacerLasPerdidas(MediaAssetRepository repository, MiniaturasEnSegundoPlano miniaturas,
+            com.metricol.api.service.storage.R2StorageService storage) {
+        try {
+            java.util.Set<String> enR2 = new java.util.HashSet<>(
+                    storage.listarClaves(com.metricol.api.service.media.MiniaturaDeVideo.prefijo()));
+            List<MediaAsset> perdidas = repository.findVideosConMiniatura().stream()
+                    .filter(a -> !enR2.contains(
+                            com.metricol.api.service.media.MiniaturaDeVideo.claveDe(a.getStorageKey())))
+                    // Solo las nuestras: una URL que no es de la carpeta de miniaturas no la hicimos
+                    // aqui y no hay como rehacerla.
+                    .filter(a -> a.getThumbnailUrl().contains(com.metricol.api.service.media.MiniaturaDeVideo.prefijo()))
+                    .limit(TOPE)
+                    .toList();
+            if (perdidas.isEmpty()) {
+                return;
+            }
+            log.warn("{} videos apuntan a una miniatura que ya no esta en R2; se vuelven a sacar", perdidas.size());
+            perdidas.forEach(asset -> miniaturas.sacar(asset.getId(), asset.getTenantId(), true));
+        } catch (Exception ex) {
+            log.warn("No se pudo revisar si faltan miniaturas en R2: {}", ex.getMessage());
+        }
+    }
+
 }

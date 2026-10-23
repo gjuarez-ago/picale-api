@@ -105,6 +105,19 @@ public class ReelRenderJob {
     private LocalDateTime approvedAt;
     private UUID approvedBy;
 
+    /** Lo pidió el agente automático y debe terminar como una propuesta normal. */
+    @Builder.Default
+    private boolean agentManaged = false;
+
+    /** Evita crear dos propuestas al observar dos veces el mismo render terminado. */
+    private LocalDateTime agentFinalizedAt;
+
+    @Column(length = 300)
+    private String agentTheme;
+
+    @Column(length = 500)
+    private String agentReason;
+
     @CreationTimestamp
     private LocalDateTime createdAt;
 

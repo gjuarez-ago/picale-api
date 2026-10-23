@@ -47,7 +47,8 @@ public class ArtDirector {
     private static final Logger log = LoggerFactory.getLogger(ArtDirector.class);
 
     /** Las composiciones que sabe pedir el prompt de imagen. Ver {@code PromptDeImagen}. */
-    public static final Set<String> LAYOUTS = Set.of("photo_bottom_band", "photo_top_title", "framed_photo");
+    public static final Set<String> LAYOUTS = Set.of("photo_bottom_band", "photo_top_title", "framed_photo",
+            "full_bleed", "sticker_label", "type_poster");
 
     public static final String LAYOUT_POR_DEFECTO = "photo_bottom_band";
 
@@ -68,7 +69,14 @@ public class ArtDirector {
             String formato,
             List<String> fotoUrls,
             List<String> redes,
-            MarcaDelNegocio marca) {
+            MarcaDelNegocio marca, List<String> identityUrls) {
+
+        public Contexto(String negocio, String giro, String ciudad, String descripcion, String objetivoNegocio,
+                String idea, String objetivoCampana, String tono, String estilo, String cta, List<String> paleta,
+                List<String> captionsAnteriores, String formato, List<String> fotoUrls, List<String> redes, MarcaDelNegocio marca) {
+            this(negocio, giro, ciudad, descripcion, objetivoNegocio, idea, objetivoCampana, tono, estilo, cta, paleta,
+                    captionsAnteriores, formato, fotoUrls, redes, marca, List.of());
+        }
 
         /** Sin perfil de marca: lo que se sabía antes de que existiera. */
         public Contexto(String negocio, String giro, String ciudad, String descripcion, String objetivoNegocio,
@@ -118,10 +126,14 @@ public class ArtDirector {
             text is what makes an ad look like a template instead of a piece of work.
 
             Reply with ONLY a JSON object with exactly these keys:
-            "layout": one of "photo_bottom_band", "photo_top_title", "framed_photo".
+            "layout": one of "full_bleed", "sticker_label", "type_poster", "photo_bottom_band",
+              "photo_top_title", "framed_photo".
             "hero_photo": the number (starting at 1) of the photo that should lead, or 0 if none is clearly better.
             "scene": 2-4 sentences IN ENGLISH about lighting, subtle natural color grade, background treatment and
-              mood. Never mention text, logos, buttons or layout: those are added separately.
+              mood. Never mention text, logos, buttons or layout: those are added separately. WHEN NO PHOTO IS
+              GIVEN, the scene must describe ONE concrete, mouth-watering hero shot of what this business sells,
+              based on its description (for a bakery: "a three-tier strawberry cream cake on a marble stand, fresh
+              berries, soft window light"), never an abstract background.
             "headline": SPANISH (Mexico), at most 7 words, correct accents, concrete, no clichés.
             "subtitle": SPANISH, at most 8 words, ONLY when the owner asked for a second line or their
               request plainly needs one to be understood. Never the city, never filler. Otherwise "".
@@ -133,7 +145,18 @@ public class ArtDirector {
               is SPANISH, 2-4 short lines, no hashtags, and ends with the call to action. Omit it if no networks
               were requested.
 
-            Layouts:
+            Layouts. Pick the one that makes THIS photo and THIS message look like a piece of work, not a
+            template. A solid panel or a frame is the safe, boring answer: use those only when the photo truly
+            needs it. Vary: two ads of the same business should not look like the same template.
+            - full_bleed: editorial, like a magazine. The photo fills everything, no panel or frame, and a
+              short headline sits on the calmest part of the photo. The best choice for a strong, beautiful
+              photo with a clean area (food, products, places, people at work).
+            - sticker_label: the photo fills the frame and the headline goes on one or two slightly tilted
+              brand-color labels, like stickers. For promotions, launches, playful or young brands (food,
+              desserts, events, kids, retail). Never for law firms, clinics or serious B2B.
+            - type_poster: a bold poster: a huge headline on plain brand color at the top and the photo in the
+              lower part with a curved edge. For a short, punchy message (2-4 words), an announcement or a
+              date; also the best choice when there is no photo at all.
             - photo_bottom_band: the photo fills the frame and a solid brand-color panel at the bottom holds the
               text. Choose it when the subject sits in the upper two thirds of the photo.
             - photo_top_title: the photo fills the frame and the title sits on a soft gradient at the top. Choose
@@ -142,7 +165,9 @@ public class ArtDirector {
               color. Choose it when the photo is busy everywhere and text over it would hurt legibility.
 
             Rules:
-            - The real photos are the hero. Never suggest replacing, restyling or inventing people, equipment or places.
+            - The real photos are the hero AND the reference for a complete professional edit: plan relighting, color
+              grade, reframing and cleanup so the ad looks clearly better than the photo. Never suggest replacing or
+              inventing people, food, products, equipment or places.
             - Never invent facts: no prices, phone numbers, years, certifications or claims the business did not give.
             - Match the voice of the business's previous captions when they are provided.
             - Keep the copy short: it will be rendered as large text on the image.
@@ -279,6 +304,9 @@ public class ArtDirector {
             // y baja el costo y el tiempo de cada foto.
             partes.add(Map.of("type", "image_url", "image_url", Map.of("url", url, "detail", "low")));
         }
+        for (String url : c.identityUrls()) {
+            partes.add(Map.of("type", "image_url", "image_url", Map.of("url", url, "detail", "low")));
+        }
 
         // Sin temperature ni max_tokens a propósito: los modelos que razonan
         // rechazan la primera con cualquier valor que no sea el de fábrica, y
@@ -374,6 +402,8 @@ public class ArtDirector {
             t.append("Networks to write captions for: ").append(String.join(", ", c.redes())).append("\n");
         }
         int fotos = c.fotoUrls().size();
+        if (!c.identityUrls().isEmpty()) t.append("Additional identity/style references follow the real subject photos. ")
+                .append("Use their visual language, not their subjects or text. Never select them as hero_photo.\n");
         t.append(fotos == 0
                 ? "There are no photos: design the scene from the description."
                 : "The " + fotos + " attached photo(s) are numbered in the order given, starting at 1.");
@@ -392,6 +422,13 @@ public class ArtDirector {
         String titular = limpio(nodo.path("headline").asText(""), 70);
         if (titular.isBlank()) {
             // Sin titular no hay anuncio: mejor el camino de siempre que uno vacío.
+            return Optional.empty();
+        }
+        // Lo que va dibujado en la imagen no se puede tapar con asteriscos: con una grosería
+        // en el titular, el subtítulo o el botón se descarta el plan y se usa el camino de siempre.
+        if (LenguajeCuidado.tieneGroserias(titular) || LenguajeCuidado.tieneGroserias(nodo.path("subtitle").asText(""))
+                || LenguajeCuidado.tieneGroserias(nodo.path("cta").asText(""))) {
+            log.warn("El director de arte propuso texto vulgar para la imagen; se descarta su plan");
             return Optional.empty();
         }
 

@@ -48,16 +48,33 @@ public class StorageQuotaService {
      */
     @Transactional(readOnly = true)
     public void verificar(long bytes, String nombre) {
+        verificar(bytes, nombre, props.getMaxFileBytes());
+    }
+
+    /**
+     * Lo mismo, para el camino viejo de subir por multipart a través de la API.
+     *
+     * <p>Tiene su propio tope, más bajo, porque esa petición sí cruza nginx y
+     * el multipart de Spring. Pasarse ahí no da este mensaje sino un 413 del
+     * proxy, que no explica nada: comprobarlo antes es lo que convierte un
+     * corte mudo en una frase que se entiende.
+     */
+    @Transactional(readOnly = true)
+    public void verificarSubidaDirecta(long bytes, String nombre) {
+        verificar(bytes, nombre, Math.min(props.getMaxUploadBytes(), props.getMaxFileBytes()));
+    }
+
+    private void verificar(long bytes, String nombre, long topePorArchivo) {
         if (bytes <= 0) {
             throw new IllegalArgumentException("El archivo está vacío.");
         }
 
-        if (props.getMaxFileBytes() > 0 && bytes > props.getMaxFileBytes()) {
+        if (topePorArchivo > 0 && bytes > topePorArchivo) {
             throw new QuotaExceededException(
                     "FILE_TOO_LARGE",
                     "Ese archivo pesa " + MediaLimitsProperties.legible(bytes)
                             + " y el máximo por archivo es "
-                            + MediaLimitsProperties.legible(props.getMaxFileBytes()) + ".");
+                            + MediaLimitsProperties.legible(topePorArchivo) + ".");
         }
 
         if (!props.cuotaActiva()) {

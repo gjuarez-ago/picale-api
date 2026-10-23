@@ -97,7 +97,8 @@ public class BrandService {
 
     @Transactional
     public BrandResponse guardar(User usuario, BrandRequest pedido) {
-        Workspace w = buscar(usuario);
+        Workspace w = repository.findLockedById(usuario.getWorkspace().getId())
+                .orElseThrow(() -> new ResourceNotFoundException("Workspace no encontrado."));
 
         // Los del negocio, con la regla de siempre: nulo = no lo toques; vacío = bórralo. Salvo el
         // giro y la descripción, que son parte del perfil obligatorio: no se pueden dejar vacíos.
@@ -130,7 +131,8 @@ public class BrandService {
                 pedido.getValores() == null ? antes.valores() : texto(pedido.getValores(), 300),
                 pedido.getFrases() == null ? antes.frases() : lineas(pedido.getFrases(), 800),
                 pedido.getPilares() == null ? antes.pilares()
-                        : com.metricol.api.enums.PilarDeContenido.de(pedido.getPilares()).stream().map(Enum::name).toList());
+                        : com.metricol.api.enums.PilarDeContenido.de(pedido.getPilares()).stream().map(Enum::name).toList(),
+                antes.visualIdentity());
         w.setBrandProfile(perfil.vacio() ? null : perfil);
 
         if (pedido.getRasgos() != null) {

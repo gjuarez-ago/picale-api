@@ -24,6 +24,7 @@ public class AssistantThreads {
 
     /** Lo que se lee mientras la conversacion no tiene nombre propio. */
     public static final String NUEVA = "Nueva conversacion";
+    public static final String GLOBAL = "Memoria del negocio";
 
     /**
      * Un titulo mas largo no cabe en la lista lateral: se corta igual al dibujarse, asi
@@ -54,11 +55,22 @@ public class AssistantThreads {
     @Transactional
     public Detail create(User user, String requestedTitle) {
         UUID workspaceId = workspaceOf(user);
+        AssistantThread existing = threads
+                .findFirstByWorkspaceIdAndDeletedAtIsNullOrderByUpdatedAtDesc(workspaceId)
+                .orElse(null);
+        if (existing != null) {
+            if (existing.getClosedAt() != null) {
+                existing.setClosedAt(null);
+                existing.setUpdatedAt(LocalDateTime.now());
+                threads.save(existing);
+            }
+            return detail(user, existing.getId());
+        }
         LocalDateTime now = LocalDateTime.now();
         AssistantThread thread = threads.save(AssistantThread.builder()
                 .workspaceId(workspaceId)
                 .createdBy(user.getId())
-                .title(title(requestedTitle))
+                .title(GLOBAL)
                 .createdAt(now)
                 .updatedAt(now)
                 .build());
@@ -73,17 +85,42 @@ public class AssistantThreads {
 
     @Transactional(readOnly = true)
     public List<AssistantThread> list(User user) {
-        return threads.findByWorkspaceIdAndDeletedAtIsNullOrderByUpdatedAtDesc(workspaceOf(user));
+        return threads.findFirstByWorkspaceIdAndDeletedAtIsNullOrderByUpdatedAtDesc(workspaceOf(user))
+                .map(List::of)
+                .orElseGet(List::of);
     }
 
     @Transactional(readOnly = true)
     public Detail detail(User user, UUID threadId) {
+        return detail(user, threadId, false);
+    }
+
+    /**
+     * @param completo también lo anterior al último "empezar de nuevo": es lo que pide
+     *                 "Ver conversación anterior". Solo para leer; al modelo nunca le llega.
+     */
+    @Transactional(readOnly = true)
+    public Detail detail(User user, UUID threadId, boolean completo) {
         AssistantThread thread = owned(user, threadId);
-        List<AssistantRun> threadRuns = runs.findByThreadIdOrderByCreatedAtAsc(threadId);
+        LocalDateTime desde = completo ? null : thread.getReiniciadoEn();
+        List<AssistantRun> threadRuns = runs.findByThreadIdOrderByCreatedAtAsc(threadId).stream()
+                .filter(run -> desde == null || run.getCreatedAt().isAfter(desde))
+                .toList();
         List<AssistantToolCall> calls = threadRuns.stream()
                 .flatMap(run -> toolCalls.findByRunIdOrderByCreatedAtAsc(run.getId()).stream())
                 .toList();
-        return new Detail(thread, messages.findByThreadIdOrderByCreatedAtAsc(threadId), threadRuns, calls);
+        List<AssistantMessage> todos = messages.findByThreadIdOrderByCreatedAtAsc(threadId);
+        return new Detail(thread, completo ? todos : visibles(thread, todos), threadRuns, calls);
+    }
+
+    /** Los mensajes desde el último "empezar de nuevo"; todos, si nunca se reinició. */
+    public static List<AssistantMessage> visibles(AssistantThread thread, List<AssistantMessage> todos) {
+        LocalDateTime desde = thread == null ? null : thread.getReiniciadoEn();
+        if (desde == null) {
+            return todos;
+        }
+        // Estricto: lo del mismo instante del corte es de antes (el saludo nuevo va justo despues).
+        return todos.stream().filter(m -> m.getCreatedAt().isAfter(desde)).toList();
     }
 
     /**

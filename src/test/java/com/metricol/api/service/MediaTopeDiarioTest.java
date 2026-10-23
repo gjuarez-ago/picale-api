@@ -33,6 +33,11 @@ import com.metricol.api.service.storage.R2StorageService;
 @SpringBootTest
 @ActiveProfiles("dev")
 @TestPropertySource(properties = {
+        "spring.datasource.url=jdbc:h2:mem:mobile-upload;DB_CLOSE_DELAY=-1",
+        "spring.datasource.driver-class-name=org.h2.Driver",
+        "spring.datasource.username=sa",
+        "spring.datasource.password=",
+        "spring.jpa.database-platform=org.hibernate.dialect.H2Dialect",
         "app.publishing.queue.poll-delay-ms=3600000",
         "app.publishing.queue.rescue-delay-ms=3600000",
         "app.scheduling.poll-delay-ms=3600000",
@@ -46,6 +51,7 @@ class MediaTopeDiarioTest {
     @Autowired private MediaService media;
     @Autowired private MediaAssetRepository assets;
     @Autowired private NamedParameterJdbcTemplate sql;
+    @Autowired private com.metricol.api.service.storage.MediaAssetReconciler reconciler;
 
     @MockitoBean private R2StorageService storage;
 
@@ -70,6 +76,46 @@ class MediaTopeDiarioTest {
         r.setContentType("image/jpeg");
         r.setSizeBytes(1024);
         media.presign(r, ws);
+    }
+
+    @Test
+    void batchMetadataAndPendingCountAreTenantScoped() {
+        var batch = UUID.randomUUID();
+        TenantIdentifierResolver.comoTenant(ws.toString(), () -> {
+            var request = new MediaPresignRequest();
+            request.setFileName("photo.jpg");
+            request.setContentType("image/jpeg");
+            request.setSizeBytes(1024);
+            request.setUploadBatchId(batch);
+            request.setUploadBatchIndex(2);
+            var signed = media.presign(request, ws);
+            var saved = assets.findById(signed.getAssetId()).orElseThrow();
+            assertThat(saved.getUploadBatchId()).isEqualTo(batch);
+            assertThat(saved.getUploadBatchIndex()).isEqualTo(2);
+            assertThat(media.renewUpload(signed.getAssetId(), ws).getAssetId()).isEqualTo(signed.getAssetId());
+            assertThat(assets.findById(signed.getAssetId()).orElseThrow().getUploadRenewedAt()).isNotNull();
+            assertThatThrownBy(() -> media.renewUpload(signed.getAssetId(), UUID.randomUUID()))
+                    .isInstanceOf(com.metricol.api.exception.ResourceNotFoundException.class);
+            assertThat(assets.countByUploadBatchIdAndStatus(batch, MediaAssetStatus.PENDING)).isEqualTo(1);
+            assertThat(assets.activeUploadsInBatch(batch, java.time.LocalDateTime.now().minusHours(1))).isEqualTo(1);
+            assertThat(assets.activeUploadsInBatch(batch, java.time.LocalDateTime.now().plusMinutes(1))).isZero();
+        });
+        TenantIdentifierResolver.comoTenant(UUID.randomUUID().toString(), () -> {
+            assertThat(assets.countByUploadBatchIdAndStatus(batch, MediaAssetStatus.PENDING)).isZero();
+        });
+    }
+
+    @Test
+    void partialVideoIsNotConfirmedOrDeleted() {
+        TenantIdentifierResolver.comoTenant(ws.toString(), () -> {
+            var asset = assets.save(MediaAsset.builder().fileName("clip.mp4").storageKey("clip")
+                    .type(MediaType.VIDEO).sizeBytes(1024L).status(MediaAssetStatus.PENDING).build());
+            when(storage.consultar("clip")).thenReturn(new R2StorageService.Consulta(512, "video/mp4"));
+            assertThatThrownBy(() -> media.confirm(asset.getId())).hasMessageContaining("incompleta");
+            assertThat(reconciler.resolver(asset.getId())).isFalse();
+            assertThat(assets.findById(asset.getId()).orElseThrow().getStatus()).isEqualTo(MediaAssetStatus.PENDING);
+            org.mockito.Mockito.verify(storage, org.mockito.Mockito.never()).deleteByKey("clip");
+        });
     }
 
     @Test

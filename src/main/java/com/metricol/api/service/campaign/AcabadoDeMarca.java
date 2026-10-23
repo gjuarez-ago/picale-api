@@ -148,11 +148,15 @@ final class AcabadoDeMarca {
                 salida.setRGB(x, y, logo.getRGB(x, y));
             }
         }
-        if (SelloDeLogo.conTransparencia(salida)) {
-            return salida;
-        }
+        // Un logo con transparencia puede traer igual un cuadro blanco: el típico "logo en
+        // tarjeta" con las esquinas redondeadas transparentes (oct 2026, Banquetera: salía
+        // en un cuadro blanco sobre cada diseño). El blanco que llega a la orilla se quita
+        // aunque el archivo traiga transparencia, pero solo si es un FONDO (mucho): un
+        // logo blanco hecho para fondos oscuros tiene trazos delgados y no se toca.
+        boolean yaTransparente = SelloDeLogo.conTransparencia(salida);
         boolean[] fondo = new boolean[w * h];
         ArrayDeque<int[]> pendientes = new ArrayDeque<>();
+        int blancosDeFondo = 0;
         for (int x = 0; x < w; x++) {
             pendientes.add(new int[] {x, 0});
             pendientes.add(new int[] {x, h - 1});
@@ -165,14 +169,25 @@ final class AcabadoDeMarca {
             int[] p = pendientes.poll();
             int x = p[0];
             int y = p[1];
-            if (x < 0 || y < 0 || x >= w || y >= h || fondo[y * w + x] || !casiBlanco(salida.getRGB(x, y))) {
+            if (x < 0 || y < 0 || x >= w || y >= h || fondo[y * w + x]) {
+                continue;
+            }
+            int pixel = salida.getRGB(x, y);
+            // Solo blanco opaco: lo transparente no conduce. Así un logo blanco con margen
+            // transparente (para fondos oscuros) nunca se toca; una tarjeta blanca que llega
+            // a la orilla, sí.
+            if ((pixel >>> 24) < 16 || !casiBlanco(pixel)) {
                 continue;
             }
             fondo[y * w + x] = true;
+            blancosDeFondo++;
             pendientes.add(new int[] {x + 1, y});
             pendientes.add(new int[] {x - 1, y});
             pendientes.add(new int[] {x, y + 1});
             pendientes.add(new int[] {x, y - 1});
+        }
+        if (yaTransparente && blancosDeFondo < 0.20 * w * h) {
+            return salida;
         }
         for (int y = 0; y < h; y++) {
             for (int x = 0; x < w; x++) {

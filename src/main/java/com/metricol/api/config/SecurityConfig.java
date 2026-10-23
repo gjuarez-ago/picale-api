@@ -51,6 +51,13 @@ public class SecurityConfig {
                 .cors(cors -> cors.configurationSource(corsConfigurationSource()))
                 .sessionManagement(session -> session.sessionCreationPolicy(SessionCreationPolicy.STATELESS))
                 .authorizeHttpRequests(auth -> auth
+                        // Los envíos internos de Tomcat —el cierre de un stream SSE, una página de
+                        // error— no son peticiones nuevas: la original ya pasó su autorización. Sin
+                        // esto, al terminar cada turno del asistente Spring volvía a evaluar el
+                        // permiso sin la sesión, lo negaba con la respuesta ya enviada y dejaba un
+                        // ERROR con traza larga en el log que tapaba los errores de verdad.
+                        .dispatcherTypeMatchers(jakarta.servlet.DispatcherType.ASYNC,
+                                jakarta.servlet.DispatcherType.ERROR).permitAll()
                         .requestMatchers("/api/v1/auth/**").permitAll()
                         // Aceptar una invitación es de quien todavía no tiene
                         // cuenta, así que no puede exigir sesión. Lo que la
