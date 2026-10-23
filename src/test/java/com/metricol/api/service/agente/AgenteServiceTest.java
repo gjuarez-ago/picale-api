@@ -88,6 +88,12 @@ class AgenteServiceTest {
     @MockitoBean
     private Redactor redactor;
 
+    // Esta suite prueba el flujo del agente, no el contador global de IA. Sin
+    // aislarlo, el estado acumulado por otras clases puede agotar el cupo del
+    // día y hacer que una tanda quede sin organizar según el orden de Maven.
+    @MockitoBean
+    private com.metricol.api.service.ai.AiQuotaGuard cupoIa;
+
     @MockitoBean
     private R2StorageService storage;
 
