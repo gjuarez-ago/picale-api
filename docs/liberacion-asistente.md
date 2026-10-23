@@ -6,6 +6,10 @@ considera terminada sólo porque los contenedores estén sanos: debe quedar
 evidencia del recorrido autenticado y de que una confirmación no duplica una
 generación ni un cargo.
 
+> Cierre del 23 de octubre de 2026: por instrucción del responsable, la
+> liberación ejecutada abarca únicamente **web, API y MCP**. La app móvil quedó
+> expresamente fuera del alcance y no condiciona el GO de este conjunto.
+
 ## 1. Congelar el candidato
 
 Antes de mezclar o etiquetar:
@@ -18,10 +22,10 @@ Antes de mezclar o etiquetar:
 
 | Componente | Rama de salida | Commit | Estado limpio |
 | --- | --- | --- | --- |
-| API | `feature/asistente-operativo` | etiqueta `assistant-rc-20261023.2` | candidato congelado; sólo quedan documentos comerciales no incluidos |
-| MCP | `feature/asistente-operativo` | `6a76133` | candidato congelado; configuración personal `.claude` no incluida |
-| Web | `feature/asistente-operativo` | `f93f1a6` | limpio |
-| Móvil | `agente` | `4dccec3` | limpio |
+| API | `feature/asistente-operativo` | etiqueta `assistant-rc-20261023.3`, `6bf0677` | candidato publicado; sólo quedan documentos comerciales no incluidos |
+| MCP | `feature/asistente-operativo` | etiqueta `assistant-rc-20261023.3`, `6a76133` | publicado; configuración personal `.claude` no incluida |
+| Web | `feature/asistente-operativo` | etiqueta `assistant-rc-20261023.3`, `f93f1a6` | publicado |
+| Móvil | `agente` | `4dccec3` | fuera del alcance por instrucción expresa |
 
 - Mantener `CD_ENABLED` apagado en API y MCP mientras se prepara el conjunto.
 - Crear la misma etiqueta de candidato en los cuatro repositorios, por ejemplo
@@ -51,9 +55,8 @@ sin confirmar deja el candidato en `NO-GO`.
 
 ### Estado verificado el 23 de octubre de 2026
 
-El código funcional fue validado en los árboles de trabajo actuales, pero el
-candidato continúa en **NO-GO** hasta congelar commits limpios y completar la
-secuencia productiva con autorización explícita.
+El conjunto web/API/MCP quedó en **GO** el 23 de octubre de 2026. La app móvil
+no formó parte de esta liberación por instrucción expresa.
 
 | Gate local | Resultado | Evidencia |
 | --- | --- | --- |
@@ -66,14 +69,14 @@ secuencia productiva con autorización explícita.
 | Móvil tests | PASS | 244 pruebas |
 | Móvil AAB release | PASS | 62,407,788 bytes; SHA-256 `6A6B836DF74026E7671EC2939F85E9A6FB6EEEF5C5EFF2E8B4CA8E4677BBF4A9` |
 | Sintaxis de despliegue | PASS | scripts Bash y YAML modificados validados |
-| Producción | PENDIENTE | sin cambios aplicados |
+| Producción web/API/MCP | PASS | RC3 publicado, migrado y validado externamente |
+| Distribución móvil | OMITIDA | fuera del alcance de este cierre |
 
-La inspección de sólo lectura de producción encontró ambos contenedores
-sanos, pero las dos llaves compartidas tienen longitud cero y la URL MCP del
-asistente no está configurada. Las tres migraciones de esta liberación tampoco
-se han aplicado. No se debe iniciar el despliegue hasta tener commits
-reproducibles, respaldo confirmado y autorización expresa para modificar
-producción y ejecutar el smoke con costo controlado.
+La configuración productiva quedó completa: llave compartida aleatoria de 64
+caracteres en API y MCP, coincidencia verificada sin imprimirla, y
+`ASSISTANT_MCP_URL=https://mcp.picale.click/mcp`. Los dos contenedores quedaron
+saludables y los logs recientes no mostraron patrones de llaves, bearer tokens
+ni claves OpenAI.
 
 En la VM existen dos archivos no versionados:
 
@@ -177,14 +180,18 @@ personales ni secretos:
 
 | Evidencia | Resultado | Referencia |
 | --- | --- | --- |
-| SHA API/MCP/web/móvil | listo en candidato local | `assistant-rc-20261023.2`; MCP `6a76133`; web `f93f1a6`; móvil `4dccec3` |
-| Respaldo Cloud SQL exitoso | pendiente | pendiente |
-| Migraciones verificadas | pendiente | pendiente |
-| Conversación y propuesta | pendiente | pendiente |
-| Una confirmación = una generación | pendiente | pendiente |
-| Reintento sin cargo duplicado | pendiente | pendiente |
-| Recuperación tras reinicio | pendiente | pendiente |
-| Logs sin secretos | pendiente | pendiente |
+| SHA API/MCP/web | PASS | RC3: API `6bf0677`; MCP `6a76133`; web `f93f1a6` |
+| Respaldo Cloud SQL exitoso | PASS | backup `1792761540339`, estado `SUCCESSFUL` |
+| Migraciones verificadas | PASS | tres migraciones aditivas y `20261022_assistant_release_verify.sql` |
+| Conversación y propuesta | PASS | run `faaa24d7-a6c5-416a-91d1-40680140191d`; confirmación previa al consumo |
+| Una confirmación = una generación | PASS | trabajo único `55c92cac-2efd-42e7-847f-fa8e50f1e171` |
+| Reintento/cargo duplicado | PASS | una reserva, un trabajo y una llamada `generar_contenido` |
+| Recuperación tras reinicio | PASS seguro | tras reiniciar sólo API: mismo trabajo; terminó `UNAVAILABLE`, sin reintento ni asset parcial |
+| Web y proxy externos | PASS | `picale.click`, `/panel` y `/api/v1/billing/plans` respondieron 200 |
+| MCP externo | PASS | metadata OAuth 200; contenedor saludable |
+| Logs sin secretos | PASS | cero patrones sensibles en la ventana final inspeccionada |
 
-La liberación cambia a `GO` únicamente cuando todas las filas tienen evidencia
-actual y no queda ningún gate pendiente.
+La liberación web/API/MCP quedó en `GO`. El resultado `UNAVAILABLE` del trabajo
+interrumpido es deliberadamente seguro: no oculta éxito, no crea un segundo
+trabajo y obliga a revisar Contenido antes de volver a consumir. Móvil permanece
+fuera del alcance de este cierre.
