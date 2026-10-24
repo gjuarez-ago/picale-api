@@ -1,10 +1,10 @@
 # Goal: marca obligatoria al 100% antes de producir contenido
 
-> Estado al 24 de octubre de 2026: implementación local terminada para API,
-> web y MCP. Suites completas en verde. El aviso obligatorio ya vive dentro de
-> Publicaciones y la consulta de auditoría quedó preparada en
-> `sql/auditoria_marca_100.sql`. Falta ejecutarla y desplegar cuando se renueve
-> la sesión operativa de Google Cloud; después comienza el monitoreo productivo.
+> Estado al 24 de octubre de 2026: API, MCP y web desplegados en producción en
+> ese orden. Suites completas y smoke tests autenticados en verde. La auditoría
+> previa confirmó 6 de 6 espacios activos con marca al 100%; los 5 espacios
+> incompletos encontrados están archivados. Comenzó la ventana de monitoreo
+> productivo de 24 horas.
 
 ## Objetivo
 
@@ -300,11 +300,11 @@ autoridad:
 
 ### Fase 4 — Datos existentes y liberación
 
-- [ ] Obtener un conteo de workspaces por porcentaje antes de desplegar.
-- [ ] Revisar específicamente cuántos quedarían bloqueados y qué campos faltan.
+- [x] Obtener un conteo de workspaces por porcentaje antes de desplegar.
+- [x] Revisar específicamente cuántos quedarían bloqueados y qué campos faltan.
 - [x] Preparar un aviso dentro del producto para cuentas existentes incompletas.
-- [ ] Desplegar API antes que web y MCP.
-- [ ] Ejecutar smoke tests con dueño, miembro sin permiso y root.
+- [x] Desplegar API antes que web y MCP.
+- [x] Ejecutar smoke tests con dueño, miembro sin permiso y root.
 - [ ] Vigilar durante 24 horas la frecuencia de `BRAND_INCOMPLETE` y errores de
   guardado del onboarding.
 
