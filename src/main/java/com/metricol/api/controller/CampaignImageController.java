@@ -14,6 +14,7 @@ import com.metricol.api.models.response.ApiResponse;
 import com.metricol.api.models.response.CampaignImageResponse;
 import com.metricol.api.service.PermissionService;
 import com.metricol.api.service.campaign.CampaignImageService;
+import com.metricol.api.service.brand.BrandAccess;
 
 import jakarta.validation.Valid;
 
@@ -30,10 +31,12 @@ public class CampaignImageController {
 
     private final CampaignImageService service;
     private final PermissionService permisos;
+    private final BrandAccess marca;
 
-    public CampaignImageController(CampaignImageService service, PermissionService permisos) {
+    public CampaignImageController(CampaignImageService service, PermissionService permisos, BrandAccess marca) {
         this.service = service;
         this.permisos = permisos;
+        this.marca = marca;
     }
 
     @PostMapping("/generate")
@@ -42,6 +45,7 @@ public class CampaignImageController {
             @Valid @RequestBody CampaignImageRequest request) {
         // Crear la imagen es el primer paso de crear una publicación.
         permisos.exigir(currentUser, Permission.POST_CREATE);
+        marca.exigirCompleta(currentUser);
         return ResponseEntity.ok(ApiResponse.success(service.generar(currentUser, request)));
     }
 }

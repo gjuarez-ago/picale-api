@@ -22,6 +22,7 @@ import com.metricol.api.models.response.CreativeComposerDraftResponse;
 import com.metricol.api.models.response.CreativeProposalResponse;
 import com.metricol.api.service.PermissionService;
 import com.metricol.api.service.creative.CreativeDirectorService;
+import com.metricol.api.service.brand.BrandAccess;
 
 import jakarta.validation.Valid;
 
@@ -31,15 +32,18 @@ import jakarta.validation.Valid;
 public class CreativeDirectorController {
     private final CreativeDirectorService director;
     private final PermissionService permissions;
+    private final BrandAccess marca;
 
-    public CreativeDirectorController(CreativeDirectorService director, PermissionService permissions) {
-        this.director = director; this.permissions = permissions;
+    public CreativeDirectorController(CreativeDirectorService director, PermissionService permissions,
+            BrandAccess marca) {
+        this.director = director; this.permissions = permissions; this.marca = marca;
     }
 
     @PostMapping("/batches")
     public ResponseEntity<ApiResponse<CreativeBatchResponse>> create(@AuthenticationPrincipal User user,
             @Valid @RequestBody CreativeBatchRequest request) {
         permissions.exigir(user, Permission.POST_CREATE);
+        marca.exigirCompleta(user);
         return ResponseEntity.accepted().body(ApiResponse.success(director.create(request, workspace(user))));
     }
 
@@ -58,6 +62,7 @@ public class CreativeDirectorController {
     public ResponseEntity<ApiResponse<CreativeProposalResponse>> approve(@AuthenticationPrincipal User user,
             @PathVariable UUID id) {
         permissions.exigir(user, Permission.POST_CREATE);
+        marca.exigirCompleta(user);
         return ResponseEntity.ok(ApiResponse.success(director.approve(id, workspace(user), user.getId())));
     }
 
@@ -65,6 +70,7 @@ public class CreativeDirectorController {
     public ResponseEntity<ApiResponse<CreativeProposalResponse>> editText(@AuthenticationPrincipal User user,
             @PathVariable UUID id, @Valid @RequestBody CreativeProposalTextRequest request) {
         permissions.exigir(user, Permission.POST_CREATE);
+        marca.exigirCompleta(user);
         return ResponseEntity.ok(ApiResponse.success(director.editText(id, workspace(user), request)));
     }
 
@@ -72,6 +78,7 @@ public class CreativeDirectorController {
     public ResponseEntity<ApiResponse<CreativeProposalResponse>> discard(@AuthenticationPrincipal User user,
             @PathVariable UUID id) {
         permissions.exigir(user, Permission.POST_CREATE);
+        marca.exigirCompleta(user);
         return ResponseEntity.ok(ApiResponse.success(director.discard(id, workspace(user))));
     }
 
@@ -79,6 +86,7 @@ public class CreativeDirectorController {
     public ResponseEntity<ApiResponse<CreativeProposalResponse>> regenerate(@AuthenticationPrincipal User user,
             @PathVariable UUID id) {
         permissions.exigir(user, Permission.POST_CREATE);
+        marca.exigirCompleta(user);
         return ResponseEntity.accepted().body(ApiResponse.success(director.regenerate(id, workspace(user))));
     }
 
@@ -86,6 +94,7 @@ public class CreativeDirectorController {
     public ResponseEntity<ApiResponse<CreativeBatchResponse>> retry(@AuthenticationPrincipal User user,
             @PathVariable UUID id) {
         permissions.exigir(user, Permission.POST_CREATE);
+        marca.exigirCompleta(user);
         return ResponseEntity.accepted().body(ApiResponse.success(director.retry(id, workspace(user))));
     }
 

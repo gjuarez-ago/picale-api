@@ -158,6 +158,22 @@ class RootAdminServiceTest {
     }
 
     @Test
+    @DisplayName("el asistente se activa por espacio solo si la organización es sin límites")
+    void asistentePorEspacio() {
+        assertThatThrownBy(() -> servicio.cambiarAsistente(espacio.getId(), true, raiz))
+                .isInstanceOf(IllegalArgumentException.class)
+                .hasMessageContaining("sin límite");
+        verify(workspaces, never()).save(espacio);
+
+        org.setSinLimites(true);
+        servicio.cambiarAsistente(espacio.getId(), true, raiz);
+
+        assertThat(espacio.isAssistantEnabled()).isTrue();
+        verify(workspaces).save(espacio);
+        assertThat(servicio.detalle(org.getId()).espacios().get(0).assistantEnabled()).isTrue();
+    }
+
+    @Test
     @DisplayName("el filtro busca por organización, espacio y gente; lo que no coincide no sale")
     void filtro() {
         assertThat(servicio.listar("tienda")).hasSize(1);

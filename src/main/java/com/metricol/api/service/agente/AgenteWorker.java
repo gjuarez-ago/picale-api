@@ -11,6 +11,7 @@ import org.springframework.stereotype.Component;
 import com.metricol.api.config.TenantIdentifierResolver;
 import com.metricol.api.entity.Workspace;
 import com.metricol.api.repository.WorkspaceRepository;
+import com.metricol.api.service.BrandService;
 
 /**
  * Lo que hace que el agente trabaje solo: cada rato recorre las cuentas con el
@@ -96,6 +97,10 @@ public class AgenteWorker {
 
         for (Workspace w : encendidas) {
             try {
+                if (BrandService.completitud(w).percent() < 100) {
+                    log.info("Agente de {} en pausa: la marca no está al 100%", w.getId());
+                    continue;
+                }
                 // El workspace se impone antes de entrar: Hibernate filtra por
                 // él al abrir cada consulta, y sin usuario no hay de dónde sacarlo.
                 TenantIdentifierResolver.comoTenant(w.getId().toString(), () -> {

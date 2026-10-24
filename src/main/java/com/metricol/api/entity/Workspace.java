@@ -47,6 +47,14 @@ public class Workspace {
     private String logoUrl;
 
     /**
+     * Permite usar el asistente en este espacio. La autorización efectiva
+     * también exige que la organización sea una cuenta sin límites.
+     */
+    @Builder.Default
+    @Column(name = "assistant_enabled", nullable = false, columnDefinition = "boolean default false")
+    private boolean assistantEnabled = false;
+
+    /**
      * El "user"/perfil con el que este workspace está dado de alta en
      * upload-post.com (ahí es donde se conectan de verdad las cuentas de
      * cada red). Se configura una vez en Ajustes; sin esto no se puede

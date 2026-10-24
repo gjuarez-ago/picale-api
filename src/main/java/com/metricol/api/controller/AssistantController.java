@@ -26,6 +26,7 @@ import com.metricol.api.models.response.ApiResponse;
 import com.metricol.api.service.assistant.AssistantThreads;
 import com.metricol.api.service.assistant.AssistantOrchestrator;
 import com.metricol.api.service.assistant.AssistantRunEvents;
+import com.metricol.api.service.assistant.AssistantAccess;
 
 /** API publica de conversaciones; la ejecucion y el SSE se agregan sobre estos IDs durables. */
 @RestController
@@ -68,17 +69,20 @@ public class AssistantController {
     private final AssistantThreads threads;
     private final AssistantOrchestrator orchestrator;
     private final AssistantRunEvents events;
+    private final AssistantAccess access;
 
     public AssistantController(AssistantThreads threads, AssistantOrchestrator orchestrator,
-            AssistantRunEvents events) {
+            AssistantRunEvents events, AssistantAccess access) {
         this.threads = threads;
         this.orchestrator = orchestrator;
         this.events = events;
+        this.access = access;
     }
 
     @PostMapping("/threads")
     public ResponseEntity<ApiResponse<ThreadDetail>> create(@AuthenticationPrincipal User user,
             @RequestBody(required = false) CreateThreadRequest request) {
+        access.exigir(user);
         return ResponseEntity.ok(ApiResponse.success(view(threads.create(user, request == null ? null : request.title()))));
     }
 
@@ -86,11 +90,13 @@ public class AssistantController {
     @GetMapping("/starters")
     public ResponseEntity<ApiResponse<List<AssistantOrchestrator.Starter>>> starters(
             @AuthenticationPrincipal User user) {
+        access.exigir(user);
         return ResponseEntity.ok(ApiResponse.success(orchestrator.starters(user)));
     }
 
     @GetMapping("/threads")
     public ResponseEntity<ApiResponse<List<ThreadSummary>>> list(@AuthenticationPrincipal User user) {
+        access.exigir(user);
         return ResponseEntity.ok(ApiResponse.success(threads.list(user).stream().map(this::summary).toList()));
     }
 
@@ -100,12 +106,14 @@ public class AssistantController {
             @PathVariable UUID id,
             @org.springframework.web.bind.annotation.RequestParam(name = "completo", defaultValue = "false")
             boolean completo) {
+        access.exigir(user);
         return ResponseEntity.ok(ApiResponse.success(view(threads.detail(user, id, completo))));
     }
 
     @PostMapping("/threads/{id}/rename")
     public ResponseEntity<ApiResponse<ThreadDetail>> rename(@AuthenticationPrincipal User user,
             @PathVariable UUID id, @RequestBody CreateThreadRequest request) {
+        access.exigir(user);
         return ResponseEntity.ok(ApiResponse.success(
                 view(threads.rename(user, id, request == null ? null : request.title()))));
     }
@@ -113,6 +121,7 @@ public class AssistantController {
     @PostMapping("/threads/{id}/close")
     public ResponseEntity<ApiResponse<ThreadDetail>> close(@AuthenticationPrincipal User user,
             @PathVariable UUID id) {
+        access.exigir(user);
         return ResponseEntity.ok(ApiResponse.success(view(threads.close(user, id))));
     }
 
@@ -120,18 +129,21 @@ public class AssistantController {
     @PostMapping("/threads/{id}/empezar-de-nuevo")
     public ResponseEntity<ApiResponse<ThreadDetail>> empezarDeNuevo(@AuthenticationPrincipal User user,
             @PathVariable UUID id) {
+        access.exigir(user);
         return ResponseEntity.ok(ApiResponse.success(view(orchestrator.empezarDeNuevo(user, id))));
     }
 
     @PostMapping("/threads/{id}/resume")
     public ResponseEntity<ApiResponse<ThreadDetail>> resume(@AuthenticationPrincipal User user,
             @PathVariable UUID id) {
+        access.exigir(user);
         return ResponseEntity.ok(ApiResponse.success(view(threads.resume(user, id))));
     }
 
     @PostMapping("/threads/{id}/messages")
     public ResponseEntity<ApiResponse<ThreadDetail>> send(@AuthenticationPrincipal User user,
             @PathVariable UUID id, @RequestBody SendMessageRequest request) {
+        access.exigir(user);
         AssistantOrchestrator.Result result = orchestrator.send(user, id,
                 new AssistantOrchestrator.Send(request.content(), request.attachmentIds(), request.currentPath(),
                         request.idempotencyKey(), request.promptName(), request.formAnswers(), request.accion()));
@@ -141,6 +153,7 @@ public class AssistantController {
     @PostMapping("/runs/{id}/confirm")
     public ResponseEntity<ApiResponse<ThreadDetail>> confirm(@AuthenticationPrincipal User user,
             @PathVariable UUID id, @RequestBody ConfirmRequest request) {
+        access.exigir(user);
         AssistantOrchestrator.Result result = orchestrator.confirm(user, id, request.token());
         return ResponseEntity.ok(ApiResponse.success(view(result.detail(), result.confirmationToken())));
     }
@@ -148,6 +161,7 @@ public class AssistantController {
     @GetMapping("/runs/{id}/generation")
     public ResponseEntity<ApiResponse<ThreadDetail>> generation(@AuthenticationPrincipal User user,
             @PathVariable UUID id) {
+        access.exigir(user);
         return ResponseEntity.ok().cacheControl(org.springframework.http.CacheControl.noStore())
                 .body(ApiResponse.success(view(orchestrator.refreshGeneration(user, id))));
     }
@@ -155,6 +169,7 @@ public class AssistantController {
     @PostMapping("/runs/{id}/confirmation-token")
     public ResponseEntity<ApiResponse<ThreadDetail>> renewConfirmation(@AuthenticationPrincipal User user,
             @PathVariable UUID id) {
+        access.exigir(user);
         AssistantOrchestrator.Result result = orchestrator.renewConfirmation(user, id);
         return ResponseEntity.ok(ApiResponse.success(view(result.detail(), result.confirmationToken())));
     }
@@ -163,18 +178,21 @@ public class AssistantController {
     @PostMapping("/runs/{id}/stop")
     public ResponseEntity<ApiResponse<ThreadDetail>> detener(@AuthenticationPrincipal User user,
             @PathVariable UUID id) {
+        access.exigir(user);
         return ResponseEntity.ok(ApiResponse.success(view(orchestrator.detener(user, id))));
     }
 
     @PostMapping("/runs/{id}/cancel")
     public ResponseEntity<ApiResponse<ThreadDetail>> cancel(@AuthenticationPrincipal User user,
             @PathVariable UUID id) {
+        access.exigir(user);
         return ResponseEntity.ok(ApiResponse.success(view(orchestrator.cancel(user, id))));
     }
 
     @GetMapping(value = "/runs/{id}/events", produces = MediaType.TEXT_EVENT_STREAM_VALUE)
     public SseEmitter events(@AuthenticationPrincipal User user, @PathVariable UUID id,
             @RequestHeader(name = "Last-Event-ID", required = false) String lastEventId) {
+        access.exigir(user);
         long after = 0;
         if (lastEventId != null && lastEventId.matches("\\d+")) after = Long.parseLong(lastEventId);
         return events.subscribe(user, id, after);
@@ -182,6 +200,7 @@ public class AssistantController {
 
     @DeleteMapping("/threads/{id}")
     public ResponseEntity<ApiResponse<Void>> delete(@AuthenticationPrincipal User user, @PathVariable UUID id) {
+        access.exigir(user);
         threads.delete(user, id);
         return ResponseEntity.ok(ApiResponse.success(null));
     }

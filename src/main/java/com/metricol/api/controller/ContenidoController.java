@@ -19,6 +19,7 @@ import com.metricol.api.models.response.ApiResponse;
 import com.metricol.api.models.response.ContenidoEstadoResponse;
 import com.metricol.api.service.PermissionService;
 import com.metricol.api.service.campaign.ContenidoJobs;
+import com.metricol.api.service.brand.BrandAccess;
 
 import jakarta.validation.Valid;
 
@@ -37,17 +38,26 @@ public class ContenidoController {
     private final ContenidoJobs trabajos;
     private final PermissionService permisos;
     private final com.metricol.api.service.assistant.AssistantGenerationRegistry generations;
+    private final BrandAccess marca;
 
     public ContenidoController(ContenidoJobs trabajos, PermissionService permisos) {
-        this(trabajos, permisos, null);
+        this(trabajos, permisos, null, null);
+    }
+
+    /** Compatibilidad para pruebas y callers internos anteriores al guard de marca. */
+    public ContenidoController(ContenidoJobs trabajos, PermissionService permisos,
+            com.metricol.api.service.assistant.AssistantGenerationRegistry generations) {
+        this(trabajos, permisos, generations, null);
     }
 
     @org.springframework.beans.factory.annotation.Autowired
     public ContenidoController(ContenidoJobs trabajos, PermissionService permisos,
-            com.metricol.api.service.assistant.AssistantGenerationRegistry generations) {
+            com.metricol.api.service.assistant.AssistantGenerationRegistry generations,
+            BrandAccess marca) {
         this.trabajos = trabajos;
         this.permisos = permisos;
         this.generations = generations;
+        this.marca = marca;
     }
 
     @PostMapping("/generate")
@@ -56,6 +66,7 @@ public class ContenidoController {
             @Valid @RequestBody CampaignImageRequest request, jakarta.servlet.http.HttpServletRequest http) {
         // Crear el contenido es el primer paso de crear una publicación.
         permisos.exigir(currentUser, Permission.POST_CREATE);
+        if (marca != null) marca.exigirCompleta(currentUser);
         String id;
         // AssistantScopeFilter ya verificó que los headers corresponden a una delegación firmada.
         if (http != null && "assistant".equalsIgnoreCase(http.getHeader(com.metricol.api.service.bitacora.BitacoraIa.CABECERA_ORIGEN))) {

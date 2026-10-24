@@ -25,7 +25,7 @@ public record OrganizacionDetalleResponse(
     }
 
     public record Espacio(UUID id, String name, String giro, String ciudad, String logoUrl, LocalDateTime createdAt,
-            LocalDateTime archivedAt, boolean perfilCompleto, Licencia licencia, Creditos creditos,
+            LocalDateTime archivedAt, boolean perfilCompleto, boolean assistantEnabled, Licencia licencia, Creditos creditos,
             List<MiembroDeEspacio> miembros) {
     }
 

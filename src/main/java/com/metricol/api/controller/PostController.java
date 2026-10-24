@@ -22,6 +22,7 @@ import com.metricol.api.models.response.PostResponse;
 import com.metricol.api.models.response.PostStatusResponse;
 import com.metricol.api.service.PermissionService;
 import com.metricol.api.service.PostService;
+import com.metricol.api.service.brand.BrandAccess;
 
 import jakarta.validation.Valid;
 
@@ -31,10 +32,12 @@ public class PostController {
 
     private final PostService service;
     private final PermissionService permisos;
+    private final BrandAccess marca;
 
-    public PostController(PostService service, PermissionService permisos) {
+    public PostController(PostService service, PermissionService permisos, BrandAccess marca) {
         this.service = service;
         this.permisos = permisos;
+        this.marca = marca;
     }
 
     @GetMapping
@@ -68,6 +71,7 @@ public class PostController {
     public ResponseEntity<ApiResponse<PostResponse>> create(
             @AuthenticationPrincipal User currentUser, @Valid @RequestBody PostSaveRequest request) {
         exigirPermisosDeGuardado(currentUser, request);
+        marca.exigirCompleta(currentUser);
         return ResponseEntity.ok(ApiResponse.success(service.create(request, currentUser)));
     }
 
@@ -77,6 +81,7 @@ public class PostController {
             @PathVariable UUID id,
             @Valid @RequestBody PostSaveRequest request) {
         exigirPermisosDeGuardado(currentUser, request);
+        marca.exigirCompleta(currentUser);
         return ResponseEntity.ok(ApiResponse.success(service.update(id, request, currentUser)));
     }
 
@@ -124,6 +129,7 @@ public class PostController {
     public ResponseEntity<ApiResponse<PostResponse>> retry(
             @AuthenticationPrincipal User currentUser, @PathVariable UUID id) {
         permisos.exigir(currentUser, Permission.POST_PUBLISH);
+        marca.exigirCompleta(currentUser);
         return ResponseEntity.ok(ApiResponse.success(service.retry(id, currentUser)));
     }
 

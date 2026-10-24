@@ -162,6 +162,15 @@ public class GlobalExceptionHandler {
         return ResponseEntity.status(HttpStatus.CONFLICT).body(ApiResponse.error(ex.getCode(), ex.getMessage()));
     }
 
+    /** La marca incompleta es un conflicto reparable por la pantalla de onboarding. */
+    @ExceptionHandler(MarcaIncompletaException.class)
+    public ResponseEntity<ApiResponse<Void>> handleMarcaIncompleta(MarcaIncompletaException ex) {
+        log.warn("Marca incompleta ({}%): {}", ex.getPercent(), ex.getMissing());
+        return ResponseEntity.status(HttpStatus.CONFLICT).body(ApiResponse.error(
+                "BRAND_INCOMPLETE", ex.getMessage(),
+                java.util.Map.of("percent", ex.getPercent(), "missing", ex.getMissing())));
+    }
+
     /**
      * El navegador cerró la conexión antes de recibir la respuesta: recargó, cerró la pestaña
      * o cortó el canal en vivo del chat. No es un error del servidor y no hay a quién

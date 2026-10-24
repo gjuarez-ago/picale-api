@@ -21,5 +21,6 @@ public record MeResponse(UUID userId, String name, String email,
         UUID organizationId, String organizationName, OrgRole orgRole, boolean administraLaOrganizacion,
         List<String> orgPermissions,
         UUID workspaceId, String workspaceName, String role, List<String> permisos,
-        boolean root) {
+        boolean root, boolean assistantEnabled,
+        int brandCompletionPercent, List<String> brandMissing, boolean brandReady) {
 }

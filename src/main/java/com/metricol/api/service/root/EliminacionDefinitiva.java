@@ -461,7 +461,7 @@ public class EliminacionDefinitiva {
      */
     private boolean existe(String tabla) {
         return contar("select count(*) from information_schema.tables where table_schema = current_schema() "
-                + "and table_name = :t", Map.of("t", tabla)) > 0;
+                + "and lower(table_name) = lower(:t)", Map.of("t", tabla)) > 0;
     }
 
     private int contar(String consulta, Map<String, ?> params) {

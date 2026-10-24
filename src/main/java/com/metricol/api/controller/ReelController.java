@@ -19,6 +19,7 @@ import com.metricol.api.models.response.ApiResponse;
 import com.metricol.api.models.response.ReelRenderResponse;
 import com.metricol.api.service.PermissionService;
 import com.metricol.api.service.reels.ReelRenderService;
+import com.metricol.api.service.brand.BrandAccess;
 
 import jakarta.validation.Valid;
 
@@ -28,16 +29,19 @@ public class ReelController {
 
     private final ReelRenderService reels;
     private final PermissionService permissions;
+    private final BrandAccess marca;
 
-    public ReelController(ReelRenderService reels, PermissionService permissions) {
+    public ReelController(ReelRenderService reels, PermissionService permissions, BrandAccess marca) {
         this.reels = reels;
         this.permissions = permissions;
+        this.marca = marca;
     }
 
     @PostMapping
     public ResponseEntity<ApiResponse<ReelRenderResponse>> create(
             @AuthenticationPrincipal User user, @Valid @RequestBody ReelCreateRequest request) {
         permissions.exigir(user, Permission.POST_CREATE);
+        marca.exigirCompleta(user);
         return ResponseEntity.accepted().body(ApiResponse.success(
                 reels.create(request, user.getWorkspace().getId())));
     }

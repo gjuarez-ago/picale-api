@@ -23,6 +23,7 @@ import com.metricol.api.enums.Permission;
 import com.metricol.api.models.response.ApiResponse;
 import com.metricol.api.service.PermissionService;
 import com.metricol.api.service.imagenes.HilosDeImagen;
+import com.metricol.api.service.brand.BrandAccess;
 
 /**
  * Crear una imagen conversando, en vez de llenando un formulario.
@@ -49,17 +50,20 @@ public class AsistenteImagenesController {
 
     private final HilosDeImagen hilos;
     private final PermissionService permisos;
+    private final BrandAccess marca;
     private final ObjectMapper mapper = new ObjectMapper();
 
-    public AsistenteImagenesController(HilosDeImagen hilos, PermissionService permisos) {
+    public AsistenteImagenesController(HilosDeImagen hilos, PermissionService permisos, BrandAccess marca) {
         this.hilos = hilos;
         this.permisos = permisos;
+        this.marca = marca;
     }
 
     /** Abre la conversación (o devuelve la que estuviera a medias). */
     @PostMapping
     public ResponseEntity<ApiResponse<Map<String, Object>>> abrir(@AuthenticationPrincipal User currentUser) {
         permisos.exigir(currentUser, Permission.POST_CREATE);
+        marca.exigirCompleta(currentUser);
         return ResponseEntity.ok(ApiResponse.success(cuerpo(hilos.abrir(currentUser))));
     }
 
@@ -68,6 +72,7 @@ public class AsistenteImagenesController {
     public ResponseEntity<ApiResponse<Map<String, Object>>> empezarDeNuevo(
             @AuthenticationPrincipal User currentUser) {
         permisos.exigir(currentUser, Permission.POST_CREATE);
+        marca.exigirCompleta(currentUser);
         return ResponseEntity.ok(ApiResponse.success(cuerpo(hilos.empezarDeNuevo(currentUser))));
     }
 
@@ -97,6 +102,7 @@ public class AsistenteImagenesController {
             @AuthenticationPrincipal User currentUser, @PathVariable UUID id,
             @RequestBody Dicho dicho) {
         permisos.exigir(currentUser, Permission.POST_CREATE);
+        marca.exigirCompleta(currentUser);
         return ResponseEntity.ok(ApiResponse.success(cuerpo(hilos.hablar(currentUser, id,
                 dicho == null ? null : dicho.texto(),
                 dicho == null ? null : dicho.fotos()))));
@@ -113,6 +119,7 @@ public class AsistenteImagenesController {
     public ResponseEntity<ApiResponse<Map<String, Object>>> crear(
             @AuthenticationPrincipal User currentUser, @PathVariable UUID id) {
         permisos.exigir(currentUser, Permission.POST_CREATE);
+        marca.exigirCompleta(currentUser);
         return ResponseEntity.ok(ApiResponse.success(
                 Map.of("trabajoId", hilos.crear(currentUser, id))));
     }

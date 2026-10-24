@@ -86,7 +86,7 @@ public class AgenteService {
     static final int POR_VUELTA = 4;
 
     /** Con menos de esto la marca dice muy poco para descartar con criterio. */
-    static final int MARCA_SUFICIENTE = 60;
+    static final int MARCA_SUFICIENTE = 100;
 
     /** Cuánto dura el candado de quien revisa un archivo; pasado esto se da por caído y otro lo toma. */
     static final int CANDADO_MINUTOS = 20;

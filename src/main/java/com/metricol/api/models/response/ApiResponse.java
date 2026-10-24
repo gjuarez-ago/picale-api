@@ -1,6 +1,7 @@
 package com.metricol.api.models.response;
 
 import java.time.OffsetDateTime;
+import java.util.Map;
 
 import lombok.Builder;
 import lombok.Getter;
@@ -13,6 +14,7 @@ public class ApiResponse<T> {
     private final T result;
     private final String errorCode;
     private final String userMessage;
+    private final Map<String, Object> details;
     private final OffsetDateTime timestamp;
 
     public static <T> ApiResponse<T> success(T result) {
@@ -28,6 +30,16 @@ public class ApiResponse<T> {
                 .ok(false)
                 .errorCode(errorCode)
                 .userMessage(userMessage)
+                .timestamp(OffsetDateTime.now())
+                .build();
+    }
+
+    public static <T> ApiResponse<T> error(String errorCode, String userMessage, Map<String, Object> details) {
+        return ApiResponse.<T>builder()
+                .ok(false)
+                .errorCode(errorCode)
+                .userMessage(userMessage)
+                .details(details)
                 .timestamp(OffsetDateTime.now())
                 .build();
     }

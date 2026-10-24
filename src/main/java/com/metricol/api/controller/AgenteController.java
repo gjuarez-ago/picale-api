@@ -23,6 +23,7 @@ import com.metricol.api.models.response.PostResponse;
 import com.metricol.api.service.PermissionService;
 import com.metricol.api.service.WorkspaceMembershipService;
 import com.metricol.api.service.agente.AgenteService;
+import com.metricol.api.service.brand.BrandAccess;
 
 /**
  * El agente de la cuenta actual: su switch, su bandeja "Por aprobar", y lo que
@@ -45,6 +46,7 @@ public class AgenteController {
     private final com.metricol.api.service.agente.plan.PlanDelAgente plan;
     private final com.metricol.api.service.agente.foto.MejoraBajoDemanda mejoras;
     private final com.metricol.api.service.agente.PresupuestoDelAsistente presupuesto;
+    private final BrandAccess marca;
 
     public AgenteController(AgenteService agente, PermissionService permisos, WorkspaceMembershipService membresias,
             com.metricol.api.service.agente.CuentaAparte otraCuenta,
@@ -52,7 +54,8 @@ public class AgenteController {
             com.metricol.api.service.social.UbicacionDelNegocio ubicacion,
             com.metricol.api.service.agente.plan.PlanDelAgente plan,
             com.metricol.api.service.agente.foto.MejoraBajoDemanda mejoras,
-            com.metricol.api.service.agente.PresupuestoDelAsistente presupuesto) {
+            com.metricol.api.service.agente.PresupuestoDelAsistente presupuesto,
+            BrandAccess marca) {
         this.plan = plan;
         this.mejoras = mejoras;
         this.presupuesto = presupuesto;
@@ -62,6 +65,7 @@ public class AgenteController {
         this.permisos = permisos;
         this.membresias = membresias;
         this.otraCuenta = otraCuenta;
+        this.marca = marca;
     }
 
     /**
@@ -125,6 +129,7 @@ public class AgenteController {
     public ResponseEntity<ApiResponse<AgenteService.Estado>> encender(
             @AuthenticationPrincipal User currentUser, @RequestBody Switch pedido) {
         permisos.exigir(currentUser, Permission.WORKSPACE_EDIT);
+        if (pedido.activo()) marca.exigirCompleta(currentUser);
         return ResponseEntity.ok(ApiResponse.success(agente.encender(ws(currentUser), pedido.activo())));
     }
 
@@ -139,6 +144,7 @@ public class AgenteController {
     @PostMapping("/propuestas/{id}/mejorar")
     public ResponseEntity<ApiResponse<Void>> mejorar(@AuthenticationPrincipal User currentUser, @PathVariable UUID id) {
         permisos.exigir(currentUser, Permission.POST_CREATE);
+        marca.exigirCompleta(currentUser);
         mejoras.pedir(id, ws(currentUser));
         return ResponseEntity.ok(ApiResponse.success(null));
     }
@@ -148,6 +154,7 @@ public class AgenteController {
     public ResponseEntity<ApiResponse<Void>> prepararFecha(@AuthenticationPrincipal User currentUser,
             @PathVariable String clave) {
         permisos.exigir(currentUser, Permission.POST_CREATE);
+        marca.exigirCompleta(currentUser);
         plan.prepararFecha(ws(currentUser), clave);
         return ResponseEntity.ok(ApiResponse.success(null));
     }
@@ -156,6 +163,7 @@ public class AgenteController {
     @PostMapping("/plan/relleno/preparar")
     public ResponseEntity<ApiResponse<Void>> prepararRelleno(@AuthenticationPrincipal User currentUser) {
         permisos.exigir(currentUser, Permission.POST_CREATE);
+        marca.exigirCompleta(currentUser);
         plan.prepararRelleno(ws(currentUser));
         return ResponseEntity.ok(ApiResponse.success(null));
     }
@@ -181,6 +189,7 @@ public class AgenteController {
     public ResponseEntity<ApiResponse<List<PostResponse>>> cambiar(
             @AuthenticationPrincipal User currentUser, @PathVariable UUID id, @RequestBody CambioPedido pedido) {
         permisos.exigir(currentUser, Permission.POST_CREATE);
+        marca.exigirCompleta(currentUser);
         return ResponseEntity.ok(ApiResponse.success(agente.cambiar(id, pedido.cambio(), ws(currentUser))));
     }
 
@@ -199,6 +208,7 @@ public class AgenteController {
     public ResponseEntity<ApiResponse<PostResponse>> aprobarEn(
             @AuthenticationPrincipal User currentUser, @PathVariable UUID cuentaId, @PathVariable UUID id) {
         exigirEn(currentUser, cuentaId, "POST_SCHEDULE");
+        marca.exigirCompleta(cuentaId);
         // En un hilo limpio: en el de la petición la sesión ya está atada a la
         // cuenta actual, y la propuesta se buscaría (y se encolaría) en la equivocada.
         return ResponseEntity.ok(ApiResponse.success(otraCuenta.en(cuentaId, () -> agente.aprobar(id, cuentaId))));
@@ -251,12 +261,14 @@ public class AgenteController {
     public ResponseEntity<ApiResponse<PostResponse>> aprobar(
             @AuthenticationPrincipal User currentUser, @PathVariable UUID id) {
         permisos.exigir(currentUser, Permission.POST_SCHEDULE);
+        marca.exigirCompleta(currentUser);
         return ResponseEntity.ok(ApiResponse.success(agente.aprobar(id, ws(currentUser))));
     }
 
     @PostMapping("/propuestas/aprobar-todas")
     public ResponseEntity<ApiResponse<AgenteService.Lote>> aprobarTodas(@AuthenticationPrincipal User currentUser) {
         permisos.exigir(currentUser, Permission.POST_SCHEDULE);
+        marca.exigirCompleta(currentUser);
         return ResponseEntity.ok(ApiResponse.success(agente.aprobarTodas(ws(currentUser))));
     }
 
@@ -276,6 +288,7 @@ public class AgenteController {
     public ResponseEntity<ApiResponse<AgenteService.Resultado>> revisar(
             @AuthenticationPrincipal User currentUser, @PathVariable UUID id) {
         permisos.exigir(currentUser, Permission.POST_CREATE);
+        marca.exigirCompleta(currentUser);
         return ResponseEntity.ok(ApiResponse.success(agente.revisarAhora(id, ws(currentUser))));
     }
 
@@ -283,6 +296,7 @@ public class AgenteController {
     @PostMapping("/revisar-ahora")
     public ResponseEntity<ApiResponse<Integer>> revisarAhora(@AuthenticationPrincipal User currentUser) {
         permisos.exigir(currentUser, Permission.POST_CREATE);
+        marca.exigirCompleta(currentUser);
         return ResponseEntity.ok(ApiResponse.success(agente.vueltaAhora(ws(currentUser))));
     }
 
@@ -296,6 +310,7 @@ public class AgenteController {
     public ResponseEntity<ApiResponse<Void>> decidir(
             @AuthenticationPrincipal User currentUser, @PathVariable UUID id, @RequestBody Decision pedido) {
         permisos.exigir(currentUser, Permission.POST_CREATE);
+        marca.exigirCompleta(currentUser);
         agente.decidir(id, pedido.va(), ws(currentUser));
         return ResponseEntity.ok(ApiResponse.success(null));
     }

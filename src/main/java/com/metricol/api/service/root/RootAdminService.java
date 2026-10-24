@@ -222,7 +222,7 @@ public class RootAdminService {
                             a.permisosEfectivos().stream().map(Enum::name).sorted().toList()))
                     .toList();
             espacios.add(new Espacio(w.getId(), w.getName(), w.getGiro(), w.getCiudad(), w.getLogoUrl(),
-                    w.getCreatedAt(), w.getArchivedAt(), w.perfilCompleto(),
+                    w.getCreatedAt(), w.getArchivedAt(), w.perfilCompleto(), w.isAssistantEnabled(),
                     l == null ? null : licencia(l, ahora), saldo, quienes));
         }
 
@@ -287,6 +287,27 @@ public class RootAdminService {
         organizaciones.save(org);
         log.info("Root {}: organizacion {} cupo de espacios = {}", quien.getEmail(), org.getId(), maxWorkspaces);
         return detalle(organizationId);
+    }
+
+    /** Activa o desactiva el asistente para un espacio; solo las cuentas sin límites pueden activarlo. */
+    @Transactional
+    public OrganizacionDetalleResponse cambiarAsistente(UUID workspaceId, boolean valor, User quien) {
+        Workspace w = workspaces.findById(workspaceId)
+                .orElseThrow(() -> new ResourceNotFoundException("Espacio de trabajo no encontrado."));
+        if (w.getOrganization() == null) {
+            throw new IllegalStateException("Ese espacio no tiene organización.");
+        }
+        if (valor && !w.getOrganization().isSinLimites()) {
+            throw new IllegalArgumentException(
+                    "El Asistente solo puede activarse en organizaciones sin límite de crédito.");
+        }
+        if (w.isAssistantEnabled() != valor) {
+            w.setAssistantEnabled(valor);
+            workspaces.save(w);
+            log.info("Root {}: asistente del espacio {} -> {}", quien.getEmail(), workspaceId,
+                    valor ? "ACTIVO" : "INACTIVO");
+        }
+        return detalle(w.getOrganization().getId());
     }
 
     /**

@@ -21,6 +21,7 @@ import com.metricol.api.models.request.root.AjusteDeCreditosRequest;
 import com.metricol.api.models.request.root.CupoRequest;
 import com.metricol.api.models.request.root.EliminarRequest;
 import com.metricol.api.models.request.root.LicenciaRequest;
+import com.metricol.api.models.request.root.ModuloAsistenteRequest;
 import com.metricol.api.models.request.root.SinLimitesRequest;
 import com.metricol.api.models.response.ApiResponse;
 import com.metricol.api.models.response.root.AdministradorResponse;
@@ -100,6 +101,15 @@ public class RootController {
             @Valid @RequestBody LicenciaRequest request) {
         acceso.exigir(currentUser);
         return ResponseEntity.ok(ApiResponse.success(admin.fijarLicencia(workspaceId, request, currentUser)));
+    }
+
+    @PutMapping("/espacios/{workspaceId}/asistente")
+    public ResponseEntity<ApiResponse<OrganizacionDetalleResponse>> asistente(
+            @AuthenticationPrincipal User currentUser, @PathVariable UUID workspaceId,
+            @Valid @RequestBody ModuloAsistenteRequest request) {
+        acceso.exigir(currentUser);
+        return ResponseEntity.ok(ApiResponse.success(
+                admin.cambiarAsistente(workspaceId, request.getValor(), currentUser)));
     }
 
     @PostMapping("/espacios/{workspaceId}/creditos")

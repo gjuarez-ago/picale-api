@@ -34,6 +34,7 @@ import com.metricol.api.service.ai.DescripcionDelNegocio;
 import com.metricol.api.service.ai.MarcaDelNegocio;
 import com.metricol.api.service.ai.Redactor;
 import com.metricol.api.service.ai.VisorDeMedios;
+import com.metricol.api.service.brand.BrandAccess;
 
 import jakarta.validation.Valid;
 
@@ -48,11 +49,12 @@ public class AiController {
     private final AiQuotaGuard cupo;
     private final PermissionService permisos;
     private final com.metricol.api.service.metricas.LoQueFunciona loQueFunciona;
+    private final BrandAccess marca;
 
     public AiController(CaptionCopywriter copywriter, DescripcionDelNegocio descripcionDelNegocio,
             VisorDeMedios visor, Redactor redactor,
             AiQuotaGuard cupo, PermissionService permisos,
-            com.metricol.api.service.metricas.LoQueFunciona loQueFunciona) {
+            com.metricol.api.service.metricas.LoQueFunciona loQueFunciona, BrandAccess marca) {
         this.loQueFunciona = loQueFunciona;
         this.copywriter = copywriter;
         this.descripcionDelNegocio = descripcionDelNegocio;
@@ -60,6 +62,7 @@ public class AiController {
         this.redactor = redactor;
         this.cupo = cupo;
         this.permisos = permisos;
+        this.marca = marca;
     }
 
     /** Propone o mejora el texto "a qué se dedica tu negocio" sin guardarlo. */
@@ -85,6 +88,7 @@ public class AiController {
             @AuthenticationPrincipal User currentUser,
             @Valid @RequestBody CaptionSuggestionRequest request) {
         permisos.exigir(currentUser, Permission.POST_CREATE);
+        marca.exigirCompleta(currentUser);
         cupo.exigirCupo();
         String caption = copywriter.suggest(request.getBrief());
         return ResponseEntity.ok(ApiResponse.success(CaptionSuggestionResponse.builder().caption(caption).build()));
@@ -104,6 +108,7 @@ public class AiController {
     public ResponseEntity<ApiResponse<Void>> analyzeMedia(
             @AuthenticationPrincipal User currentUser, @RequestBody AnalyzeMediaRequest request) {
         permisos.exigir(currentUser, Permission.POST_CREATE);
+        marca.exigirCompleta(currentUser);
         cupo.exigirCupo();
         visor.describir(request.getMediaUrls());
         return ResponseEntity.ok(ApiResponse.success(null));
@@ -118,6 +123,7 @@ public class AiController {
             @Valid @RequestBody ComposeRequest request) {
 
         permisos.exigir(currentUser, Permission.POST_CREATE);
+        marca.exigirCompleta(currentUser);
         cupo.exigirCupo();
         List<String> queSeVe = visor.describir(request.getMediaUrls());
         Redactor.Borrador borrador = redactor.redactar(
@@ -145,6 +151,7 @@ public class AiController {
             @Valid @RequestBody AjusteRequest request) {
 
         permisos.exigir(currentUser, Permission.POST_CREATE);
+        marca.exigirCompleta(currentUser);
         cupo.exigirCupo();
         Platform red = Platform.valueOf(request.getPlatform().trim().toUpperCase());
         Ajuste ajuste = Ajuste.valueOf(request.getAjuste().trim().toUpperCase());

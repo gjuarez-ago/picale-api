@@ -14,6 +14,7 @@ import com.metricol.api.models.response.ApiResponse;
 import com.metricol.api.models.response.MeResponse;
 import com.metricol.api.service.OrganizationService;
 import com.metricol.api.service.PermissionService;
+import com.metricol.api.service.BrandService;
 
 /**
  * Quién soy y qué puedo hacer aquí.
@@ -46,6 +47,7 @@ public class MeController {
                 .map(Enum::name)
                 .sorted()
                 .toList();
+        var marca = BrandService.completitud(currentUser.getWorkspace());
 
         return ResponseEntity.ok(ApiResponse.success(new MeResponse(
                 currentUser.getId(),
@@ -61,6 +63,8 @@ public class MeController {
                 currentUser.getWorkspace().getName(),
                 permisos.rolDe(currentUser).name(),
                 lista,
-                currentUser.isPlatformAdmin())));
+                currentUser.isPlatformAdmin(),
+                organizacion.isSinLimites() && currentUser.getWorkspace().isAssistantEnabled(),
+                marca.percent(), marca.faltan(), marca.percent() == 100)));
     }
 }
