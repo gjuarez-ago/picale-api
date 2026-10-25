@@ -113,6 +113,24 @@ public class AnalistaDeVideo {
     }
 
     /**
+     * Recupera lo que ya se pagó y guardó al escanear el video. Un cambio de
+     * reglas de salida puede volver a decidir destinos sin mirar ni
+     * transcribir el archivo otra vez.
+     */
+    public AnalisisDeVideo guardado(MediaAsset video) {
+        if (video == null || video.getAgenteAnalisis() == null || video.getAgenteAnalisis().isBlank()) {
+            return null;
+        }
+        try {
+            return mapper.readValue(video.getAgenteAnalisis(), AnalisisDeVideo.class);
+        } catch (Exception ex) {
+            log.debug("El análisis guardado de {} no se pudo leer: {}",
+                    video.getId(), ex.toString());
+            return null;
+        }
+    }
+
+    /**
      * Analiza un video. Nunca lanza: si no se pudo (sin cuadros, la IA falló)
      * devuelve {@code null} y el coordinador lo reintenta más tarde.
      */

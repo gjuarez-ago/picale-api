@@ -22,8 +22,14 @@ public enum MediaAssetStatus {
      */
     PENDING,
 
+    /** La copia de un video se esta generando en segundo plano. */
+    PROCESSING,
+
     /** El archivo está en R2 y su tamaño real ya está apuntado. */
     READY,
+
+    /** La copia no pudo generarse; no ocupa cuota y se puede intentar otra vez. */
+    FAILED,
 
     /**
      * El archivo ya no está en R2; la fila se conserva.

@@ -7,6 +7,8 @@ import java.util.List;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 
+import com.metricol.api.entity.MediaAsset;
+import com.metricol.api.service.agente.DecisorDelAgente;
 import com.metricol.api.service.agente.RevisorDeMarca.Veredicto;
 
 /** Cómo se lee lo que contesta la IA al mirar un video. */
@@ -58,5 +60,23 @@ class AnalistaDeVideoTest {
     void sinMarcaNoDescarta() throws Exception {
         assertThat(analista.interpretar("{\"veredicto\":\"DESCARTADA\"}", VISTOS, 300, "", false).veredicto())
                 .isEqualTo(Veredicto.OBSERVACION);
+    }
+
+    @Test
+    @DisplayName("reutiliza el análisis persistido sin volver a mirar el video")
+    void reutilizaGuardado() throws Exception {
+        MediaAsset video = MediaAsset.builder().fileName("listo.mp4").build();
+        video.setAgenteAnalisis("{\"veredicto\":\"VA\",\"motivo\":\"va\","
+                + "\"descripcion\":\"Recorrido\",\"idea\":\"Mostrarlo\",\"tipo\":\"RECORRIDO\","
+                + "\"calidad\":4,\"queFalla\":\"\",\"arreglable\":true,\"efimero\":false,"
+                + "\"necesitaTexto\":false,\"intencion\":\"VENDER\",\"portadaSegundo\":12,"
+                + "\"tomas\":[],\"tramoInicio\":30,\"tramoFin\":120,\"transcripcion\":\"hola\"}");
+
+        AnalisisDeVideo guardado = analista.guardado(video);
+
+        assertThat(guardado).isNotNull();
+        assertThat(guardado.tipo()).isEqualTo("RECORRIDO");
+        assertThat(guardado.intencion()).isEqualTo(DecisorDelAgente.Intencion.VENDER);
+        assertThat(guardado.hayVoz()).isTrue();
     }
 }

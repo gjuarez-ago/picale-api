@@ -6,6 +6,8 @@ import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Locale;
+import java.util.regex.Matcher;
+import java.util.regex.Pattern;
 import java.util.concurrent.TimeUnit;
 
 import org.slf4j.Logger;
@@ -26,6 +28,8 @@ import com.metricol.api.config.MediaAdaptProperties;
 public class FfmpegImagen {
 
     private static final Logger log = LoggerFactory.getLogger(FfmpegImagen.class);
+    private static final Pattern SILENCE_START = Pattern.compile("silence_start:\\s*([0-9.]+)");
+    private static final Pattern SILENCE_END = Pattern.compile("silence_end:\\s*([0-9.]+)");
 
     private final MediaAdaptProperties props;
 
@@ -331,6 +335,96 @@ public class FfmpegImagen {
         }
     }
 
+    /** Los limites prudentes que se muestran al abrir el editor. */
+    public record RecorteSugerido(double inicio, double fin, boolean sugerido) {
+    }
+
+    /**
+     * Busca silencio solamente en los extremos. No corta pausas interiores y
+     * no modifica nada. Un margen corto conserva la respiracion y evita
+     * empezar o terminar encima de una palabra.
+     */
+    public RecorteSugerido sugerirRecorte(String fuente, double duracion) {
+        List<String> comando = List.of(
+                props.getFfmpeg(),
+                "-hide_banner", "-nostats",
+                "-i", fuente,
+                "-vn",
+                "-af", "silencedetect=noise=-38dB:d=0.55",
+                "-f", "null", "-");
+        String salida = ejecutar(comando, "ffmpeg-silence", Math.max(props.getTimeoutSeconds(), 120));
+        if (salida == null || duracion <= 0) {
+            return new RecorteSugerido(0, duracion, false);
+        }
+
+        List<Double> inicios = numeros(SILENCE_START, salida);
+        List<Double> finales = numeros(SILENCE_END, salida);
+        double inicio = 0;
+        double fin = duracion;
+
+        // Solo cuenta como arranque muerto si el silencio nace practicamente
+        // con el archivo. Nunca perseguimos una pausa que aparezca despues.
+        if (!inicios.isEmpty() && inicios.get(0) <= 0.20 && !finales.isEmpty()) {
+            double termina = finales.get(0);
+            if (termina >= 0.75 && termina < duracion - 1) {
+                inicio = Math.max(0, termina - 0.25);
+            }
+        }
+
+        // El ultimo silencio tiene que llegar al final real. Asi una pausa a
+        // mitad de una frase no se confunde con el cierre de la grabacion.
+        if (!inicios.isEmpty() && !finales.isEmpty()) {
+            double empieza = inicios.get(inicios.size() - 1);
+            double termina = finales.get(finales.size() - 1);
+            if (termina >= duracion - 0.75 && duracion - empieza >= 0.75 && empieza > inicio + 1) {
+                fin = Math.min(duracion, empieza + 0.45);
+            }
+        }
+
+        boolean cambio = inicio >= 0.50 || duracion - fin >= 0.50;
+        return new RecorteSugerido(cambio ? inicio : 0, cambio ? fin : duracion, cambio);
+    }
+
+    /** Crea un MP4 compatible con las redes, con cortes exactos. */
+    public boolean recortarVideo(String fuente, Path destino, double inicio, double fin) {
+        double largo = fin - inicio;
+        if (inicio < 0 || largo < 0.5) {
+            return false;
+        }
+        List<String> comando = List.of(
+                props.getFfmpeg(),
+                "-hide_banner", "-loglevel", "error", "-y",
+                "-ss", String.format(Locale.US, "%.3f", inicio),
+                "-i", fuente,
+                "-t", String.format(Locale.US, "%.3f", largo),
+                "-map", "0:v:0", "-map", "0:a?",
+                "-c:v", "libx264", "-preset", "veryfast", "-crf", "20",
+                "-pix_fmt", "yuv420p",
+                "-c:a", "aac", "-b:a", "128k",
+                "-movflags", "+faststart",
+                "-map_metadata", "-1",
+                destino.toString());
+        String salida = ejecutar(comando, "ffmpeg-video-trim", 900);
+        try {
+            return salida != null && Files.size(destino) > 0;
+        } catch (IOException ex) {
+            return false;
+        }
+    }
+
+    private static List<Double> numeros(Pattern patron, String texto) {
+        List<Double> valores = new ArrayList<>();
+        Matcher matcher = patron.matcher(texto);
+        while (matcher.find()) {
+            try {
+                valores.add(Double.parseDouble(matcher.group(1)));
+            } catch (NumberFormatException ignorado) {
+                // Una linea rara de ffmpeg no invalida las demas.
+            }
+        }
+        return valores;
+    }
+
     /**
      * Mide un video sin bajarlo entero: ffprobe lee la cabecera, de un archivo
      * o de una URL pública (lee solo lo que necesita).
@@ -471,6 +565,10 @@ public class FfmpegImagen {
      * publicación.
      */
     private String ejecutar(List<String> comando, String quien) {
+        return ejecutar(comando, quien, props.getTimeoutSeconds());
+    }
+
+    private String ejecutar(List<String> comando, String quien, int timeoutSeconds) {
         Process proceso = null;
         Path registro = null;
         try {
@@ -487,9 +585,9 @@ public class FfmpegImagen {
                     .redirectOutput(registro.toFile())
                     .start();
 
-            if (!proceso.waitFor(props.getTimeoutSeconds(), TimeUnit.SECONDS)) {
+            if (!proceso.waitFor(timeoutSeconds, TimeUnit.SECONDS)) {
                 proceso.destroyForcibly();
-                log.warn("{} tardo mas de {} s y se corto", quien, props.getTimeoutSeconds());
+                log.warn("{} tardo mas de {} s y se corto", quien, timeoutSeconds);
                 return null;
             }
             String salida = Files.readString(registro);

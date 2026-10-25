@@ -64,6 +64,26 @@ public class StorageQuotaService {
         verificar(bytes, nombre, Math.min(props.getMaxUploadBytes(), props.getMaxFileBytes()));
     }
 
+    /**
+     * Comprueba el resultado de un trabajo que ya tenia bytes reservados en
+     * su fila PROCESSING. Sin devolver esa reserva al calculo se contaria dos
+     * veces el mismo archivo durante el ultimo paso.
+     */
+    @Transactional(readOnly = true)
+    public void verificarResultado(long bytes, long reservados, String nombre) {
+        if (bytes <= 0) {
+            throw new IllegalArgumentException("El archivo esta vacio.");
+        }
+        if (props.getMaxFileBytes() > 0 && bytes > props.getMaxFileBytes()) {
+            throw new QuotaExceededException("FILE_TOO_LARGE",
+                    "La copia resultante supera el maximo por archivo.");
+        }
+        if (props.cuotaActiva() && bytes > uso().disponible() + Math.max(0, reservados)) {
+            throw new QuotaExceededException("STORAGE_QUOTA_EXCEEDED",
+                    "No queda espacio suficiente para guardar la copia recortada.");
+        }
+    }
+
     private void verificar(long bytes, String nombre, long topePorArchivo) {
         if (bytes <= 0) {
             throw new IllegalArgumentException("El archivo está vacío.");

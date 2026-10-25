@@ -177,7 +177,7 @@ class AgenteServiceTest {
     }
 
     @Test
-    @DisplayName("un video de más de 90 s, sin editor, va a Observación con el mejor tramo para recortarlo")
+    @DisplayName("un video de más de 90 s sale entero como video normal")
     void videoLargo() {
         enElWorkspace(() -> {
             conInstagram();
@@ -191,11 +191,14 @@ class AgenteServiceTest {
 
             agente.vuelta(ws.getId());
 
-            assertThat(posts.propuestasDelAgente()).isEmpty();
-            assertThat(assets.findById(v.getId())).get().satisfies(a -> {
-                assertThat(a.getAgenteEtapa()).isEqualTo(EtapaAgente.OBSERVACION);
-                assertThat(a.getAgenteMotivo()).contains("del 0:42 al 2:05");
-            });
+            Post p = posts.propuestasDelAgente().get(0);
+            assertThat(p.getFormat()).isEqualTo(com.metricol.api.enums.PostFormat.VIDEO);
+            assertThat(p.getVideoDurationSeconds()).isEqualTo(300);
+            assertThat(p.getMediaUrls()).containsExactly(v.getUrl());
+            assertThat(p.getAgenteMotivo()).contains("va entero como video normal")
+                    .contains("Instagram sí: acepta el original");
+            assertThat(assets.findById(v.getId())).get()
+                    .extracting(MediaAsset::getAgenteEtapa).isEqualTo(EtapaAgente.PROPUESTA);
         });
     }
 

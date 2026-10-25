@@ -14,6 +14,24 @@ import com.metricol.api.enums.MediaAssetStatus;
 
 public interface MediaAssetRepository extends JpaRepository<MediaAsset, UUID> {
 
+    @Modifying
+    @Transactional
+    @Query("update MediaAsset m set m.processingStartedAt = :now"
+            + " where m.id = :id and m.status = com.metricol.api.enums.MediaAssetStatus.PROCESSING"
+            + " and (m.processingStartedAt is null or m.processingStartedAt < :stale)")
+    int claimVideoTrim(UUID id, LocalDateTime now, LocalDateTime stale);
+
+    /** Trabajos sin tomar o abandonados tras un reinicio, de todos los espacios. */
+    @Query(value = """
+            select cast(id as varchar), tenant_id
+            from media_assets
+            where status = 'PROCESSING'
+              and (processing_started_at is null or processing_started_at < :stale)
+            order by created_at asc
+            limit :tope
+            """, nativeQuery = true)
+    List<Object[]> videoTrimsToResume(LocalDateTime stale, int tope);
+
     long countByUploadBatchIdAndStatus(UUID uploadBatchId, MediaAssetStatus status);
 
     @Query("select count(m) from MediaAsset m where m.uploadBatchId = :batch "

@@ -36,6 +36,8 @@ public class MediaAssetResponse {
 
     /** Cuándo se archivó, o nulo si sigue a la vista en Contenido. */
     private LocalDateTime archivedAt;
+    /** Solo en una copia PROCESSING o FAILED. */
+    private String processingError;
 
     /** En qué va con el agente (PROPUESTA, OBSERVACION, DESCARTADA…), o nulo. */
     private String agenteEtapa;

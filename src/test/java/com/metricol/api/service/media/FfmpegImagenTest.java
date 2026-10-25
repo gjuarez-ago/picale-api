@@ -94,6 +94,35 @@ class FfmpegImagenTest {
         assertThat(ffmpeg.medir(basura)).isNull();
     }
 
+    @Test
+    @DisplayName("sugiere quitar solo el silencio de los extremos y no edita por su cuenta")
+    void sugiereSilencioDeExtremos() throws IOException {
+        Path video = videoConSilencioEnExtremos();
+
+        FfmpegImagen.RecorteSugerido sugerido = ffmpeg.sugerirRecorte(video.toString(), 5.0);
+
+        assertThat(sugerido.sugerido()).isTrue();
+        assertThat(sugerido.inicio()).isBetween(0.65, 0.90);
+        assertThat(sugerido.fin()).isBetween(4.30, 4.60);
+
+        // Analizar no crea ningun segundo archivo: la ejecucion necesita una
+        // confirmacion explicita y un destino elegido por quien llama.
+        assertThat(Files.list(carpeta).count()).isEqualTo(1);
+    }
+
+    @Test
+    @DisplayName("el recorte confirmado crea un MP4 nuevo y deja intacto el original")
+    void recortaUnaCopia() throws IOException {
+        Path original = videoConSilencioEnExtremos();
+        long bytesOriginales = Files.size(original);
+        Path copia = carpeta.resolve("copia.mp4");
+
+        assertThat(ffmpeg.recortarVideo(original.toString(), copia, .75, 4.45)).isTrue();
+        assertThat(Files.size(original)).isEqualTo(bytesOriginales);
+        assertThat(Files.size(copia)).isGreaterThan(0);
+        assertThat(ffmpeg.medirVideo(copia.toString()).segundos()).isBetween(3.4, 3.9);
+    }
+
     /** Una imagen sintetica del tamaño pedido, hecha con el propio ffmpeg. */
     private Path imagenDePrueba(int ancho, int alto) throws IOException {
         Path destino = carpeta.resolve(ancho + "x" + alto + ".jpg");
@@ -103,6 +132,24 @@ class FfmpegImagenTest {
                 "-frames:v", "1", destino.toString());
         try {
             pb.start().waitFor();
+        } catch (InterruptedException ex) {
+            Thread.currentThread().interrupt();
+        }
+        assertThat(Files.exists(destino)).isTrue();
+        return destino;
+    }
+
+    /** Cinco segundos: silencio, tono audible y silencio. */
+    private Path videoConSilencioEnExtremos() throws IOException {
+        Path destino = carpeta.resolve("extremos.mp4");
+        ProcessBuilder pb = new ProcessBuilder(
+                props.getFfmpeg(), "-hide_banner", "-loglevel", "error", "-y",
+                "-f", "lavfi", "-i", "color=c=blue:s=320x240:d=5",
+                "-f", "lavfi", "-i",
+                "aevalsrc=if(between(t\\,1\\,4)\\,0.3*sin(2*PI*440*t)\\,0):s=48000:d=5",
+                "-shortest", "-c:v", "libx264", "-c:a", "aac", destino.toString());
+        try {
+            assertThat(pb.start().waitFor()).isZero();
         } catch (InterruptedException ex) {
             Thread.currentThread().interrupt();
         }

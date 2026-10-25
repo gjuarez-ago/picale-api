@@ -18,11 +18,13 @@ import org.springframework.web.multipart.MultipartFile;
 import com.metricol.api.entity.User;
 import com.metricol.api.enums.Permission;
 import com.metricol.api.models.request.MediaPresignRequest;
+import com.metricol.api.models.request.VideoTrimRequest;
 import com.metricol.api.models.response.ApiResponse;
 import com.metricol.api.models.response.MediaAssetResponse;
 import com.metricol.api.models.response.MediaEliminadoResponse;
 import com.metricol.api.models.response.MediaPresignResponse;
 import com.metricol.api.models.response.StorageUsageResponse;
+import com.metricol.api.models.response.VideoTrimSuggestionResponse;
 import com.metricol.api.service.MediaService;
 import com.metricol.api.service.PermissionService;
 
@@ -172,5 +174,35 @@ public class MediaController {
             @AuthenticationPrincipal User currentUser, @PathVariable UUID id) {
         permisos.exigir(currentUser, Permission.MEDIA_DELETE);
         return ResponseEntity.ok(ApiResponse.success(service.liberarAPeticion(id)));
+    }
+
+    /**
+     * Coloca los dos controles del editor cerca del contenido real. No cambia
+     * el video: la persona todavia tiene que tocar "Guardar copia".
+     */
+    @GetMapping("/{id}/trim-suggestion")
+    public ResponseEntity<ApiResponse<VideoTrimSuggestionResponse>> trimSuggestion(
+            @AuthenticationPrincipal User currentUser, @PathVariable UUID id) {
+        permisos.exigir(currentUser, Permission.POST_CREATE);
+        return ResponseEntity.ok(ApiResponse.success(service.trimSuggestion(id)));
+    }
+
+    /** Crea otra pieza; el original nunca se sustituye ni se borra. */
+    @PostMapping("/{id}/trim")
+    public ResponseEntity<ApiResponse<MediaAssetResponse>> trim(
+            @AuthenticationPrincipal User currentUser,
+            @PathVariable UUID id,
+            @Valid @RequestBody VideoTrimRequest request) {
+        permisos.exigir(currentUser, Permission.POST_CREATE);
+        return ResponseEntity.ok(ApiResponse.success(service.trimVideo(
+                id, currentUser.getWorkspace().getId(), request.startSeconds(), request.endSeconds())));
+    }
+
+    /** Consulta pequena; evita mantener una peticion abierta mientras ffmpeg trabaja. */
+    @GetMapping("/{id}/trim-status")
+    public ResponseEntity<ApiResponse<MediaAssetResponse>> trimStatus(
+            @AuthenticationPrincipal User currentUser, @PathVariable UUID id) {
+        permisos.exigir(currentUser, Permission.POST_CREATE);
+        return ResponseEntity.ok(ApiResponse.success(service.trimStatus(id)));
     }
 }

@@ -173,6 +173,16 @@ public class PostPublishStore {
                     PublishOutcome.permanent("La publicacion no tiene ninguna red de destino."));
         }
 
+        // Ya salió en todas sus redes aunque el post no lo diga: pasa cuando
+        // alguien edita una publicada (23 oct 2026, un YouTube que salió a las
+        // 09:36 y se editó a las 11:18). No hay nada que mandar, y cerrarla
+        // como fallida pintaba en rojo un video que estaba en YouTube.
+        if (targets.stream().allMatch(t -> t.getStatus() == PostTargetStatus.PUBLISHED)) {
+            post.setStatus(PostStatus.PUBLISHED);
+            postRepository.save(post);
+            return vacio(postId, workspaceId, PublishOutcome.permanent("Ya estaba publicada."));
+        }
+
         // El perfil se comprueba ANTES de reservar cuota. Al revés —como
         // estaba— se apartaba el hueco del día de cada red para descubrir dos
         // líneas después que no había con qué publicar, y había que
@@ -270,6 +280,14 @@ public class PostPublishStore {
                 return vacio(postId, workspaceId, PublishOutcome.deferred(
                         "Cuota diaria agotada en todas las redes elegidas.",
                         DailyQuotaProperties.cuandoReintentar()));
+            }
+            // Lo que falta no puede salir, pero si ya salió en alguna red la
+            // publicación está afuera: el mismo criterio que cerrarEstadoDelPost.
+            if (alguna(post, PostTargetStatus.PUBLISHED)) {
+                post.setStatus(PostStatus.PUBLISHED);
+                postRepository.save(post);
+                return vacio(postId, workspaceId,
+                        PublishOutcome.permanent("Ya salio donde podia salir; las demas redes no pueden recibirla."));
             }
             post.setStatus(PostStatus.FAILED);
             postRepository.save(post);

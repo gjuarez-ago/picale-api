@@ -96,6 +96,14 @@ public class MediaAsset {
     /** El content-type con el que se subió; sirve para servirlo bien. */
     private String contentType;
 
+    /** Datos de una copia de video solicitada por la persona. */
+    private UUID sourceAssetId;
+    private Double trimStartSeconds;
+    private Double trimEndSeconds;
+    private LocalDateTime processingStartedAt;
+    @Column(length = 500)
+    private String processingError;
+
     /**
      * Lo que la IA vio en este archivo, en una frase.
      *

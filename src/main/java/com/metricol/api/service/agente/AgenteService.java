@@ -29,6 +29,8 @@ import com.metricol.api.enums.PostFormat;
 import com.metricol.api.enums.ReelRenderStatus;
 import com.metricol.api.enums.SocialAccountStatus;
 import com.metricol.api.exception.ResourceNotFoundException;
+import com.metricol.api.config.MediaLimitsProperties;
+import com.metricol.api.config.VideoLimitsProperties;
 import com.metricol.api.models.request.PostSaveRequest;
 import com.metricol.api.models.request.ReelCreateRequest;
 import com.metricol.api.models.response.MediaAssetResponse;
@@ -1098,7 +1100,12 @@ public class AgenteService {
         // El Analista: lo mira entero y lo escucha.
         Redactor.Negocio negocio = negocioParaRevisar(w);
         boolean marcaCompleta = BrandService.completitud(w).percent() >= MARCA_SUFICIENTE;
-        AnalisisDeVideo analisis = analista.analizar(video, duracion, negocio, marcaCompleta);
+        // Si ya fue escaneado, una regla nueva de ruteo no vuelve a gastar
+        // visión ni transcripción: usa el diagnóstico persistido.
+        AnalisisDeVideo analisis = analista.guardado(video);
+        if (analisis == null) {
+            analisis = analista.analizar(video, duracion, negocio, marcaCompleta);
+        }
         if (analisis == null) {
             marcar(video, EtapaAgente.PENDIENTE, "No pude analizarlo todavía; lo vuelvo a intentar en un rato.");
             return false;
@@ -1132,10 +1139,14 @@ public class AgenteService {
             }
             int segundos = (int) Math.round(decision.fin() - decision.inicio());
 
-            // Solo las redes que publican ese formato y aceptan esa duración.
+            // Solo las redes que publican ese formato y aceptan tanto la
+            // duración como el peso. Antes el agente miraba únicamente los
+            // segundos: un original de 464 MB incluía Instagram y el fallo
+            // aparecía hasta la madrugada al intentar publicarlo.
             List<SocialAccount> todas = cuentasParaVideo(decision.formato(), vertical);
             List<SocialAccount> destino = todas.stream()
-                    .filter(c -> !videoLimites.excede(c.getPlatform(), segundos)).toList();
+                    .filter(c -> motivoRedFuera(c.getPlatform(), segundos, video.getSizeBytes()) == null)
+                    .toList();
             if (destino.isEmpty()) {
                 marcar(video, EtapaAgente.OBSERVACION, decision.explicacion()
                         + " Pero ninguna de tus redes acepta un video de " + segundos + " s.");
@@ -1181,11 +1192,8 @@ public class AgenteService {
                     .anyMatch(c -> c.getPlatform() == Platform.INSTAGRAM)
                             ? " Instagram no: ahí todo video sale como Reel, y lo quiere vertical."
                             : "";
-            String fuera = todas.size() > destino.size()
-                    ? " " + todas.stream().filter(c -> !destino.contains(c)).map(c -> c.getPlatform().getLabel())
-                            .distinct().collect(Collectors.joining(" y ")) + " no: dura más de lo que acepta."
-                    : "";
-            String motivo = porQue + " " + decision.explicacion() + sinInstagram + fuera + lugar.frase() + " "
+            String ruteo = ruteoDelVideo(todas, destino, segundos, video.getSizeBytes(), vertical);
+            String motivo = porQue + " " + decision.explicacion() + sinInstagram + ruteo + lugar.frase() + " "
                     + cuandoYDonde(redes, hueco);
             Post propuesta = postService.crearPropuesta(pedido, hueco.cuando(), motivo, video.getUrl(),
                     decision.tratamiento() == DecisorDeVideo.Tratamiento.RECORTAR ? "RECORTE"
@@ -2201,8 +2209,13 @@ public class AgenteService {
             return;
         }
         List<SocialAccount> destino = validarRevisable(asset);
-        // Las mismas reglas que cualquier revisión: el tope de IA del día y el candado.
-        cupoIa.exigirCupo();
+        // Si el video ya está escaneado, decidir que sí no consume otra llamada
+        // de IA y tampoco debe quedar bloqueado por el tope diario.
+        boolean videoYaEscaneado = asset.getType() == com.metricol.api.enums.MediaType.VIDEO
+                && analista.guardado(asset) != null;
+        if (!videoYaEscaneado) {
+            cupoIa.exigirCupo();
+        }
         boolean rescate = asset.getAgenteEtapa() == EtapaAgente.OBSERVACION
                 || asset.getAgenteEtapa() == EtapaAgente.DESCARTADA;
         if (!tomar(asset)) {
@@ -2497,6 +2510,39 @@ public class AgenteService {
         List<SocialAccount> todas = cuentasPara(formato);
         return vertical ? todas
                 : todas.stream().filter(c -> c.getPlatform() != Platform.INSTAGRAM).toList();
+    }
+
+    /** Una frase verificable por red, con el valor real y el límite que decidió. */
+    private String ruteoDelVideo(List<SocialAccount> todas, List<SocialAccount> destino,
+            int segundos, Long bytes, boolean vertical) {
+        Set<Platform> incluidas = destino.stream().map(SocialAccount::getPlatform)
+                .collect(Collectors.toCollection(LinkedHashSet::new));
+        return todas.stream().map(SocialAccount::getPlatform).distinct().map(red -> {
+            String fuera = motivoRedFuera(red, segundos, bytes);
+            if (fuera != null) {
+                return " " + red.getLabel() + " no: " + fuera;
+            }
+            if (red == Platform.YOUTUBE) {
+                return " YouTube sí: sale como "
+                        + (vertical && segundos <= 180 ? "Short" : "video normal") + ".";
+            }
+            if (red == Platform.FACEBOOK && segundos > VideoLimitsProperties.FACEBOOK_REEL_MAX_SECONDS) {
+                return " Facebook sí: sale como video normal porque pasa de 90 s.";
+            }
+            return incluidas.contains(red) ? " " + red.getLabel() + " sí: acepta el original." : "";
+        }).collect(Collectors.joining());
+    }
+
+    private String motivoRedFuera(Platform red, Integer segundos, Long bytes) {
+        if (videoLimites.excede(red, segundos)) {
+            return "dura " + VideoLimitsProperties.legible(segundos) + " y acepta hasta "
+                    + VideoLimitsProperties.legible(videoLimites.maxSecondsFor(red)) + ".";
+        }
+        if (videoLimites.excedeBytes(red, bytes)) {
+            return "pesa " + MediaLimitsProperties.legible(bytes) + " y acepta hasta "
+                    + MediaLimitsProperties.legible(videoLimites.maxBytesFor(red)) + ".";
+        }
+        return null;
     }
 
     /** Las cuentas que pueden recibir ese formato: conectadas, encendidas y con página. */

@@ -30,11 +30,13 @@ import com.metricol.api.models.response.MediaAssetResponse;
 import com.metricol.api.models.response.MediaEliminadoResponse;
 import com.metricol.api.models.response.MediaPresignResponse;
 import com.metricol.api.models.response.StorageUsageResponse;
+import com.metricol.api.models.response.VideoTrimSuggestionResponse;
 import com.metricol.api.repository.MediaAssetRepository;
 import com.metricol.api.repository.WorkspaceRepository;
 import com.metricol.api.service.media.AdaptadorDeImagenes;
 import com.metricol.api.service.media.FfmpegImagen;
 import com.metricol.api.service.media.MiniaturasEnSegundoPlano;
+import com.metricol.api.service.media.VideoTrimDispatcher;
 import com.metricol.api.service.storage.R2StorageService;
 import com.metricol.api.service.storage.StorageQuotaService;
 
@@ -61,6 +63,7 @@ public class MediaService {
     private final WorkspaceRepository workspaces;
     private final FfmpegImagen ffmpeg;
     private final TransactionTemplate transaccion;
+    private final VideoTrimDispatcher videoTrims;
 
     public MediaService(
             MediaAssetRepository repository,
@@ -72,7 +75,8 @@ public class MediaService {
             PostService posts,
             WorkspaceRepository workspaces,
             FfmpegImagen ffmpeg,
-            TransactionTemplate transaccion) {
+            TransactionTemplate transaccion,
+            VideoTrimDispatcher videoTrims) {
         this.repository = repository;
         this.storage = storage;
         this.cuota = cuota;
@@ -83,6 +87,7 @@ public class MediaService {
         this.workspaces = workspaces;
         this.ffmpeg = ffmpeg;
         this.transaccion = transaccion;
+        this.videoTrims = videoTrims;
     }
 
     /**
@@ -578,6 +583,88 @@ public class MediaService {
                 .build();
     }
 
+    /** Analiza los extremos, pero no crea ni cambia ningun archivo. */
+    public VideoTrimSuggestionResponse trimSuggestion(UUID assetId) {
+        MediaAsset asset = videoEditable(assetId);
+        FfmpegImagen.MedidasVideo medidas = ffmpeg.medirVideo(asset.getUrl());
+        if (medidas == null) {
+            throw new IllegalArgumentException("No pude leer la duracion de este video.");
+        }
+        FfmpegImagen.RecorteSugerido sugerido = ffmpeg.sugerirRecorte(asset.getUrl(), medidas.segundos());
+        return new VideoTrimSuggestionResponse(
+                medidas.segundos(), sugerido.inicio(), sugerido.fin(), sugerido.sugerido());
+    }
+
+    /** Reserva una copia y la manda a procesar; el HTTP vuelve de inmediato. */
+    public MediaAssetResponse trimVideo(UUID assetId, UUID workspaceId, double inicio, double fin) {
+        MediaAsset original = videoEditable(assetId);
+        if (!workspaceId.toString().equals(original.getTenantId())) {
+            throw new ResourceNotFoundException("Ese video no existe en este negocio.");
+        }
+        FfmpegImagen.MedidasVideo medidas = ffmpeg.medirVideo(original.getUrl());
+        if (medidas == null) {
+            throw new IllegalArgumentException("No pude leer la duracion de este video.");
+        }
+        if (!Double.isFinite(inicio) || !Double.isFinite(fin)
+                || inicio < 0 || fin > medidas.segundos() + 0.10 || fin - inicio < 0.50) {
+            throw new IllegalArgumentException("Elige un inicio y un final validos.");
+        }
+        if (inicio < 0.05 && fin >= medidas.segundos() - 0.05) {
+            throw new IllegalArgumentException("Mueve el inicio o el final para crear un recorte.");
+        }
+
+        long reservados = original.getSizeBytes() == null ? 1 : original.getSizeBytes();
+        String nombre = nombreRecortado(original.getFileName());
+        cuota.verificar(reservados, nombre);
+        String key = storage.claveNueva(workspaceId, nombre, "video/mp4");
+        MediaAsset job = MediaAsset.builder()
+                .fileName(nombre)
+                .storageKey(key)
+                .url(storage.urlDe(key))
+                .type(MediaType.VIDEO)
+                .sizeBytes(reservados)
+                .contentType("video/mp4")
+                .status(MediaAssetStatus.PROCESSING)
+                .sourceAssetId(original.getId())
+                .trimStartSeconds(inicio)
+                .trimEndSeconds(fin)
+                .generadaPorIa(false)
+                .creadaConIa(false)
+                .build();
+        MediaAsset saved = repository.save(job);
+        if (!videoTrims.dispatch(saved.getId(), saved.getTenantId())) {
+            repository.delete(saved);
+            throw new IllegalStateException("Hay varios videos editandose. Intenta de nuevo en un momento.");
+        }
+        return toResponse(saved);
+    }
+
+    /** Estado corto que consultan app y web mientras ffmpeg trabaja. */
+    public MediaAssetResponse trimStatus(UUID assetId) {
+        MediaAsset asset = repository.findById(assetId)
+                .orElseThrow(() -> new ResourceNotFoundException("Ese recorte no existe."));
+        if (asset.getSourceAssetId() == null) {
+            throw new IllegalArgumentException("Ese archivo no es un recorte.");
+        }
+        return toResponse(asset);
+    }
+
+    private MediaAsset videoEditable(UUID assetId) {
+        MediaAsset asset = repository.findById(assetId)
+                .orElseThrow(() -> new ResourceNotFoundException("Video no encontrado."));
+        if (asset.getType() != MediaType.VIDEO || asset.getStatus() != MediaAssetStatus.READY) {
+            throw new IllegalArgumentException("Ese archivo no es un video disponible.");
+        }
+        return asset;
+    }
+
+    private static String nombreRecortado(String original) {
+        String nombre = original == null || original.isBlank() ? "video" : original;
+        int punto = nombre.lastIndexOf('.');
+        if (punto > 0) nombre = nombre.substring(0, punto);
+        return nombre + "-recortado.mp4";
+    }
+
     @Transactional
     public void delete(UUID id) {
         MediaAsset asset = repository.findById(id)
@@ -744,6 +831,7 @@ public class MediaService {
                         : MediaLimitsProperties.legible(asset.getSizeBytes()))
                 .createdAt(asset.getCreatedAt())
                 .archivedAt(asset.getArchivedAt())
+                .processingError(asset.getProcessingError())
                 .agenteEtapa(asset.getAgenteEtapa() == null ? null : asset.getAgenteEtapa().name())
                 .agenteMotivo(asset.getAgenteMotivo())
                 .usos(uso.total())

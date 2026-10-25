@@ -492,6 +492,14 @@ public class PostService {
         } else {
             post.setStatus(PostStatus.DRAFT);
         }
+
+        // Corregir una que ya salió en todas sus redes no la vuelve a mandar ni
+        // a borrador: sigue publicada. Antes quedaba en cola, la cola no
+        // encontraba nada que enviar y la cerraba como fallida.
+        if (!post.getTargets().isEmpty() && post.getTargets().stream()
+                .allMatch(t -> t.getStatus() == PostTargetStatus.PUBLISHED)) {
+            post.setStatus(PostStatus.PUBLISHED);
+        }
     }
 
     /**

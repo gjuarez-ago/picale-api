@@ -19,8 +19,8 @@ import com.metricol.api.enums.PostFormat;
  * <li>¿Calidad baja que no se arregla (movido, desenfocado)? Observación.</li>
  * <li>¿Formato? Algo del momento y corto va de historia (si hay dónde); lo
  * demás, Reel.</li>
- * <li>¿Más largo de lo que cabe? Si hay editor, se recorta al mejor tramo; si
- * no, Observación con el tramo exacto para recortarlo a mano.</li>
+ * <li>¿Más largo que un Reel? Sale entero como video normal. El recorte corto
+ * queda como una acción que la persona puede pedir, nunca como requisito.</li>
  * <li>Portada: el cuadro más claro y representativo que vio el Analista.</li>
  * </ol>
  */
@@ -91,6 +91,18 @@ public final class DecisorDeVideo {
         // pone cada red (ver VideoLimitsProperties) y se filtra al elegir destino.
         if (!vertical) {
             pasos.add("Es horizontal: va como video normal, no como Reel ni historia.");
+            pasos.add("Sin logo por ahora: en video llegará como marca de agua.");
+            return new Decision(Tratamiento.PUBLICAR, PostFormat.VIDEO, 0, 0, segundos, pasos);
+        }
+
+        // Un original largo no se frena ni se recorta a espaldas de la
+        // persona. YouTube, TikTok, Facebook y LinkedIn publican video normal;
+        // Instagram también puede recibirlo cuando cumple sus topes. La red
+        // concreta se filtra después por duración y peso.
+        if (segundos > MAX_REEL) {
+            pasos.add("Dura " + duracion(segundos)
+                    + ": va entero como video normal; no lo recorto automáticamente.");
+            pasos.add("Cada red que acepte su duración y peso lo recibe.");
             pasos.add("Sin logo por ahora: en video llegará como marca de agua.");
             return new Decision(Tratamiento.PUBLICAR, PostFormat.VIDEO, 0, 0, segundos, pasos);
         }

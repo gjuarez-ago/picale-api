@@ -45,21 +45,27 @@ class DecisorDeVideoTest {
     }
 
     @Test
-    @DisplayName("más largo que un Reel y sin editor: a Observación con el tramo exacto para recortarlo")
+    @DisplayName("más largo que un Reel: sale entero como video normal, sin recorte automático")
     void largoSinEditor() {
         var d = DecisorDeVideo.decidir(video("RECORRIDO", 4, true, false, 70, 42, 125, ""), 300, true, false);
-        assertThat(d.tratamiento()).isEqualTo(Tratamiento.OBSERVACION);
-        assertThat(d.explicacion()).contains("Dura 5 min 00 s").contains("del 0:42 al 2:05");
+        assertThat(d.tratamiento()).isEqualTo(Tratamiento.PUBLICAR);
+        assertThat(d.formato()).isEqualTo(PostFormat.VIDEO);
+        assertThat(d.inicio()).isZero();
+        assertThat(d.fin()).isEqualTo(300);
+        assertThat(d.explicacion()).contains("Dura 5 min 00 s")
+                .contains("va entero como video normal")
+                .contains("no lo recorto automáticamente");
     }
 
     @Test
-    @DisplayName("más largo que un Reel con editor: se pide recortar el mejor tramo, y la portada cuenta desde ahí")
+    @DisplayName("aunque haya editor, un video largo no se recorta sin que la persona lo pida")
     void largoConEditor() {
         var d = DecisorDeVideo.decidir(video("RECORRIDO", 4, true, false, 70, 42, 125, ""), 300, true, true);
-        assertThat(d.tratamiento()).isEqualTo(Tratamiento.RECORTAR);
-        assertThat(d.inicio()).isEqualTo(42);
-        assertThat(d.fin()).isEqualTo(125);
-        assertThat(d.portadaMs()).isEqualTo(28000);
+        assertThat(d.tratamiento()).isEqualTo(Tratamiento.PUBLICAR);
+        assertThat(d.formato()).isEqualTo(PostFormat.VIDEO);
+        assertThat(d.inicio()).isZero();
+        assertThat(d.fin()).isEqualTo(300);
+        assertThat(d.portadaMs()).isZero();
     }
 
     @Test
