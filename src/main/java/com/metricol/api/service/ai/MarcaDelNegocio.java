@@ -107,7 +107,10 @@ public record MarcaDelNegocio(
     public String contactoEs() {
         java.util.List<String> partes = new java.util.ArrayList<>();
         if (hay(whatsapp)) {
-            partes.add("WhatsApp " + whatsapp.strip());
+            // Un enlace es una invitación a unirse a un grupo o canal, no un número al que escribir.
+            partes.add(whatsapp.strip().startsWith("https://")
+                    ? "grupo o canal de WhatsApp al que invitar a unirse (enlace " + whatsapp.strip() + ")"
+                    : "WhatsApp " + whatsapp.strip());
         }
         if (hay(web)) {
             partes.add("sitio web " + web.strip());

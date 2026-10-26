@@ -19,7 +19,7 @@ import java.util.List;
  * @param publico    a quién le habla
  * @param tono       códigos de {@link com.metricol.api.enums.TonoDeMarca}, hasta tres
  * @param evitar     lo que nunca debe decir o hacer ("no hablar de precios")
- * @param whatsapp   con lada de país: +5219991234567
+ * @param whatsapp   con lada de país: +5219991234567, o el enlace de invitación a un grupo o canal
  * @param web        con https://
  * @param direccion  dónde está
  * @param historia   por qué existe el negocio, quién está detrás

@@ -42,7 +42,8 @@ public class BrandRequest {
     @Size(max = 200)
     private String evitar;
 
-    @Size(max = 40)
+    /** Un número, o el enlace de invitación a un grupo o canal de WhatsApp. */
+    @Size(max = 120)
     private String whatsapp;
 
     @Size(max = 200)

@@ -38,7 +38,10 @@ public class BrandService {
             "tono", "contacto");
 
     private static final Pattern CONTROL = Pattern.compile("[\\p{Cntrl}\\u2028\\u2029]+");
-    private static final Pattern WEB = Pattern.compile("^https?://[A-Za-z0-9-]+(\\.[A-Za-z0-9-]+)+(:\\d{2,5})?(/[^\\s]*)?$", Pattern.CASE_INSENSITIVE);
+    private static final Pattern ENLACE_WHATSAPP = Pattern.compile(
+            "^https://(chat\\.whatsapp\\.com/[A-Za-z0-9]{10,40}|(www\\.)?whatsapp\\.com/channel/[A-Za-z0-9_-]{10,60})$",
+            Pattern.CASE_INSENSITIVE);
+    private static final Pattern WEB =Pattern.compile("^https?://[A-Za-z0-9-]+(\\.[A-Za-z0-9-]+)+(:\\d{2,5})?(/[^\\s]*)?$", Pattern.CASE_INSENSITIVE);
 
     private final WorkspaceRepository repository;
 
@@ -244,6 +247,13 @@ public class BrandService {
      * México; con más, se supone que ya traen la lada.
      */
     static String whatsapp(String valor) {
+        // Un enlace a un grupo o canal: quien no quiere poner su número invita a unirse. No se salta el filtro,
+        // se cambia por uno estricto: solo enlaces reales de WhatsApp, nada de javascript: ni texto libre que
+        // acabe dentro de lo que lee la IA.
+        String enlace = valor == null ? "" : valor.strip();
+        if (enlace.regionMatches(true, 0, "http", 0, 4) || enlace.toLowerCase().contains("whatsapp.com")) {
+            return enlaceDeWhatsapp(enlace);
+        }
         String digitos = valor == null ? "" : valor.replaceAll("\\D", "");
         if (digitos.isEmpty()) {
             return null;
@@ -255,6 +265,32 @@ public class BrandService {
             return "+" + digitos;
         }
         throw new IllegalArgumentException("El WhatsApp debe tener 10 dígitos, o traer la lada del país.");
+    }
+
+    /**
+     * Invitación a un grupo o comunidad ({@code chat.whatsapp.com/<código>}) o a un canal
+     * ({@code whatsapp.com/channel/<código>}). Se guarda sin lo que venga después del {@code ?}.
+     */
+    static String enlaceDeWhatsapp(String valor) {
+        String v = valor.strip();
+        int pregunta = v.indexOf('?');
+        if (pregunta >= 0) {
+            v = v.substring(0, pregunta);
+        }
+        if (v.endsWith("/")) {
+            v = v.substring(0, v.length() - 1);
+        }
+        if (v.regionMatches(true, 0, "http://", 0, 7)) {
+            v = "https://" + v.substring(7);
+        } else if (!v.regionMatches(true, 0, "https://", 0, 8)) {
+            v = "https://" + v;
+        }
+        if (!ENLACE_WHATSAPP.matcher(v).matches()) {
+            throw new IllegalArgumentException(
+                    "Ese enlace no es de un grupo o canal de WhatsApp. Copia el que te da WhatsApp en "
+                            + "«Enlace de invitación», o escribe tu número.");
+        }
+        return v;
     }
 
     /** Con https:// y solo http(s): nada de javascript: ni de direcciones a medias. */
