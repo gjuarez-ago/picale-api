@@ -5,9 +5,13 @@ import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import java.util.UUID;
+
 import com.metricol.api.config.MediaLimitsProperties;
+import com.metricol.api.config.TenantIdentifierResolver;
 import com.metricol.api.exception.QuotaExceededException;
 import com.metricol.api.repository.MediaAssetRepository;
+import com.metricol.api.service.CuentaSinLimites;
 
 /**
  * Cuánto espacio lleva usado un workspace y si le cabe un archivo más.
@@ -29,16 +33,40 @@ public class StorageQuotaService {
 
     private final MediaAssetRepository repository;
     private final MediaLimitsProperties props;
+    private final TenantIdentifierResolver tenant;
+    private final CuentaSinLimites sinLimites;
 
-    public StorageQuotaService(MediaAssetRepository repository, MediaLimitsProperties props) {
+    public StorageQuotaService(MediaAssetRepository repository, MediaLimitsProperties props,
+            TenantIdentifierResolver tenant, CuentaSinLimites sinLimites) {
         this.repository = repository;
         this.props = props;
+        this.tenant = tenant;
+        this.sinLimites = sinLimites;
     }
 
     @Transactional(readOnly = true)
     public Uso uso() {
         long usado = repository.espacioUsado();
-        return new Uso(usado, props.cuotaActiva() ? props.getMaxBytesPerWorkspace() : null);
+        if (!props.cuotaActiva()) {
+            return new Uso(usado, null);
+        }
+        return new Uso(usado, esSinLimites() ? props.getMaxBytesPerWorkspaceSinLimites()
+                : props.getMaxBytesPerWorkspace());
+    }
+
+    /** Lo más que puede pesar un archivo en el espacio de esta petición. */
+    public long topePorArchivo() {
+        return esSinLimites() ? props.getMaxFileBytesSinLimites() : props.getMaxFileBytes();
+    }
+
+    /** ¿El espacio de esta petición es de una organización sin límites? Fuera de un espacio, no. */
+    private boolean esSinLimites() {
+        try {
+            return sinLimites.deWorkspace(UUID.fromString(tenant.resolveCurrentTenantIdentifier()));
+        } catch (IllegalArgumentException ajeno) {
+            // GLOBAL u otro valor que no es un espacio: aplica el tope de todos.
+            return false;
+        }
     }
 
     /**
@@ -48,7 +76,7 @@ public class StorageQuotaService {
      */
     @Transactional(readOnly = true)
     public void verificar(long bytes, String nombre) {
-        verificar(bytes, nombre, props.getMaxFileBytes());
+        verificar(bytes, nombre, topePorArchivo());
     }
 
     /**
@@ -61,7 +89,7 @@ public class StorageQuotaService {
      */
     @Transactional(readOnly = true)
     public void verificarSubidaDirecta(long bytes, String nombre) {
-        verificar(bytes, nombre, Math.min(props.getMaxUploadBytes(), props.getMaxFileBytes()));
+        verificar(bytes, nombre, Math.min(props.getMaxUploadBytes(), topePorArchivo()));
     }
 
     /**
@@ -74,7 +102,7 @@ public class StorageQuotaService {
         if (bytes <= 0) {
             throw new IllegalArgumentException("El archivo esta vacio.");
         }
-        if (props.getMaxFileBytes() > 0 && bytes > props.getMaxFileBytes()) {
+        if (topePorArchivo() > 0 && bytes > topePorArchivo()) {
             throw new QuotaExceededException("FILE_TOO_LARGE",
                     "La copia resultante supera el maximo por archivo.");
         }

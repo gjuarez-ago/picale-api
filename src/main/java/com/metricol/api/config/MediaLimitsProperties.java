@@ -55,6 +55,17 @@ public class MediaLimitsProperties {
     private long maxBytesPerWorkspace = 50L * 1024 * 1024 * 1024;
 
     /**
+     * Lo mismo para un espacio de una organización sin límites (la cuenta de la casa): el espacio
+     * total y el tope por archivo, en bytes (100 GB y 2 GB). Los demás siguen con
+     * {@link #maxBytesPerWorkspace} y {@link #maxFileBytes}.
+     *
+     * <p>2 GB por archivo porque el permiso de subida dura media hora (ver
+     * {@code app.media.presign-ttl-seconds}): con más, una subida desde el teléfono se corta.
+     */
+    private long maxBytesPerWorkspaceSinLimites = 100L * 1024 * 1024 * 1024;
+    private long maxFileBytesSinLimites = 2L * 1024 * 1024 * 1024;
+
+    /**
      * Archivos que puede subir un workspace en un día (desde las 0:00). Es el
      * freno de una carga masiva: sin él, pegar o arrastrar cientos de fotos
      * llena el espacio y la cola del agente de golpe. 0 = sin tope. No cuentan

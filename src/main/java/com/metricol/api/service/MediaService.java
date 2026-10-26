@@ -574,7 +574,7 @@ public class MediaService {
                 .percentUsed(uso.porcentaje())
                 .usedLabel(MediaLimitsProperties.legible(uso.usado()))
                 .limitLabel(uso.limite() == null ? null : MediaLimitsProperties.legible(uso.limite()))
-                .maxFileBytes(limites.getMaxFileBytes())
+                .maxFileBytes(cuota.topePorArchivo())
                 .maxImagesPerPost(limites.getMaxImagesPerPost())
                 .maxPorTanda(limites.getMaxPorTanda())
                 .maxVideosPorTanda(limites.getMaxVideosPorTanda())
