@@ -374,6 +374,8 @@ class EliminacionDefinitivaTest {
                 "contenido_jobs.workspace_id",
                 "ai_usage.workspace_id", "acciones_ia.workspace_id", "acciones_ia.user_id",
                 "conexiones_ia.user_id", "dispositivos.user_id",
+                // Por qué el agente mandó un video a unas redes y no a otras: se va con el espacio.
+                "decisiones_ruteo.workspace_id", "decisiones_ruteo.post_id",
                 // Los comentarios se van con el espacio; de la persona solo se
                 // olvida quién atendió (ver borrarPersona).
                 "comentarios.tenant_id", "comentarios.workspace_id",

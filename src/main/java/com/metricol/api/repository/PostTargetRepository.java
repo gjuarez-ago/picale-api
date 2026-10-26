@@ -137,6 +137,27 @@ public interface PostTargetRepository extends JpaRepository<PostTarget, UUID> {
     List<Object[]> medidasDe(@Param("tenant") String tenant, @Param("desde") LocalDateTime desde);
 
     /**
+     * Videos medidos para comparar redes: [red, formato, vistas, alcance,
+     * me gusta, comentarios, compartidos, guardados].
+     */
+    @Query(value = """
+            select sa.platform, p.format, pt.vistas, pt.alcance, pt.me_gusta,
+                   pt.comentarios, pt.compartidos, pt.guardados
+            from post_targets pt
+            join posts p on p.id = pt.post_id
+            join social_accounts sa on sa.id = pt.social_account_id
+            where p.tenant_id = :tenant
+              and p.deleted_at is null
+              and p.media_type = 'VIDEO'
+              and pt.status = 'PUBLISHED'
+              and pt.metricas_en is not null
+              and coalesce(pt.vistas, pt.alcance, pt.me_gusta, pt.comentarios,
+                           pt.compartidos, pt.guardados) is not null
+              and pt.published_at >= :desde
+            """, nativeQuery = true)
+    List<Object[]> rendimientoDeVideos(@Param("tenant") String tenant, @Param("desde") LocalDateTime desde);
+
+    /**
      * Guarda lo medido tocando SOLO esas columnas. Con un {@code save} de la
      * entidad se reescribía la fila entera, y si en ese momento la publicación
      * confirmaba su estado o su enlace, se pisaba con lo viejo.

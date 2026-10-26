@@ -348,6 +348,9 @@ public class EliminacionDefinitiva {
         sql.update("delete from ai_usage where workspace_id = :ws", ws);
         // La bitácora de lo que hicieron las IA en ese espacio se va con él.
         sql.update("delete from acciones_ia where workspace_id = :ws", ws);
+        if (existe("decisiones_ruteo")) {
+            sql.update("delete from decisiones_ruteo where workspace_id = :ws", ws);
+        }
         sql.update("delete from daily_publish_usage where workspace_id = :ws", ws);
         sql.update("delete from credit_movements where workspace_id = :ws", ws);
         sql.update("delete from image_credits where workspace_id = :ws", ws);

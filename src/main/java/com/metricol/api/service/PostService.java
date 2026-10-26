@@ -24,10 +24,12 @@ import com.metricol.api.enums.PostStatus;
 import com.metricol.api.enums.PostTargetStatus;
 import com.metricol.api.exception.ResourceNotFoundException;
 import com.metricol.api.models.request.PostSaveRequest;
+import com.metricol.api.models.response.DecisionRuteoResponse;
 import com.metricol.api.models.response.PostResponse;
 import com.metricol.api.models.response.PostStatusResponse;
 import com.metricol.api.models.response.PostTargetResponse;
 import com.metricol.api.repository.MediaAssetRepository;
+import com.metricol.api.repository.DecisionRuteoRepository;
 import com.metricol.api.repository.PostRepository;
 import com.metricol.api.repository.ReelRenderJobRepository;
 import com.metricol.api.repository.SocialAccountRepository;
@@ -50,6 +52,7 @@ public class PostService {
     private final R2StorageService storage;
     private final CuotaComprometida cupo;
     private final ReelRenderJobRepository reelJobs;
+    private final DecisionRuteoRepository decisionesRuteo;
 
     public PostService(
             PostRepository postRepository,
@@ -61,7 +64,8 @@ public class PostService {
             FormatRulesService formatRules,
             R2StorageService storage,
             CuotaComprometida cupo,
-            ReelRenderJobRepository reelJobs) {
+            ReelRenderJobRepository reelJobs,
+            DecisionRuteoRepository decisionesRuteo) {
         this.postRepository = postRepository;
         this.socialAccountRepository = socialAccountRepository;
         this.mediaAssetRepository = mediaAssetRepository;
@@ -72,6 +76,7 @@ public class PostService {
         this.storage = storage;
         this.cupo = cupo;
         this.reelJobs = reelJobs;
+        this.decisionesRuteo = decisionesRuteo;
     }
 
     /**
@@ -961,7 +966,21 @@ public class PostService {
                 .agenteMovida(post.getAgenteMovidaVeces() != null && post.getAgenteMovidaVeces() > 0)
                 .agenteCaducaEn(post.getAgenteCaducaEn())
                 .targets(targets)
+                .decisionesRuteo(decisiones(post))
                 .build();
+    }
+
+    private List<DecisionRuteoResponse> decisiones(Post post) {
+        if (decisionesRuteo == null || !post.esVideo() || post.getId() == null || post.getTenantId() == null) {
+            return List.of();
+        }
+        try {
+            UUID workspaceId = UUID.fromString(post.getTenantId());
+            return decisionesRuteo.findByWorkspaceIdAndPostIdOrderByPlataforma(workspaceId, post.getId()).stream()
+                    .map(DecisionRuteoResponse::de).toList();
+        } catch (IllegalArgumentException e) {
+            return List.of();
+        }
     }
 
     /** Para el agente: la misma respuesta que ve la persona. */

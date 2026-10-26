@@ -1,10 +1,11 @@
 # Ruteo de redes por video, con la razón en la bitácora
 
-> Estado al 25 de octubre de 2026: **primera etapa implementada.** El agente ya
+> Estado al 26 de octubre de 2026: **segunda etapa implementada.** El agente ya
 > conserva los videos largos completos como `VIDEO`, reutiliza el análisis
 > guardado y elige las redes conectadas que aceptan su duración y peso. También
-> deja la razón legible en la propuesta. Sigue pendiente la tabla histórica
-> `decisiones_ruteo` y exponer ese detalle estructurado en Bitácora y MCP. Nace de un
+> usa el rendimiento de los últimos 90 días cuando hay muestra suficiente,
+> guarda una decisión por red en `decisiones_ruteo` y expone ese detalle en la
+> publicación, la Bitácora y el MCP. Nace de un
 > caso real: 7 videos verticales de 4 a 8 minutos y de 256 a 464 MB que la
 > persona no lograba "lanzar", parados en Observación sin que nadie le dijera
 > qué hacer.
@@ -32,8 +33,11 @@ deja de preguntar.
   recortarlo. Sale entero como video normal; el recorte sigue siendo manual.
 - Resuelto: si el video ya fue escaneado, se reutiliza `agenteAnalisis`; cambiar
   el ruteo no vuelve a gastar visión ni transcripción.
-- `acciones_ia` anota **qué hizo la IA** (programó, aprobó, publicó), no **por
-  qué eligió esas redes y no otras**.
+- Resuelto: `acciones_ia` conserva **qué hizo una IA conectada** y
+  `decisiones_ruteo` conserva **por qué el agente eligió esas redes y no otras**.
+- Resuelto: con tres o más videos medidos por red, compara la mediana del mismo
+  formato; conserva la mejor y las que alcancen al menos 65% de su rendimiento.
+  Una red con menos muestra se mantiene: la falta de datos nunca la castiga.
 
 ## Reglas que el agente aplica
 
@@ -98,8 +102,8 @@ Reglas de redacción: siempre el número real contra el número permitido; siemp
 
 ### Datos que se guardan
 
-Además del texto, los datos para filtrar y medir. Propuesta: tabla
-`decisiones_ruteo` (una fila por video y red), no columnas nuevas en `posts`.
+Además del texto, los datos para filtrar y medir. La tabla
+`decisiones_ruteo` guarda una fila por video y red, sin columnas nuevas en `posts`.
 
 | Campo | Qué es |
 |---|---|
@@ -107,22 +111,23 @@ Además del texto, los datos para filtrar y medir. Propuesta: tabla
 | `plataforma` | la red |
 | `decision` | `ENVIAR` o `DEJAR_FUERA` |
 | `formato_resultante` | `REEL`, `SHORT`, `VIDEO`, o nulo si quedó fuera |
-| `codigo_razon` | `PESO`, `DURACION`, `FORMA`, `CUPO`, `SIN_CONEXION`, `OK` |
+| `codigo_razon` | `PESO`, `DURACION`, `FORMA`, `FORMATO`, `RENDIMIENTO`, `OK` |
 | `valor` / `limite` | 464 MB contra 300 MB, para poder agrupar |
 | `frase` | el texto de arriba, ya redactado |
 | `arreglo_ofrecido` | `COMPRIMIR`, `RECORTAR`, `PASAR_A_VERTICAL` o nulo |
-| `decidido_por` | `AGENTE` o `PERSONA` (si la persona cambió las redes a mano, queda dicho) |
+| `decidido_por` | `AGENTE` en esta etapa; el cambio manual a `PERSONA` queda para la interfaz web |
+| `puntaje_historico` / `muestras_historicas` | rendimiento relativo 0–100 y cuántos videos lo sostienen |
 
-La entrada de bitácora se crea **en la misma transacción** que la propuesta o la
-programación. Si anotar falla, la publicación igual se guarda (la bitácora no es
-razón de que algo no salga), pero se registra en el log.
+La decisión se guarda inmediatamente después de la propuesta. Si anotarla falla,
+la publicación igual se conserva (la bitácora no es razón de que algo no salga)
+y el fallo queda en el log.
 
 ## Dónde se ve
 
-- **Bitácora:** `GET /api/v1/bitacora-ia/{entidadId}` ya devuelve el rastro de
-  una publicación; trae también estas decisiones.
-- **Al programar:** debajo de cada red desmarcada, la misma frase en gris. Hoy
-  se desmarca sin decir nada.
+- **Bitácora:** `GET /api/v1/decisiones-ruteo` devuelve lo reciente y
+  `GET /api/v1/decisiones-ruteo/publicacion/{postId}` el rastro de una propuesta.
+- **Respuesta de publicaciones:** `decisionesRuteo` viaja dentro de cada video
+  para que la web pueda mostrar la misma explicación sin recalcularla.
 - **MCP:** la herramienta `bitacora_ia` y `ver_publicacion` las incluyen para
   que la IA pueda contestar "¿por qué no fue a Instagram?".
 - **Observación:** cuando ninguna red sirve, la lista completa y los arreglos.
@@ -144,6 +149,8 @@ espacio y por semana:
   que va aparte y con aprobación.
 - Cambiar los topes. Si una red mueve el suyo, se ajusta `VIDEO_MAX_*`.
 - La app móvil, hasta que la web y el MCP lo muestren bien.
+- Registrar como `PERSONA` los cambios manuales de redes; requiere que la web
+  envíe y confirme esa decisión.
 
 ## Preguntas abiertas para la persona dueña del producto
 

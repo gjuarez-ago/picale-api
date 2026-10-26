@@ -29,7 +29,7 @@ class PostVideoValidationTest {
     private final MediaAssetRepository assets = mock(MediaAssetRepository.class);
     private final ReelRenderJobRepository reelJobs = mock(ReelRenderJobRepository.class);
     private final PostService service = new PostService(null, null, assets, null,
-            new MediaLimitsProperties(), limits, new FormatRulesService(), storage, null, reelJobs);
+            new MediaLimitsProperties(), limits, new FormatRulesService(), storage, null, reelJobs, null);
 
     private void validar(int seconds, PostFormat format, boolean publicar) {
         validar(seconds, format, publicar,

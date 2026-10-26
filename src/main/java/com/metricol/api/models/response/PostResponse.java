@@ -93,4 +93,7 @@ public class PostResponse {
     /** Hasta cuándo espera el sí; después se retira y pregunta si todavía va. Nula si aún no se calcula. */
     private LocalDateTime agenteCaducaEn;
     private List<PostTargetResponse> targets;
+
+    /** Por qué el agente incluyó o excluyó cada red para este video. */
+    private List<DecisionRuteoResponse> decisionesRuteo;
 }

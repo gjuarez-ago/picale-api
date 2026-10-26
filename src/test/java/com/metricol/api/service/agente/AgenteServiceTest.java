@@ -36,6 +36,7 @@ import com.metricol.api.enums.PublishJobStatus;
 import com.metricol.api.enums.SocialAccountStatus;
 import com.metricol.api.models.response.PostResponse;
 import com.metricol.api.repository.MediaAssetRepository;
+import com.metricol.api.repository.DecisionRuteoRepository;
 import com.metricol.api.repository.PostRepository;
 import com.metricol.api.repository.PublishJobRepository;
 import com.metricol.api.repository.SocialAccountRepository;
@@ -81,6 +82,9 @@ class AgenteServiceTest {
 
     @Autowired
     private PublishJobRepository jobs;
+
+    @Autowired
+    private DecisionRuteoRepository decisionesRuteo;
 
     @MockitoBean
     private RevisorDeMarca revisor;
@@ -196,7 +200,14 @@ class AgenteServiceTest {
             assertThat(p.getVideoDurationSeconds()).isEqualTo(300);
             assertThat(p.getMediaUrls()).containsExactly(v.getUrl());
             assertThat(p.getAgenteMotivo()).contains("va entero como video normal")
-                    .contains("Instagram sí: acepta el original");
+                    .contains("Instagram se incluye").contains("aún no hay 3 videos");
+            assertThat(decisionesRuteo.findByWorkspaceIdAndPostIdOrderByPlataforma(ws.getId(), p.getId()))
+                    .singleElement().satisfies(d -> {
+                        assertThat(d.getPlataforma()).isEqualTo(Platform.INSTAGRAM);
+                        assertThat(d.getDecision()).isEqualTo("ENVIAR");
+                        assertThat(d.getFormatoResultante()).isEqualTo("VIDEO");
+                        assertThat(d.getCodigoRazon()).isEqualTo("OK");
+                    });
             assertThat(assets.findById(v.getId())).get()
                     .extracting(MediaAsset::getAgenteEtapa).isEqualTo(EtapaAgente.PROPUESTA);
         });
@@ -293,6 +304,7 @@ class AgenteServiceTest {
     @AfterEach
     void limpiar() {
         enElWorkspace(() -> {
+            decisionesRuteo.deleteByWorkspaceId(ws.getId());
             posts.findAll().forEach(posts::delete);
             assetsCreados.forEach(id -> assets.findById(id).ifPresent(assets::delete));
             cuentasCreadas.forEach(id -> cuentas.findById(id).ifPresent(cuentas::delete));

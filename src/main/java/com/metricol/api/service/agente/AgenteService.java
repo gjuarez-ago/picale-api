@@ -54,7 +54,9 @@ import com.metricol.api.service.media.HuellaDeImagen;
 import com.metricol.api.service.agente.video.AnalisisDeVideo;
 import com.metricol.api.service.agente.video.AnalistaDeVideo;
 import com.metricol.api.service.agente.video.DecisorDeVideo;
+import com.metricol.api.service.agente.video.DecisionesDeRuteo;
 import com.metricol.api.service.agente.video.EditorDeVideo;
+import com.metricol.api.service.agente.video.RendimientoPorRed;
 import com.metricol.api.service.media.FfmpegImagen;
 import com.metricol.api.service.media.MedidorDeVideo;
 import com.metricol.api.service.media.RetoqueDeFoto;
@@ -137,6 +139,8 @@ public class AgenteService {
     private final OrganizadorDeContenido organizador;
     private final ReelRenderService reels;
     private final ReelRenderJobRepository reelJobs;
+    private final RendimientoPorRed rendimientoPorRed;
+    private final DecisionesDeRuteo decisionesDeRuteo;
 
     /**
      * Cuánto se espera sin fotos nuevas para organizar una tanda: subir veinte
@@ -195,7 +199,8 @@ public class AgenteService {
             PresupuestoDelAsistente presupuesto,
             com.metricol.api.service.ai.PerfiladorDelNegocio perfilador,
             com.metricol.api.service.ai.RevisorDeLogo revisorDeLogo,
-            ReelRenderService reels, ReelRenderJobRepository reelJobs) {
+            ReelRenderService reels, ReelRenderJobRepository reelJobs,
+            RendimientoPorRed rendimientoPorRed, DecisionesDeRuteo decisionesDeRuteo) {
         this.revisorDeLogo = revisorDeLogo;
         this.presupuesto = presupuesto;
         this.perfilador = perfilador;
@@ -227,6 +232,8 @@ public class AgenteService {
         this.cupoIa = cupoIa;
         this.reels = reels;
         this.reelJobs = reelJobs;
+        this.rendimientoPorRed = rendimientoPorRed;
+        this.decisionesDeRuteo = decisionesDeRuteo;
     }
 
     // ------------------------------------------------------------ el switch
@@ -1143,9 +1150,17 @@ public class AgenteService {
             // duración como el peso. Antes el agente miraba únicamente los
             // segundos: un original de 464 MB incluía Instagram y el fallo
             // aparecía hasta la madrugada al intentar publicarlo.
+            List<SocialAccount> consideradas = cuentasPara(decision.formato());
             List<SocialAccount> todas = cuentasParaVideo(decision.formato(), vertical);
-            List<SocialAccount> destino = todas.stream()
+            List<SocialAccount> compatibles = todas.stream()
                     .filter(c -> motivoRedFuera(c.getPlatform(), segundos, video.getSizeBytes()) == null)
+                    .toList();
+            Set<Platform> compatiblesPorRed = compatibles.stream().map(SocialAccount::getPlatform)
+                    .collect(Collectors.toCollection(LinkedHashSet::new));
+            RendimientoPorRed.Seleccion rendimiento = rendimientoPorRed.elegir(
+                    w.getId(), compatiblesPorRed, decision.formato());
+            List<SocialAccount> destino = compatibles.stream()
+                    .filter(c -> rendimiento.elegidas().contains(c.getPlatform()))
                     .toList();
             if (destino.isEmpty()) {
                 marcar(video, EtapaAgente.OBSERVACION, decision.explicacion()
@@ -1186,19 +1201,21 @@ public class AgenteService {
             pedido.setConUbicacion(lugar.va());
 
             String porQue = forzar ? "Me dijiste que va." : "Va con tu marca: " + sinPunto(analisis.motivo()) + ".";
-            // Por qué falta Instagram: no se filtró por duración, se quedó fuera
-            // desde el principio, así que el aviso de abajo no lo explicaría.
-            String sinInstagram = !vertical && cuentasPara(PostFormat.VIDEO).stream()
-                    .anyMatch(c -> c.getPlatform() == Platform.INSTAGRAM)
-                            ? " Instagram no: ahí todo video sale como Reel, y lo quiere vertical."
-                            : "";
-            String ruteo = ruteoDelVideo(todas, destino, segundos, video.getSizeBytes(), vertical);
-            String motivo = porQue + " " + decision.explicacion() + sinInstagram + ruteo + lugar.frase() + " "
+            String ruteo = ruteoDelVideo(consideradas, destino, segundos, video.getSizeBytes(), vertical, rendimiento);
+            String motivo = porQue + " " + decision.explicacion() + ruteo + lugar.frase() + " "
                     + cuandoYDonde(redes, hueco);
             Post propuesta = postService.crearPropuesta(pedido, hueco.cuando(), motivo, video.getUrl(),
                     decision.tratamiento() == DecisorDeVideo.Tratamiento.RECORTAR ? "RECORTE"
                             : DecisorDelAgente.Tratamiento.TAL_CUAL.name(),
                     categoria.name());
+            try {
+                decisionesDeRuteo.guardar(w.getId(), propuesta.getId(), video.getId(),
+                        decisionesPara(consideradas, destino, decision.formato(), segundos,
+                                video.getSizeBytes(), vertical, rendimiento));
+            } catch (RuntimeException ex) {
+                // La explicación ayuda, pero nunca debe echar atrás una propuesta válida.
+                log.warn("No se pudo guardar el ruteo de la propuesta {}: {}", propuesta.getId(), ex.toString());
+            }
             if (decision.formato() == PostFormat.REEL) {
                 propuesta.setPortadaMs(decision.portadaMs());
                 posts.save(propuesta);
@@ -2514,13 +2531,21 @@ public class AgenteService {
 
     /** Una frase verificable por red, con el valor real y el límite que decidió. */
     private String ruteoDelVideo(List<SocialAccount> todas, List<SocialAccount> destino,
-            int segundos, Long bytes, boolean vertical) {
+            int segundos, Long bytes, boolean vertical, RendimientoPorRed.Seleccion rendimiento) {
         Set<Platform> incluidas = destino.stream().map(SocialAccount::getPlatform)
                 .collect(Collectors.toCollection(LinkedHashSet::new));
         return todas.stream().map(SocialAccount::getPlatform).distinct().map(red -> {
+            if (!vertical && red == Platform.INSTAGRAM) {
+                return " Instagram no: ahí todo video sale como Reel, y lo quiere vertical.";
+            }
             String fuera = motivoRedFuera(red, segundos, bytes);
             if (fuera != null) {
                 return " " + red.getLabel() + " no: " + fuera;
+            }
+            RendimientoPorRed.Evaluacion historico = rendimiento.evaluaciones().get(red);
+            if (historico != null) {
+                String salida = salidaParaRed(red, segundos, vertical);
+                return " " + historico.frase() + salida;
             }
             if (red == Platform.YOUTUBE) {
                 return " YouTube sí: sale como "
@@ -2531,6 +2556,69 @@ public class AgenteService {
             }
             return incluidas.contains(red) ? " " + red.getLabel() + " sí: acepta el original." : "";
         }).collect(Collectors.joining());
+    }
+
+    private String salidaParaRed(Platform red, int segundos, boolean vertical) {
+        if (red == Platform.YOUTUBE) {
+            return " Sale como " + (vertical && segundos <= 180 ? "Short" : "video normal") + ".";
+        }
+        if (red == Platform.FACEBOOK && segundos > VideoLimitsProperties.FACEBOOK_REEL_MAX_SECONDS) {
+            return " Sale como video normal porque pasa de 90 s.";
+        }
+        return "";
+    }
+
+    private List<DecisionesDeRuteo.Nueva> decisionesPara(List<SocialAccount> consideradas,
+            List<SocialAccount> destino, PostFormat formato, int segundos, Long bytes, boolean vertical,
+            RendimientoPorRed.Seleccion rendimiento) {
+        Set<Platform> incluidas = destino.stream().map(SocialAccount::getPlatform)
+                .collect(Collectors.toCollection(LinkedHashSet::new));
+        List<DecisionesDeRuteo.Nueva> resultado = new ArrayList<>();
+        consideradas.stream().map(SocialAccount::getPlatform).distinct().forEach(red -> {
+            String formatoRed = formatoParaRed(formato, red, segundos, vertical);
+            RendimientoPorRed.Evaluacion historico = rendimiento.evaluaciones().get(red);
+            if (!vertical && red == Platform.INSTAGRAM) {
+                resultado.add(new DecisionesDeRuteo.Nueva(red, "DEJAR_FUERA", null, "FORMA",
+                        "horizontal", "vertical", "Instagram queda fuera: sus videos salen como Reel vertical.",
+                        "PASAR_A_VERTICAL", null, 0));
+                return;
+            }
+            if (videoLimites.excede(red, segundos)) {
+                resultado.add(new DecisionesDeRuteo.Nueva(red, "DEJAR_FUERA", null, "DURACION",
+                        VideoLimitsProperties.legible(segundos),
+                        VideoLimitsProperties.legible(videoLimites.maxSecondsFor(red)),
+                        red.getLabel() + " queda fuera: dura " + VideoLimitsProperties.legible(segundos)
+                                + " y acepta hasta " + VideoLimitsProperties.legible(videoLimites.maxSecondsFor(red)) + ".",
+                        "RECORTAR", historico == null ? null : historico.puntaje(),
+                        historico == null ? 0 : historico.muestras()));
+                return;
+            }
+            if (videoLimites.excedeBytes(red, bytes)) {
+                resultado.add(new DecisionesDeRuteo.Nueva(red, "DEJAR_FUERA", null, "PESO",
+                        MediaLimitsProperties.legible(bytes),
+                        MediaLimitsProperties.legible(videoLimites.maxBytesFor(red)),
+                        red.getLabel() + " queda fuera: pesa " + MediaLimitsProperties.legible(bytes)
+                                + " y acepta hasta " + MediaLimitsProperties.legible(videoLimites.maxBytesFor(red)) + ".",
+                        "COMPRIMIR", historico == null ? null : historico.puntaje(),
+                        historico == null ? 0 : historico.muestras()));
+                return;
+            }
+            boolean enviar = incluidas.contains(red);
+            String frase = historico != null ? historico.frase()
+                    : red.getLabel() + (enviar ? " se incluye: acepta el original." : " queda fuera.");
+            resultado.add(new DecisionesDeRuteo.Nueva(red, enviar ? "ENVIAR" : "DEJAR_FUERA",
+                    enviar ? formatoRed : null, enviar ? "OK" : "RENDIMIENTO",
+                    historico == null || historico.puntaje() == null ? null : historico.puntaje() + "/100",
+                    enviar ? null : "65/100", frase, null,
+                    historico == null ? null : historico.puntaje(), historico == null ? 0 : historico.muestras()));
+        });
+        return resultado;
+    }
+
+    private static String formatoParaRed(PostFormat formato, Platform red, int segundos, boolean vertical) {
+        if (red == Platform.YOUTUBE && vertical && segundos <= 180) return "SHORT";
+        if (red == Platform.FACEBOOK && segundos > VideoLimitsProperties.FACEBOOK_REEL_MAX_SECONDS) return "VIDEO";
+        return formato.name();
     }
 
     private String motivoRedFuera(Platform red, Integer segundos, Long bytes) {
