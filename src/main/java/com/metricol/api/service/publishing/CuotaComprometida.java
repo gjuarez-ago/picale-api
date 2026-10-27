@@ -92,14 +92,14 @@ public class CuotaComprometida {
         if (post.getStatus() == PostStatus.DRAFT) {
             return; // Un borrador no compromete nada.
         }
-        if (sinLimites.deWorkspace(workspace)) {
-            return; // La cuenta de la casa no tiene tope.
-        }
-
-        boolean esNueva = excluir == null;
-        exigirPendientes(excluir);
-        if (esNueva) {
-            exigirCreadasHoy();
+        // La cuenta de la casa no tiene topes comerciales (pendientes, creadas al día), pero sí el de cada
+        // red, que lo pone el proveedor y protege la cuenta. Ver PublishQuotaService.reservar.
+        if (!sinLimites.deWorkspace(workspace)) {
+            boolean esNueva = excluir == null;
+            exigirPendientes(excluir);
+            if (esNueva) {
+                exigirCreadasHoy();
+            }
         }
         exigirRedes(post, workspace, excluir);
     }
@@ -152,15 +152,22 @@ public class CuotaComprometida {
 
             // Lo ya publicado hoy solo cuenta si la publicación es para hoy:
             // el contador de mañana empieza en cero.
+            // Y se cuenta como el proveedor, en las últimas horas corridas, además del contador del día:
+            // la cuenta de la casa no lleva contador, y lo de anoche también pesa en la ventana de Meta.
             long publicadasHoy = esHoy
-                    ? consumo.findByWorkspaceIdAndPlatformAndDay(workspace, red, dia)
-                            .map(fila -> (long) fila.getUsed()).orElse(0L)
+                    ? Math.max(consumo.findByWorkspaceIdAndPlatformAndDay(workspace, red, dia)
+                            .map(fila -> (long) fila.getUsed()).orElse(0L), publicadasEnVentana(tenant, red))
                     : 0L;
 
             if (!cabe(comprometidas, publicadasHoy, tope)) {
                 throw new QuotaExceededException("DAILY_QUOTA_EXCEEDED", mensaje(red, tope, dia, esHoy));
             }
         }
+    }
+
+    private long publicadasEnVentana(String tenant, Platform red) {
+        int horas = limites.ventanaRodanteHoras();
+        return horas <= 0 ? 0 : destinos.countPublicadasDesde(tenant, red, LocalDateTime.now().minusHours(horas));
     }
 
     /** ¿Cabe una más? Separado para poder probarlo sin base. */

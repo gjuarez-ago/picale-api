@@ -99,17 +99,20 @@ public class PublishQuotaService {
      */
     @Transactional
     public Reserva reservar(UUID workspaceId, Platform platform) {
-        if (sinLimites.deWorkspace(workspaceId)) {
-            // La cuenta de la casa no gasta cupo, ni el suyo ni el global de los demás.
-            return Reserva.OK;
-        }
         LocalDate hoy = LocalDate.now();
         Integer tope = limites.cuotaDiaria(platform);
 
+        // El tope de la red lo pone el proveedor (Facebook: 25 en 24 h corridas) y protege la cuenta:
+        // pasarse es que la red rechace todo. Vale también para la cuenta de la casa. El 27 oct 2026 la
+        // cuenta sin límites de Juan Rodriguez soltó 22 a Facebook en una hora y upload-post rechazó el resto.
         if (tope != null && excedeVentanaMovil(workspaceId, platform, tope)) {
             log.info("Cuota de {} agotada en ventana movil para el workspace {} ({} en {} h)",
                     platform, workspaceId, tope, limites.ventanaRodanteHoras());
             return Reserva.RED_AGOTADA;
+        }
+        if (sinLimites.deWorkspace(workspaceId)) {
+            // Lo que sí no gasta la cuenta de la casa: el contador del día ni el cupo global de los demás.
+            return Reserva.OK;
         }
 
         if (!consumirDelDia(workspaceId, platform, hoy, tope)) {
@@ -154,11 +157,17 @@ public class PublishQuotaService {
             usados.put(fila.getPlatform(), fila.getUsed());
         }
 
-        boolean sinTope = sinLimites.deWorkspace(workspaceId);
+        // La cuenta de la casa no lleva contador del día, pero el tope de cada red también la alcanza:
+        // para ella se cuenta lo publicado en la ventana móvil, que es como lo cuenta el proveedor.
+        boolean casa = sinLimites.deWorkspace(workspaceId);
+        int horas = limites.ventanaRodanteHoras();
         List<Estado> estados = new ArrayList<>();
         for (Platform platform : Platform.values()) {
-            int usado = usados.getOrDefault(platform, 0);
-            estados.add(new Estado(platform, usado, sinTope ? null : limites.cuotaDiaria(platform)));
+            int usado = casa && horas > 0
+                    ? (int) destinos.countPublicadasDesde(workspaceId.toString(), platform,
+                            LocalDateTime.now().minusHours(horas))
+                    : usados.getOrDefault(platform, 0);
+            estados.add(new Estado(platform, usado, limites.cuotaDiaria(platform)));
         }
         return estados;
     }
