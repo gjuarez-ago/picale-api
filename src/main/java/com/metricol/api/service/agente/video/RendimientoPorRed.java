@@ -17,7 +17,15 @@ import com.metricol.api.enums.Platform;
 import com.metricol.api.enums.PostFormat;
 import com.metricol.api.repository.PostTargetRepository;
 
-/** Aprende qué redes rinden mejor para los videos del workspace. */
+/**
+ * Aprende qué redes rinden mejor para los videos del workspace, y lo dice. No deja fuera ninguna red:
+ * eso solo lo deciden sus límites (peso, duración, forma).
+ *
+ * <p>Antes descartaba la que rindiera menos del 65% de la mejor. El 27 oct 2026 sacó a YouTube de un
+ * video de 8 min y 1.2 GB —su mejor sitio— con "0/100": dos de sus cuatro muestras eran videos de ese
+ * mismo día, con 0 vistas porque YouTube aún no las reporta. Con pocas muestras y métricas que llegan
+ * tarde el castigo se equivoca, y además se cumple solo: la red descartada nunca recibe con qué mejorar.
+ */
 @Service
 public class RendimientoPorRed {
 
@@ -79,28 +87,22 @@ public class RendimientoPorRed {
             Double relativo = medianas.containsKey(red)
                     ? mejor > 0 ? redondear(medianas.get(red) * 100.0 / mejor) : 100.0
                     : null;
-            boolean elegida = !comparar || relativo == null || relativo >= UMBRAL_RELATIVO;
-            if (elegida) elegidas.add(red);
+            // El rendimiento orienta, no excluye: toda red compatible se elige.
+            elegidas.add(red);
+            boolean rezagada = comparar && relativo != null && relativo < UMBRAL_RELATIVO;
             String frase;
             if (relativo == null) {
                 frase = red.getLabel() + " se incluye: aún no hay " + MIN_MUESTRAS
                         + " videos medidos para juzgarla (hay " + muestra.size() + ").";
-            } else if (elegida) {
+            } else if (rezagada) {
+                frase = red.getLabel() + " se incluye: rendimiento histórico " + relativo.intValue()
+                        + "/100 con " + muestra.size() + " videos, por debajo de tu mejor red. Se manda igual:"
+                        + " con más publicaciones esa medida se afina.";
+            } else {
                 frase = red.getLabel() + " se incluye: rendimiento histórico " + relativo.intValue()
                         + "/100 con " + muestra.size() + " videos medidos.";
-            } else {
-                frase = red.getLabel() + " queda fuera: rendimiento histórico " + relativo.intValue()
-                        + "/100 con " + muestra.size() + " videos; está por debajo del 65% de la mejor red.";
             }
-            evaluaciones.put(red, new Evaluacion(red, muestra.size(), relativo, elegida, frase));
-        }
-        // Siempre hay salida si técnicamente había una red compatible.
-        if (elegidas.isEmpty() && !medianas.isEmpty()) {
-            Platform mejorRed = medianas.entrySet().stream().max(Map.Entry.comparingByValue()).orElseThrow().getKey();
-            elegidas.add(mejorRed);
-            Evaluacion e = evaluaciones.get(mejorRed);
-            evaluaciones.put(mejorRed, new Evaluacion(mejorRed, e.muestras(), e.puntaje(), true,
-                    mejorRed.getLabel() + " se incluye por ser la red con mejor rendimiento histórico."));
+            evaluaciones.put(red, new Evaluacion(red, muestra.size(), relativo, true, frase));
         }
         return new Seleccion(Set.copyOf(elegidas), Map.copyOf(evaluaciones));
     }

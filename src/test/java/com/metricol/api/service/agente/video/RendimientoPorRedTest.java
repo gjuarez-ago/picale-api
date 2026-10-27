@@ -14,7 +14,7 @@ import com.metricol.api.enums.PostFormat;
 class RendimientoPorRedTest {
 
     @Test
-    void excluyeUnaRedSoloConMuestraSuficienteYDiferenciaClara() {
+    void unaRedQueRindeMenosSeIncluyeIgualYSeDice() {
         List<Object[]> filas = new ArrayList<>();
         tres(filas, Platform.YOUTUBE, PostFormat.VIDEO, 10_000, 500, 30, 20, 25);
         tres(filas, Platform.TIKTOK, PostFormat.VIDEO, 500, 10, 1, 0, 0);
@@ -22,10 +22,30 @@ class RendimientoPorRedTest {
         var seleccion = RendimientoPorRed.calcular(
                 Set.of(Platform.YOUTUBE, Platform.TIKTOK), PostFormat.VIDEO, filas);
 
-        assertThat(seleccion.elegidas()).containsExactly(Platform.YOUTUBE);
+        assertThat(seleccion.elegidas()).containsExactlyInAnyOrder(Platform.YOUTUBE, Platform.TIKTOK);
         assertThat(seleccion.evaluaciones().get(Platform.YOUTUBE).puntaje()).isEqualTo(100.0);
-        assertThat(seleccion.evaluaciones().get(Platform.TIKTOK).elegida()).isFalse();
-        assertThat(seleccion.evaluaciones().get(Platform.TIKTOK).frase()).contains("debajo del 65%");
+        assertThat(seleccion.evaluaciones().get(Platform.TIKTOK).elegida()).isTrue();
+        assertThat(seleccion.evaluaciones().get(Platform.TIKTOK).frase())
+                .contains("se incluye").contains("por debajo de tu mejor red").doesNotContain("queda fuera");
+    }
+
+    /**
+     * El caso del 27 oct 2026: YouTube con 4 videos, dos de ellos del mismo día y aún sin vistas,
+     * salía en 0/100 y quedaba fuera de un video largo que es justo para YouTube.
+     */
+    @Test
+    void videosRecienPublicadosSinVistasNoSacanAUnaRed() {
+        List<Object[]> filas = new ArrayList<>();
+        filas.add(fila(Platform.YOUTUBE, PostFormat.VIDEO, 0));
+        filas.add(fila(Platform.YOUTUBE, PostFormat.VIDEO, 0));
+        filas.add(fila(Platform.YOUTUBE, PostFormat.VIDEO, 0));
+        filas.add(fila(Platform.YOUTUBE, PostFormat.VIDEO, 34));
+        tres(filas, Platform.FACEBOOK, PostFormat.VIDEO, 200, 1, 0, 0, 0);
+
+        var seleccion = RendimientoPorRed.calcular(
+                Set.of(Platform.YOUTUBE, Platform.FACEBOOK), PostFormat.VIDEO, filas);
+
+        assertThat(seleccion.elegidas()).contains(Platform.YOUTUBE);
     }
 
     @Test
@@ -53,7 +73,10 @@ class RendimientoPorRedTest {
         var seleccion = RendimientoPorRed.calcular(
                 Set.of(Platform.YOUTUBE, Platform.TIKTOK), PostFormat.REEL, filas);
 
-        assertThat(seleccion.elegidas()).containsExactly(Platform.TIKTOK);
+        // Mide con los Reels, no con los videos: en Reel la mejor es TikTok.
+        assertThat(seleccion.evaluaciones().get(Platform.TIKTOK).puntaje()).isEqualTo(100.0);
+        assertThat(seleccion.evaluaciones().get(Platform.YOUTUBE).puntaje()).isLessThan(65.0);
+        assertThat(seleccion.elegidas()).containsExactlyInAnyOrder(Platform.YOUTUBE, Platform.TIKTOK);
     }
 
     @Test
