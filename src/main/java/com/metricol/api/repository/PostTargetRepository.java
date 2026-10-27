@@ -55,6 +55,24 @@ public interface PostTargetRepository extends JpaRepository<PostTarget, UUID> {
             @Param("desde") LocalDateTime desde);
 
     /**
+     * La publicación más antigua de esa red dentro de la ventana: cuando cumpla las 24 horas, el
+     * proveedor vuelve a tener un hueco. Nula si no hay ninguna. Tenant explícito, como la de arriba.
+     */
+    @Query("""
+            select min(t.publishedAt) from PostTarget t
+            join t.post p
+            join t.socialAccount a
+            where p.tenantId = :tenant
+              and a.platform = :platform
+              and t.status = com.metricol.api.enums.PostTargetStatus.PUBLISHED
+              and t.publishedAt >= :desde
+            """)
+    LocalDateTime primeraPublicadaDesde(
+            @Param("tenant") String tenant,
+            @Param("platform") Platform platform,
+            @Param("desde") LocalDateTime desde);
+
+    /**
      * Cuántas publicaciones de ese workspace ya tienen comprometido un hueco
      * de esa red para un día: las que están en cola o programadas para salir
      * entre {@code desde} y {@code hasta}, sin contar la que se está editando.

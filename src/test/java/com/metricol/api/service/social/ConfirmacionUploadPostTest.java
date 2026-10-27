@@ -160,6 +160,25 @@ class ConfirmacionUploadPostTest {
         assertThat(linkedin.error()).isEqualTo("LinkedIn not connected");
     }
 
+    /**
+     * 27 oct 2026: upload-post omitía TikTok por el tope diario y lo decía en error_message, con su
+     * error_code. Solo se miraba skip_reason y la persona leía "el proveedor no tenía esta red
+     * configurada", que la mandaba a revisar una conexión que estaba bien.
+     */
+    @Test
+    void unaRedOmitidaPorElTopeDiceElMotivoRealYNoQueFaltaConfigurarla() {
+        when(client.status(ENVIO)).thenReturn(estado("completed", 1, 1, List.of(
+                fila("tiktok", false, Map.of("skipped", true, "error_code", "daily_cap_reached",
+                        "failure_stage", "precheck",
+                        "error_message", "You have reached the daily posting cap on tiktok (15 posts per 24 hours). "
+                                + "The post was not sent. Spread your posts across more time or connect an additional account.")))));
+
+        String error = confirmacion.porEnvio(ENVIO).porRed().get(Platform.TIKTOK).error();
+
+        assertThat(error).startsWith("TikTok ya llegó a su límite de 15 publicaciones en 24 horas")
+                .doesNotContain("configurada");
+    }
+
     @Test
     void conElEnvioCerradoUnFalseSinExplicacionSiEsRechazo() {
         // Ya no va a cambiar: ahí sí se cierra, con lo que haya de mensaje.

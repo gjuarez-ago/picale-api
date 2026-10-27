@@ -59,6 +59,7 @@ public class UploadPostPublisher {
      * tienen que llegar a la misma conclusion con los mismos datos.
      */
     private final ConsultaDeEnvio consulta;
+    private final TopeDelProveedor topes;
 
     public UploadPostPublisher(
             UploadPostClient client,
@@ -67,7 +68,8 @@ public class UploadPostPublisher {
             AdaptadorDeImagenes adaptador,
             ProviderCircuitBreaker breaker,
             LimitesConfigurables limites,
-            ConsultaDeEnvio consulta) {
+            ConsultaDeEnvio consulta,
+            TopeDelProveedor topes) {
         this.client = client;
         this.props = props;
         this.store = store;
@@ -75,6 +77,7 @@ public class UploadPostPublisher {
         this.breaker = breaker;
         this.limites = limites;
         this.consulta = consulta;
+        this.topes = topes;
     }
 
     /**
@@ -121,6 +124,21 @@ public class UploadPostPublisher {
             // y contarle a la persona es el rechazo de dentro.
             boolean sinAdaptar = ex instanceof MediosSinAdaptar;
             Exception real = sinAdaptar && ex.getCause() instanceof Exception causa ? causa : ex;
+
+            if (real instanceof HttpClientErrorException limitado
+                    && limitado.getStatusCode().value() == 429
+                    && TopeDelProveedor.de(limitado.getResponseBodyAsString()) != null) {
+                // No es el ritmo de la llave: es que ESTA cuenta ya publicó todo lo que puede hoy en una
+                // red. No se pausa a nadie más, y se aplaza a cuando de verdad haya hueco, no cinco
+                // minutos. Ver TopeDelProveedor.
+                TopeDelProveedor.Tope tope = TopeDelProveedor.de(limitado.getResponseBodyAsString());
+                LocalDateTime cuando = topes.cuandoSeLibera(plan.workspaceId(), tope.red(), LocalDateTime.now());
+                String motivo = TopeDelProveedor.mensaje(tope, cuando);
+                log.info("Tope diario de {} en el workspace {}: la publicacion {} se aplaza hasta {}",
+                        tope.red(), plan.workspaceId(), postId, cuando);
+                store.aplicarError(plan, motivo, true, porRed);
+                return PublishOutcome.deferred(motivo, cuando);
+            }
 
             if (real instanceof HttpClientErrorException limitado
                     && limitado.getStatusCode().value() == 429) {

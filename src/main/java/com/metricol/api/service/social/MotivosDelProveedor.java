@@ -39,6 +39,16 @@ final class MotivosDelProveedor {
         if (topeDiario != null) {
             return topeDiario;
         }
+        // "YouTube reports that @canal has reached the number of videos it may upload today": el tope
+        // diario lo pone YouTube a cada canal, no upload-post.
+        if (m.contains("may upload today") || m.contains("upload limit") && m.contains("youtube")) {
+            return "YouTube ya no deja subir más videos hoy a este canal: es un límite diario de YouTube."
+                    + " Vuelve a programarlo para mañana.";
+        }
+        if (c.contains("daily_cap")) {
+            return "La red ya llegó a su límite de publicaciones de hoy, así que esta no salió."
+                    + " Vuelve a programarla para mañana o reparte tus publicaciones en más horas del día.";
+        }
         if (c.contains("rate_limit") || c.contains("quota") || m.contains("rate limit")
                 || m.contains("too many requests") || m.contains("quota")) {
             return "La red alcanzo su limite de publicaciones por ahora. Intentalo mas tarde.";

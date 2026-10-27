@@ -180,13 +180,19 @@ public class ConfirmacionUploadPost {
                 continue;
             }
 
-            // El proveedor no tenía esa red lista para este perfil. Es final
-            // desde el primer momento: no va a intentarlo.
+            // El proveedor se saltó esa red. Es final desde el primer momento:
+            // no va a intentarlo. El motivo puede venir en skip_reason o, cuando
+            // la frena su chequeo previo (el tope diario, por ejemplo), en
+            // error_message con su error_code. El 27 oct 2026 solo se miraban los
+            // dos primeros, y quince topes de TikTok salieron como "el proveedor no
+            // tenía esta red configurada", que mandaba a revisar una conexión sana.
             if (Boolean.TRUE.equals(fila.get("skipped"))) {
-                porRed.put(red, ResultadoDeRed.rechazada(primero(
-                        texto(fila.get("skip_reason")),
-                        texto(fila.get("message")),
-                        "El proveedor no tenia esta red configurada.")));
+                String motivo = primero(texto(fila.get("skip_reason")), texto(fila.get("error_message")),
+                        texto(fila.get("error")), texto(fila.get("message")));
+                porRed.put(red, ResultadoDeRed.rechazada(motivo == null
+                        ? "El proveedor no tenia esta red configurada."
+                        : MotivosDelProveedor.traducir(texto(fila.get("error_code")), motivo,
+                                texto(fila.get("failure_stage")))));
                 continue;
             }
 

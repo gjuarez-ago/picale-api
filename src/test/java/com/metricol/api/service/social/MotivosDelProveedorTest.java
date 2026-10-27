@@ -88,6 +88,20 @@ class MotivosDelProveedorTest {
     }
 
     @Test
+    void elTopeDiarioDeYouTubeSeExplicaComoTal() {
+        assertThat(MotivosDelProveedor.traducir(null,
+                "YouTube reports that @duenosconestructura has reached the number of videos it may upload today "
+                        + "(a per-channel limit). Try again tomorrow.", null))
+                .startsWith("YouTube ya no deja subir más videos hoy a este canal");
+    }
+
+    @Test
+    void cualquierTopeDiarioPorCodigoSeEntiendeAunqueCambieElTexto() {
+        assertThat(MotivosDelProveedor.traducir("daily_cap_reached", "Limit hit.", "precheck"))
+                .startsWith("La red ya llegó a su límite de publicaciones de hoy");
+    }
+
+    @Test
     void sinNadaQueDecirQuedaElGenerico() {
         assertThat(MotivosDelProveedor.traducir(null, null, null)).isEqualTo("La red rechazo la publicacion.");
         assertThat(MotivosDelProveedor.traducir(null, "  ", "publish"))
