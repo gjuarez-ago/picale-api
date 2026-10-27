@@ -29,6 +29,8 @@ import com.metricol.api.models.request.MediaPresignRequest;
 import com.metricol.api.models.response.MediaAssetResponse;
 import com.metricol.api.models.response.MediaEliminadoResponse;
 import com.metricol.api.models.response.MediaPresignResponse;
+import com.metricol.api.models.response.MultipartPartsResponse;
+import com.metricol.api.models.response.MultipartUploadResponse;
 import com.metricol.api.models.response.StorageUsageResponse;
 import com.metricol.api.models.response.VideoTrimSuggestionResponse;
 import com.metricol.api.repository.MediaAssetRepository;
@@ -378,12 +380,243 @@ public class MediaService {
         if (asset.getStatus() != MediaAssetStatus.PENDING) {
             throw new IllegalStateException("El archivo ya está confirmado. Revisa Contenido.");
         }
+        if (asset.getMultipartUploadId() != null) {
+            // Un PUT entero encima de una subida por partes la pisaría a medias.
+            throw new IllegalArgumentException("Esta subida va por partes: sigue con las partes que faltan.");
+        }
         asset.setUploadRenewedAt(LocalDateTime.now());
         repository.save(asset);
         return MediaPresignResponse.builder().assetId(asset.getId())
                 .uploadUrl(storage.firmarSubida(asset.getStorageKey(), asset.getContentType()))
                 .method("PUT").contentType(asset.getContentType())
                 .expiresInSeconds(storage.ttlSegundos()).url(asset.getUrl()).build();
+    }
+
+    // ------------------------------------------------------------------ subida por partes
+
+    /**
+     * Desde qué tamaño sube por partes el espacio de esta petición, o {@code null} si no le toca.
+     * Ver {@link MediaLimitsProperties.Multipart}.
+     */
+    public Long multipartDesde() {
+        MediaLimitsProperties.Multipart config = limites.getMultipart();
+        boolean toca = switch (config.getModo()) {
+            case TODAS -> true;
+            case SIN_LIMITES -> cuota.esSinLimites();
+            case APAGADA -> false;
+        };
+        return toca ? config.getDesdeBytes() : null;
+    }
+
+    /**
+     * Abre una subida por partes. Valida lo mismo que {@link #presign} —tipo, tope diario y cuota—
+     * y la fila nace PENDING contando ya para el espacio, igual que allí.
+     *
+     * <p>Si R2 abre la subida y la base falla al guardar, la subida queda huérfana en R2: no ocupa
+     * nada hasta que se suben partes, y la regla del bucket la aborta a los 7 días.
+     */
+    @Transactional
+    public MultipartUploadResponse iniciarPorPartes(MediaPresignRequest request, UUID workspaceId) {
+        storage.exigirConfiguracion();
+        if (multipartDesde() == null) {
+            throw new IllegalStateException(
+                    "La subida por partes no está activa en este negocio. Sube el archivo de la forma normal.");
+        }
+
+        String contentType = normalizar(request.getContentType());
+        exigirTipoDeMedio(contentType);
+        exigirTopeDiario();
+        cuota.verificar(request.getSizeBytes(), request.getFileName());
+
+        long tamanoParte = tamanoDeParte(request.getSizeBytes(), limites.getMultipart().getTamanoParteBytes());
+        String key = storage.claveNueva(workspaceId, request.getFileName(), contentType);
+        String uploadId = storage.iniciarPorPartes(key, contentType);
+
+        MediaAsset asset = repository.save(MediaAsset.builder()
+                .fileName(nombreODefecto(request.getFileName(), key))
+                .uploadBatchId(request.getUploadBatchId())
+                .uploadBatchIndex(request.getUploadBatchIndex())
+                .storageKey(key)
+                .url(storage.urlDe(key))
+                .type(storage.tipoDe(key, contentType))
+                .sizeBytes(request.getSizeBytes())
+                .contentType(contentType)
+                .status(MediaAssetStatus.PENDING)
+                .multipartUploadId(uploadId)
+                .multipartPartSize(tamanoParte)
+                .build());
+
+        int partes = totalPartes(request.getSizeBytes(), tamanoParte);
+        log.info("Subida por partes abierta: {} ({}, {} partes de {})", asset.getId(),
+                MediaLimitsProperties.legible(request.getSizeBytes()), partes, MediaLimitsProperties.legible(tamanoParte));
+        return MultipartUploadResponse.builder()
+                .assetId(asset.getId())
+                .sizeBytes(request.getSizeBytes())
+                .partSizeBytes(tamanoParte)
+                .partCount(partes)
+                .contentType(contentType)
+                .url(asset.getUrl())
+                .build();
+    }
+
+    /**
+     * Firma un lote de partes. Cada lote cuenta como señal de vida: la subida no se da por
+     * abandonada mientras siga pidiendo permisos, aunque tarde horas.
+     */
+    @Transactional
+    public MultipartPartsResponse firmarPartes(UUID assetId, UUID workspaceId, List<Integer> numeros) {
+        MediaAsset asset = subidaPorPartesEnCurso(assetId, workspaceId);
+        int total = totalPartes(asset.getSizeBytes(), asset.getMultipartPartSize());
+        int tope = limites.getMultipart().getMaxPartesPorLote();
+
+        List<Integer> pedidas = numeros.stream().distinct().sorted().toList();
+        if (pedidas.size() > tope) {
+            throw new IllegalArgumentException("Pide hasta " + tope + " partes a la vez.");
+        }
+        if (pedidas.stream().anyMatch(n -> n == null || n < 1 || n > total)) {
+            throw new IllegalArgumentException("Esa parte no existe en esta subida: tiene " + total + ".");
+        }
+
+        asset.setUploadRenewedAt(LocalDateTime.now());
+        repository.save(asset);
+
+        long ttl = limites.getMultipart().getTtlParteSegundos();
+        List<MultipartPartsResponse.SignedPart> firmadas = pedidas.stream()
+                .map(n -> new MultipartPartsResponse.SignedPart(n,
+                        storage.firmarParte(asset.getStorageKey(), asset.getMultipartUploadId(), n, ttl)))
+                .toList();
+        return partes(asset, total, List.of(), firmadas, ttl);
+    }
+
+    /**
+     * Las partes que ya están en R2. Es lo que permite retomar: el cliente no recuerda nada, R2 sí.
+     * También cuenta como señal de vida, para quien vuelve tras una pausa larga.
+     */
+    @Transactional
+    public MultipartPartsResponse partesSubidas(UUID assetId, UUID workspaceId) {
+        MediaAsset asset = subidaPorPartesEnCurso(assetId, workspaceId);
+        asset.setUploadRenewedAt(LocalDateTime.now());
+        repository.save(asset);
+        int total = totalPartes(asset.getSizeBytes(), asset.getMultipartPartSize());
+        return partes(asset, total, storage.partesSubidas(asset.getStorageKey(), asset.getMultipartUploadId()),
+                List.of(), 0);
+    }
+
+    /**
+     * Une las partes y confirma el archivo con el mismo {@link #confirm} de siempre (tamaño real,
+     * cuota, miniatura).
+     *
+     * <p>La lista de partes la arma el servidor preguntándole a R2, no la manda el cliente: así no
+     * hay forma de cerrar con partes de otro archivo, y lo que se comprueba es lo que de verdad llegó.
+     * Fuera de transacción, como {@link #confirm}: unir 3 GB en R2 tarda, y no con una conexión de la
+     * base en la mano. Llamarlo dos veces es seguro.
+     */
+    public MediaAssetResponse completarPorPartes(UUID assetId, UUID workspaceId) {
+        MediaAsset asset = repository.findById(assetId)
+                .filter(a -> workspaceId.toString().equals(a.getTenantId()))
+                .orElseThrow(() -> new ResourceNotFoundException("Esa subida no existe en este negocio."));
+        if (asset.getStatus() == MediaAssetStatus.READY || asset.getMultipartUploadId() == null) {
+            // Ya se unió (un reintento tras perder la respuesta): solo falta, o ya estaba, confirmar.
+            return confirm(assetId);
+        }
+
+        int total = totalPartes(asset.getSizeBytes(), asset.getMultipartPartSize());
+        List<R2StorageService.ParteSubida> llegaron = storage.partesSubidas(
+                asset.getStorageKey(), asset.getMultipartUploadId()).stream()
+                .filter(p -> p.numero() <= total)
+                .toList();
+        java.util.Set<Integer> numeros = llegaron.stream().map(R2StorageService.ParteSubida::numero)
+                .collect(java.util.stream.Collectors.toSet());
+        List<Integer> faltan = java.util.stream.IntStream.rangeClosed(1, total)
+                .filter(n -> !numeros.contains(n)).boxed().toList();
+        if (!faltan.isEmpty()) {
+            throw new IllegalStateException("Faltan " + faltan.size() + " de " + total
+                    + " partes por subir. Sigue la subida y vuelve a intentarlo.");
+        }
+        long suma = llegaron.stream().mapToLong(R2StorageService.ParteSubida::bytes).sum();
+        if (asset.getSizeBytes() != null && suma != asset.getSizeBytes()) {
+            log.warn("Subida por partes {}: las partes suman {} y se declararon {}", assetId, suma, asset.getSizeBytes());
+            throw new IllegalStateException("Las partes no suman lo que pesa el archivo. Cancela y vuelve a subirlo.");
+        }
+
+        try {
+            storage.completarPorPartes(asset.getStorageKey(), asset.getMultipartUploadId(), llegaron);
+        } catch (software.amazon.awssdk.services.s3.model.S3Exception ex) {
+            log.warn("R2 no unió las partes de {}: {}", assetId, ex.getMessage());
+            throw new IllegalStateException("No se pudo terminar la subida. Intenta de nuevo en un momento.");
+        }
+        transaccion.executeWithoutResult(estado -> repository.findById(assetId).ifPresent(a -> {
+            a.setMultipartUploadId(null);
+            repository.save(a);
+        }));
+        log.info("Subida por partes completada: {} ({} partes, {})", assetId, total,
+                MediaLimitsProperties.legible(suma));
+        return confirm(assetId);
+    }
+
+    /** Cancela una subida a medias: libera lo que ya ocupaba en R2 y la cuota que tenía apartada. */
+    public void cancelarPorPartes(UUID assetId, UUID workspaceId) {
+        MediaAsset asset = repository.findById(assetId)
+                .filter(a -> workspaceId.toString().equals(a.getTenantId()))
+                .orElseThrow(() -> new ResourceNotFoundException("Esa subida no existe en este negocio."));
+        if (asset.getStatus() != MediaAssetStatus.PENDING) {
+            throw new IllegalStateException("El archivo ya se subió. Para quitarlo, elimínalo desde Contenido.");
+        }
+        if (asset.getMultipartUploadId() != null) {
+            storage.abortarPorPartes(asset.getStorageKey(), asset.getMultipartUploadId());
+        }
+        // Por si se llegó a unir y nadie lo confirmó: tampoco debe quedarse ocupando espacio.
+        storage.deleteByKey(asset.getStorageKey());
+        transaccion.executeWithoutResult(estado -> repository.findById(assetId).ifPresent(repository::delete));
+        log.info("Subida por partes cancelada: {}", assetId);
+    }
+
+    private MediaAsset subidaPorPartesEnCurso(UUID assetId, UUID workspaceId) {
+        MediaAsset asset = repository.findById(assetId)
+                .filter(a -> workspaceId.toString().equals(a.getTenantId()))
+                .orElseThrow(() -> new ResourceNotFoundException("Esa subida ya no existe. Vuelve a elegir el archivo."));
+        if (asset.getStatus() != MediaAssetStatus.PENDING) {
+            throw new IllegalStateException("Esta subida ya terminó. Revisa Contenido.");
+        }
+        if (asset.getMultipartUploadId() == null) {
+            throw new IllegalStateException("Esta subida no va por partes.");
+        }
+        return asset;
+    }
+
+    private static MultipartPartsResponse partes(MediaAsset asset, int total,
+            List<R2StorageService.ParteSubida> subidas, List<MultipartPartsResponse.SignedPart> firmadas, long ttl) {
+        return MultipartPartsResponse.builder()
+                .assetId(asset.getId())
+                .sizeBytes(asset.getSizeBytes() == null ? 0 : asset.getSizeBytes())
+                .partSizeBytes(asset.getMultipartPartSize())
+                .partCount(total)
+                .uploaded(subidas.stream()
+                        .map(p -> new MultipartPartsResponse.UploadedPart(p.numero(), p.bytes()))
+                        .toList())
+                .uploadedBytes(subidas.stream().mapToLong(R2StorageService.ParteSubida::bytes).sum())
+                .signed(firmadas)
+                .expiresInSeconds(ttl)
+                .build();
+    }
+
+    /** Cuántas partes salen de este tamaño; al menos una. */
+    static int totalPartes(Long bytes, Long tamanoParte) {
+        long b = bytes == null ? 0 : bytes;
+        long t = tamanoParte == null || tamanoParte <= 0 ? 1 : tamanoParte;
+        return (int) Math.max(1, (b + t - 1) / t);
+    }
+
+    /**
+     * El tamaño de parte para este archivo: el configurado, salvo que haga falta más para no pasar de
+     * 10,000 partes (el tope de R2). Nunca menos de 5 MiB, el mínimo de R2.
+     */
+    static long tamanoDeParte(long bytes, long configurado) {
+        long minimoR2 = 5L * 1024 * 1024;
+        long porTope = (bytes + 9_999) / 10_000;
+        long mib = 1024L * 1024;
+        long necesario = Math.max(Math.max(configurado, minimoR2), porTope);
+        return ((necesario + mib - 1) / mib) * mib;
     }
 
     /**
@@ -580,6 +813,7 @@ public class MediaService {
                 .maxVideosPorTanda(limites.getMaxVideosPorTanda())
                 .maxSubidasPorDia(limites.getMaxSubidasPorDia())
                 .subidasHoy(subidasHoy())
+                .multipartFromBytes(multipartDesde())
                 .build();
     }
 

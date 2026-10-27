@@ -37,4 +37,11 @@ public class StorageUsageResponse {
     private int maxVideosPorTanda;
     private int maxSubidasPorDia;
     private long subidasHoy;
+
+    /**
+     * Desde qué tamaño este espacio sube por partes ({@code POST /media/multipart}); nulo si no le
+     * toca, y entonces todo va por el PUT de siempre. Lo decide el servidor para poder apagarlo sin
+     * desplegar la web ni la app.
+     */
+    private Long multipartFromBytes;
 }

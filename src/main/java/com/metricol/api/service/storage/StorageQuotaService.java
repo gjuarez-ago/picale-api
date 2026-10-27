@@ -60,7 +60,7 @@ public class StorageQuotaService {
     }
 
     /** ¿El espacio de esta petición es de una organización sin límites? Fuera de un espacio, no. */
-    private boolean esSinLimites() {
+    public boolean esSinLimites() {
         try {
             return sinLimites.deWorkspace(UUID.fromString(tenant.resolveCurrentTenantIdentifier()));
         } catch (IllegalArgumentException ajeno) {

@@ -19,7 +19,18 @@ import com.metricol.api.enums.MediaType;
 import software.amazon.awssdk.core.ResponseInputStream;
 import software.amazon.awssdk.core.sync.RequestBody;
 import software.amazon.awssdk.services.s3.S3Client;
+import software.amazon.awssdk.services.s3.model.AbortMultipartUploadRequest;
+import software.amazon.awssdk.services.s3.model.CompleteMultipartUploadRequest;
+import software.amazon.awssdk.services.s3.model.CompletedMultipartUpload;
+import software.amazon.awssdk.services.s3.model.CompletedPart;
+import software.amazon.awssdk.services.s3.model.CreateMultipartUploadRequest;
 import software.amazon.awssdk.services.s3.model.Delete;
+import software.amazon.awssdk.services.s3.model.ListPartsRequest;
+import software.amazon.awssdk.services.s3.model.ListPartsResponse;
+import software.amazon.awssdk.services.s3.model.NoSuchUploadException;
+import software.amazon.awssdk.services.s3.model.Part;
+import software.amazon.awssdk.services.s3.model.UploadPartRequest;
+import software.amazon.awssdk.services.s3.presigner.model.UploadPartPresignRequest;
 import software.amazon.awssdk.services.s3.model.DeleteObjectsRequest;
 import software.amazon.awssdk.services.s3.model.GetObjectRequest;
 import software.amazon.awssdk.services.s3.model.GetObjectResponse;
@@ -143,6 +154,114 @@ public class R2StorageService {
 
     public long ttlSegundos() {
         return ttlSegundos;
+    }
+
+    // ------------------------------------------------------------------ subida por partes
+
+    /** Una parte que ya está en R2: su número, su ETag (lo pide R2 para cerrar) y cuánto pesa. */
+    public record ParteSubida(int numero, String etag, long bytes) {
+    }
+
+    /**
+     * Abre una subida por partes y devuelve su id. El content-type se fija aquí: las partes no lo
+     * llevan, y el archivo final sale con este.
+     */
+    public String iniciarPorPartes(String key, String contentType) {
+        exigirConfiguracion();
+        return s3Client.createMultipartUpload(CreateMultipartUploadRequest.builder()
+                .bucket(props.getBucket())
+                .key(key)
+                .contentType(contentType)
+                .build())
+                .uploadId();
+    }
+
+    /**
+     * Firma el PUT de una parte. R2 no lo documenta entre sus operaciones firmadas, pero lo acepta:
+     * se probó contra el bucket el 27 oct 2026, con el preflight del navegador incluido (ver
+     * docs/subida-por-partes.md). Sin cabeceras firmadas: la parte no lleva content-type.
+     */
+    public String firmarParte(String key, String uploadId, int numero, long ttl) {
+        exigirConfiguracion();
+        UploadPartRequest parte = UploadPartRequest.builder()
+                .bucket(props.getBucket())
+                .key(key)
+                .uploadId(uploadId)
+                .partNumber(numero)
+                .build();
+        return presigner.presignUploadPart(UploadPartPresignRequest.builder()
+                .signatureDuration(Duration.ofSeconds(ttl))
+                .uploadPartRequest(parte)
+                .build())
+                .url()
+                .toString();
+    }
+
+    /**
+     * Las partes que ya llegaron, en orden. Es lo que permite retomar: el cliente no tiene que
+     * recordar nada, R2 lo sabe. Una subida que ya no existe (abortada o vencida) devuelve vacío.
+     */
+    public List<ParteSubida> partesSubidas(String key, String uploadId) {
+        exigirConfiguracion();
+        List<ParteSubida> partes = new ArrayList<>();
+        Integer desde = null;
+        try {
+            while (true) {
+                ListPartsResponse pagina = s3Client.listParts(ListPartsRequest.builder()
+                        .bucket(props.getBucket())
+                        .key(key)
+                        .uploadId(uploadId)
+                        .partNumberMarker(desde)
+                        .build());
+                for (Part p : pagina.parts()) {
+                    partes.add(new ParteSubida(p.partNumber(), p.eTag(), p.size() == null ? 0 : p.size()));
+                }
+                if (!Boolean.TRUE.equals(pagina.isTruncated())) {
+                    break;
+                }
+                desde = pagina.nextPartNumberMarker();
+            }
+        } catch (NoSuchUploadException ex) {
+            return List.of();
+        }
+        partes.sort(java.util.Comparator.comparingInt(ParteSubida::numero));
+        return partes;
+    }
+
+    /** Une las partes en el archivo final. Desde aquí el objeto existe y {@link #consultar} lo ve. */
+    public void completarPorPartes(String key, String uploadId, List<ParteSubida> partes) {
+        exigirConfiguracion();
+        s3Client.completeMultipartUpload(CompleteMultipartUploadRequest.builder()
+                .bucket(props.getBucket())
+                .key(key)
+                .uploadId(uploadId)
+                .multipartUpload(CompletedMultipartUpload.builder()
+                        .parts(partes.stream()
+                                .map(p -> CompletedPart.builder().partNumber(p.numero()).eTag(p.etag()).build())
+                                .toList())
+                        .build())
+                .build());
+    }
+
+    /**
+     * Cancela una subida por partes y libera lo que ya ocupaba en R2. Que ya no exista no es un
+     * error: es justo lo que se quería.
+     */
+    public void abortarPorPartes(String key, String uploadId) {
+        exigirConfiguracion();
+        try {
+            s3Client.abortMultipartUpload(AbortMultipartUploadRequest.builder()
+                    .bucket(props.getBucket())
+                    .key(key)
+                    .uploadId(uploadId)
+                    .build());
+        } catch (NoSuchUploadException ex) {
+            // Ya estaba cerrada o la abortó la regla de los 7 días.
+        } catch (S3Exception ex) {
+            if (ex.statusCode() != 404) {
+                throw ex;
+            }
+        }
     }
 
     /**

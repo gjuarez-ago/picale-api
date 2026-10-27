@@ -18,11 +18,14 @@ import org.springframework.web.multipart.MultipartFile;
 import com.metricol.api.entity.User;
 import com.metricol.api.enums.Permission;
 import com.metricol.api.models.request.MediaPresignRequest;
+import com.metricol.api.models.request.MultipartSignPartsRequest;
 import com.metricol.api.models.request.VideoTrimRequest;
 import com.metricol.api.models.response.ApiResponse;
 import com.metricol.api.models.response.MediaAssetResponse;
 import com.metricol.api.models.response.MediaEliminadoResponse;
 import com.metricol.api.models.response.MediaPresignResponse;
+import com.metricol.api.models.response.MultipartPartsResponse;
+import com.metricol.api.models.response.MultipartUploadResponse;
 import com.metricol.api.models.response.StorageUsageResponse;
 import com.metricol.api.models.response.VideoTrimSuggestionResponse;
 import com.metricol.api.service.MediaService;
@@ -99,6 +102,58 @@ public class MediaController {
             @AuthenticationPrincipal User currentUser, @PathVariable UUID id) {
         permisos.exigir(currentUser, Permission.POST_CREATE);
         return ResponseEntity.ok(ApiResponse.success(service.renewUpload(id, currentUser.getWorkspace().getId())));
+    }
+
+    /**
+     * Subida por partes de un archivo grande: abre la subida. Ver {@code docs/subida-por-partes.md}.
+     *
+     * <p>Mismo pedido que {@code /presign} y mismas validaciones. Solo para los espacios a los que
+     * {@code GET /media/usage} les da {@code multipartFromBytes}.
+     */
+    @PostMapping("/multipart")
+    public ResponseEntity<ApiResponse<MultipartUploadResponse>> iniciarPorPartes(
+            @AuthenticationPrincipal User currentUser,
+            @Valid @RequestBody MediaPresignRequest request) {
+        permisos.exigir(currentUser, Permission.POST_CREATE);
+        return ResponseEntity.ok(ApiResponse.success(
+                service.iniciarPorPartes(request, currentUser.getWorkspace().getId())));
+    }
+
+    /** Firma un lote de partes para subirlas directo a R2. */
+    @PostMapping("/{id}/multipart/parts")
+    public ResponseEntity<ApiResponse<MultipartPartsResponse>> firmarPartes(
+            @AuthenticationPrincipal User currentUser, @PathVariable UUID id,
+            @Valid @RequestBody MultipartSignPartsRequest request) {
+        permisos.exigir(currentUser, Permission.POST_CREATE);
+        return ResponseEntity.ok(ApiResponse.success(
+                service.firmarPartes(id, currentUser.getWorkspace().getId(), request.getPartNumbers())));
+    }
+
+    /** Las partes que ya llegaron: para retomar una subida cortada. */
+    @GetMapping("/{id}/multipart/parts")
+    public ResponseEntity<ApiResponse<MultipartPartsResponse>> partesSubidas(
+            @AuthenticationPrincipal User currentUser, @PathVariable UUID id) {
+        permisos.exigir(currentUser, Permission.POST_CREATE);
+        return ResponseEntity.ok(ApiResponse.success(
+                service.partesSubidas(id, currentUser.getWorkspace().getId())));
+    }
+
+    /** Une las partes y confirma el archivo. Seguro de repetir. */
+    @PostMapping("/{id}/multipart/complete")
+    public ResponseEntity<ApiResponse<MediaAssetResponse>> completarPorPartes(
+            @AuthenticationPrincipal User currentUser, @PathVariable UUID id) {
+        permisos.exigir(currentUser, Permission.POST_CREATE);
+        return ResponseEntity.ok(ApiResponse.success(
+                service.completarPorPartes(id, currentUser.getWorkspace().getId())));
+    }
+
+    /** Cancela una subida a medias y libera su espacio. */
+    @DeleteMapping("/{id}/multipart")
+    public ResponseEntity<ApiResponse<Void>> cancelarPorPartes(
+            @AuthenticationPrincipal User currentUser, @PathVariable UUID id) {
+        permisos.exigir(currentUser, Permission.POST_CREATE);
+        service.cancelarPorPartes(id, currentUser.getWorkspace().getId());
+        return ResponseEntity.ok(ApiResponse.success(null));
     }
 
     /**

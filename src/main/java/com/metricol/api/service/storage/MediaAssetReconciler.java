@@ -2,6 +2,8 @@ package com.metricol.api.service.storage;
 
 import java.util.UUID;
 
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Propagation;
 import org.springframework.transaction.annotation.Transactional;
@@ -26,6 +28,8 @@ import com.metricol.api.repository.MediaAssetRepository;
  */
 @Service
 public class MediaAssetReconciler {
+
+    private static final Logger log = LoggerFactory.getLogger(MediaAssetReconciler.class);
 
     private final MediaAssetRepository repository;
     private final R2StorageService storage;
@@ -58,6 +62,17 @@ public class MediaAssetReconciler {
 
         R2StorageService.Consulta enR2 = storage.consultar(asset.getStorageKey());
         if (enR2 == null) {
+            if (asset.getMultipartUploadId() != null) {
+                // Una subida por partes abandonada: sus partes ocupan espacio en R2 aunque el archivo
+                // no exista. Se aborta antes de soltar la fila; si R2 no contesta, la fila se queda y
+                // se reintenta en la siguiente vuelta, en vez de perder el id con el que abortarla.
+                try {
+                    storage.abortarPorPartes(asset.getStorageKey(), asset.getMultipartUploadId());
+                } catch (RuntimeException ex) {
+                    log.warn("No se pudo abortar la subida por partes {}: {}", assetId, ex.getMessage());
+                    return false;
+                }
+            }
             repository.delete(asset);
             return false;
         }

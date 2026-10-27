@@ -97,6 +97,14 @@ public class MediaAsset {
     private String contentType;
 
     /** Datos de una copia de video solicitada por la persona. */
+    /**
+     * La subida por partes en R2 mientras está en curso: su id y el tamaño de cada parte. Nulos en
+     * la subida de un solo PUT y en cuanto se completa o se cancela.
+     */
+    @Column(length = 512)
+    private String multipartUploadId;
+    private Long multipartPartSize;
+
     private UUID sourceAssetId;
     private Double trimStartSeconds;
     private Double trimEndSeconds;

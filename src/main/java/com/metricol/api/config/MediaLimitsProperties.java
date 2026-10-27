@@ -79,8 +79,44 @@ public class MediaLimitsProperties {
     /** De esos, cuántos pueden ser video: pesan cien veces más que una foto. */
     private int maxVideosPorTanda = 5;
 
+    /** La subida por partes de los archivos grandes. Ver {@link Multipart}. */
+    private Multipart multipart = new Multipart();
+
     public boolean cuotaActiva() {
         return maxBytesPerWorkspace > 0;
+    }
+
+    /**
+     * Subir un archivo grande en partes que se reintentan y se retoman, en vez de en un solo PUT.
+     *
+     * <p>Un solo PUT de 3 GB necesita una conexión que aguante una hora sin cortarse y, si se corta,
+     * empieza de cero. Por partes, cada una (16 MB) se sube con su propio permiso y se reintenta
+     * sola; y si se cierra la pestaña, R2 recuerda cuáles llegaron. Es el mismo archivo directo a
+     * R2 de siempre: la API solo firma y cierra.
+     */
+    @Getter
+    @Setter
+    public static class Multipart {
+
+        /** Para quién está encendida. Se apaga sin desplegar: los clientes vuelven al PUT de siempre. */
+        public enum Modo { APAGADA, SIN_LIMITES, TODAS }
+
+        private Modo modo = Modo.APAGADA;
+
+        /** Desde qué tamaño se sube por partes; lo menor sigue en un solo PUT, que es menos ida y vuelta. */
+        private long desdeBytes = 100L * 1024 * 1024;
+
+        /**
+         * Tamaño de cada parte. R2 pide que todas midan igual salvo la última, y entre 5 MiB y 5 GiB;
+         * 16 MiB es poco que reintentar en un teléfono y 192 partes para 3 GB, lejos del tope de 10,000.
+         */
+        private long tamanoParteBytes = 16L * 1024 * 1024;
+
+        /** Cuánto vale el permiso de cada parte. Se piden por lotes mientras se sube, así que basta una hora. */
+        private long ttlParteSegundos = 3600;
+
+        /** Cuántas partes se firman en una sola petición. */
+        private int maxPartesPorLote = 50;
     }
 
     /** "1.4 GB" / "780 MB" / "12 KB", para el mensaje que lee la persona. */
