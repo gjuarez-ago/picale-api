@@ -35,6 +35,10 @@ final class MotivosDelProveedor {
         if (esDeConexion(c, m)) {
             return ConexionesCaducadas.CADUCO;
         }
+        String topeDiario = topeDiario(mensaje);
+        if (topeDiario != null) {
+            return topeDiario;
+        }
         if (c.contains("rate_limit") || c.contains("quota") || m.contains("rate limit")
                 || m.contains("too many requests") || m.contains("quota")) {
             return "La red alcanzo su limite de publicaciones por ahora. Intentalo mas tarde.";
@@ -78,6 +82,42 @@ final class MotivosDelProveedor {
                 || (m.contains("permission") && (m.contains("missing") || m.contains("(#10)") || m.contains("(#200)")
                         || m.contains("instagram_") || m.contains("pages_") || m.contains("publish_")
                         || m.contains("w_member_social") || m.contains("video.publish")));
+    }
+
+    /**
+     * "You have reached the daily posting cap on facebook (25 posts per 24 hours). The post was not
+     * sent. Spread your posts across more time or connect an additional account."
+     *
+     * <p>Es el tope de upload-post por cuenta y red. Se dice con la red y el número del propio mensaje,
+     * y con lo que la persona puede hacer: no es un fallo del video ni de la conexión, es que ya se
+     * publicó mucho en esa red en un día.
+     */
+    static String topeDiario(String mensaje) {
+        if (mensaje == null) {
+            return null;
+        }
+        java.util.regex.Matcher tope = TOPE_DIARIO.matcher(mensaje);
+        if (!tope.find()) {
+            return null;
+        }
+        String red = nombreDeRed(tope.group(1));
+        String cuantas = tope.group(2);
+        return red + " ya llegó a su límite de " + (cuantas == null ? "publicaciones" : cuantas + " publicaciones")
+                + " en 24 horas, así que esta no salió. Vuelve a programarla para mañana o reparte tus publicaciones"
+                + " en más horas del día.";
+    }
+
+    private static final java.util.regex.Pattern TOPE_DIARIO = java.util.regex.Pattern.compile(
+            "daily posting cap on (\\w+)(?:\\s*\\((\\d+) posts? per 24 hours\\))?",
+            java.util.regex.Pattern.CASE_INSENSITIVE);
+
+    /** "facebook" -> "Facebook", con el nombre que ve la persona; lo desconocido, con mayúscula inicial. */
+    private static String nombreDeRed(String red) {
+        try {
+            return com.metricol.api.enums.Platform.valueOf(red.toUpperCase(Locale.ROOT)).getLabel();
+        } catch (IllegalArgumentException ex) {
+            return red.isEmpty() ? "La red" : Character.toUpperCase(red.charAt(0)) + red.substring(1).toLowerCase(Locale.ROOT);
+        }
     }
 
     /**

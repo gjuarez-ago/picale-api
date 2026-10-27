@@ -70,6 +70,24 @@ class MotivosDelProveedorTest {
     }
 
     @Test
+    void elTopeDiarioSeDiceConLaRedElNumeroYQueHacer() {
+        String motivo = MotivosDelProveedor.traducir(null,
+                "You have reached the daily posting cap on facebook (25 posts per 24 hours). The post was not sent. "
+                        + "Spread your posts across more time or connect an additional account.", null);
+        assertThat(motivo).isEqualTo("Facebook ya llegó a su límite de 25 publicaciones en 24 horas, así que esta "
+                + "no salió. Vuelve a programarla para mañana o reparte tus publicaciones en más horas del día.");
+    }
+
+    @Test
+    void elTopeDiarioDeOtraRedOSinNumeroTambienSeEntiende() {
+        assertThat(MotivosDelProveedor.traducir(null,
+                "You have reached the daily posting cap on tiktok (15 posts per 24 hours).", null))
+                .startsWith("TikTok ya llegó a su límite de 15 publicaciones");
+        assertThat(MotivosDelProveedor.traducir(null, "daily posting cap on threads.", null))
+                .startsWith("Threads ya llegó a su límite de publicaciones en 24 horas");
+    }
+
+    @Test
     void sinNadaQueDecirQuedaElGenerico() {
         assertThat(MotivosDelProveedor.traducir(null, null, null)).isEqualTo("La red rechazo la publicacion.");
         assertThat(MotivosDelProveedor.traducir(null, "  ", "publish"))
