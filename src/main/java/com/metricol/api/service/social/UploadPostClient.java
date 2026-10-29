@@ -212,6 +212,25 @@ public class UploadPostClient {
     public Map<String, Object> publishVideo(String user, List<String> platforms, String titulo,
             Map<String, String> captionsPorRed, String videoUrl, PostFormat formato, Integer portadaMs,
             Ubicacion ubicacion, boolean hechaConIa, Integer videoDurationSeconds) {
+        // Un video grande viaja como enlace: el proveedor lo baja directo de R2.
+        // Bajarlo aquí entero a memoria, con dos minutos de plazo, no alcanzó
+        // para uno de 1.3 GB (28 oct 2026, cuenta de Juan Rodríguez): falló en
+        // todas sus redes. Sin bytes no hay portada elegida aquí: se usa la del
+        // agente si la hay, y la de cada red si no.
+        if (pesoDe(videoUrl) > VIDEO_POR_ENLACE_DESDE) {
+            MultiValueMap<String, Object> body = cuerpoVideo(user, platforms, titulo, captionsPorRed, formato,
+                    portadaMs, videoDurationSeconds);
+            ubicacion(body, platforms, ubicacion);
+            etiquetaDeIa(body, hechaConIa);
+            body.add("video", videoUrl);
+            return restClient.post()
+                    .uri("/upload")
+                    .contentType(MediaType.MULTIPART_FORM_DATA)
+                    .body(body)
+                    .retrieve()
+                    .body(Map.class);
+        }
+
         // El video se baja ANTES de armar el cuerpo porque de él sale la
         // portada: sin mirarlo no se puede saber qué cuadro vale, y el instante
         // viaja en el cuerpo (cover_timestamp de TikTok).
@@ -758,6 +777,34 @@ public class UploadPostClient {
         body.add("user", user);
         platforms.forEach(p -> body.add("platform[]", p));
         return body;
+    }
+
+    /**
+     * Desde cuánto un video se manda como enlace y no como archivo. Por debajo
+     * sigue el camino de siempre, que además elige la portada mirando el video.
+     */
+    static final long VIDEO_POR_ENLACE_DESDE = 200L * 1024 * 1024;
+
+    /** Lo que dice pesar el archivo, sin bajarlo; -1 si no se sabe (y entonces se baja como siempre). */
+    long pesoDe(String url) {
+        try {
+            HttpResponse<Void> response = downloader.send(
+                    HttpRequest.newBuilder(URI.create(url))
+                            .timeout(Duration.ofSeconds(20))
+                            .method("HEAD", HttpRequest.BodyPublishers.noBody())
+                            .build(),
+                    HttpResponse.BodyHandlers.discarding());
+            return response.statusCode() == 200
+                    ? response.headers().firstValueAsLong("Content-Length").orElse(-1)
+                    : -1;
+        } catch (IOException ex) {
+            return -1;
+        } catch (InterruptedException ex) {
+            Thread.currentThread().interrupt();
+            return -1;
+        } catch (IllegalArgumentException ex) {
+            return -1;
+        }
     }
 
     private ByteArrayResource download(String url) {
