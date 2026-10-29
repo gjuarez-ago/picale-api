@@ -31,7 +31,7 @@ public interface PostRepository extends JpaRepository<Post, UUID> {
     /** Las propuestas del agente que esperan aprobación, en el orden en que saldrían. */
     @Query("""
             select p from Post p
-            where p.deletedAt is null and p.propuestaAgente = true
+            where p.deletedAt is null and p.archivedAt is null and p.propuestaAgente = true
               and p.status = com.metricol.api.enums.PostStatus.DRAFT
             order by p.fechaPropuesta asc
             """)
@@ -49,7 +49,7 @@ public interface PostRepository extends JpaRepository<Post, UUID> {
     /** Cuántas esperan aprobación: para el estado, que se consulta seguido, sin cargar la lista. */
     @Query("""
             select count(p) from Post p
-            where p.deletedAt is null and p.propuestaAgente = true
+            where p.deletedAt is null and p.archivedAt is null and p.propuestaAgente = true
               and p.status = com.metricol.api.enums.PostStatus.DRAFT
             """)
     long contarPropuestasDelAgente();
@@ -71,11 +71,12 @@ public interface PostRepository extends JpaRepository<Post, UUID> {
     /**
      * Cuántos diseños hizo el agente desde {@code desde}. Por foto y no por
      * publicación: un diseño son varias versiones, y es un solo crédito.
-     * Cuentan también los descartados: el crédito ya se gastó.
+     * Cuentan también los descartados y los cancelados: el crédito ya se gastó.
+     * Por tratamiento y no por {@code propuestaAgente}, que se apaga al cancelar.
      */
     @Query("""
             select count(distinct coalesce(p.agenteDisenoId, p.agenteFotoUrl)) from Post p
-            where p.propuestaAgente = true and p.agenteTratamiento = 'DISENO' and p.createdAt >= :desde
+            where p.agenteTratamiento = 'DISENO' and p.createdAt >= :desde
             """)
     // Por generación (agenteDisenoId) y no por foto: rediseñar la misma foto con
     // "¿Le cambiamos algo?" es otro crédito y tiene que contar para el tope.
@@ -92,7 +93,7 @@ public interface PostRepository extends JpaRepository<Post, UUID> {
               and (p.format is null or p.format <> com.metricol.api.enums.PostFormat.STORY)
               and ((p.status in (com.metricol.api.enums.PostStatus.SCHEDULED, com.metricol.api.enums.PostStatus.QUEUED)
                     and p.scheduledAt >= :desde)
-                or (p.status = com.metricol.api.enums.PostStatus.DRAFT and p.propuestaAgente = true
+                or (p.status = com.metricol.api.enums.PostStatus.DRAFT and p.propuestaAgente = true and p.archivedAt is null
                     and p.fechaPropuesta >= :desde))
             """)
     List<LocalDateTime> huecosTomados(LocalDateTime desde);
@@ -105,7 +106,7 @@ public interface PostRepository extends JpaRepository<Post, UUID> {
               and (p.format is null or p.format <> com.metricol.api.enums.PostFormat.STORY)
               and ((p.status in (com.metricol.api.enums.PostStatus.SCHEDULED, com.metricol.api.enums.PostStatus.QUEUED)
                     and p.scheduledAt >= :desde)
-                or (p.status = com.metricol.api.enums.PostStatus.DRAFT and p.propuestaAgente = true
+                or (p.status = com.metricol.api.enums.PostStatus.DRAFT and p.propuestaAgente = true and p.archivedAt is null
                     and p.fechaPropuesta >= :desde))
             """)
     List<Object[]> tomadosConCategoria(LocalDateTime desde);
@@ -120,7 +121,7 @@ public interface PostRepository extends JpaRepository<Post, UUID> {
               and p.format = com.metricol.api.enums.PostFormat.STORY
               and ((p.status in (com.metricol.api.enums.PostStatus.SCHEDULED, com.metricol.api.enums.PostStatus.QUEUED)
                     and p.scheduledAt >= :desde)
-                or (p.status = com.metricol.api.enums.PostStatus.DRAFT and p.propuestaAgente = true
+                or (p.status = com.metricol.api.enums.PostStatus.DRAFT and p.propuestaAgente = true and p.archivedAt is null
                     and p.fechaPropuesta >= :desde))
             """)
     List<LocalDateTime> historiasTomadas(LocalDateTime desde);

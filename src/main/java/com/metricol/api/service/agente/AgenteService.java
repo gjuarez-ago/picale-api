@@ -367,7 +367,7 @@ public class AgenteService {
         int congeladas = 0;
         for (Post p : posts.programadasDelAgente()) {
             try {
-                postService.cancel(p.getId());
+                postService.devolverAPorAprobar(p.getId());
                 etapaDeSusFotos(p, EtapaAgente.PROPUESTA, null);
                 congeladas++;
             } catch (RuntimeException yaSaliendo) {

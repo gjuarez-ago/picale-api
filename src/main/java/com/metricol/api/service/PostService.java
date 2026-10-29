@@ -237,6 +237,20 @@ public class PostService {
      */
     @Transactional
     public PostResponse cancel(UUID id) {
+        return cancelar(id, false);
+    }
+
+    /**
+     * Como {@link #cancel}, pero una propuesta del agente vuelve a "Por aprobar"
+     * con su fecha propuesta. Es lo que hace la pausa de emergencia: congelar lo
+     * aprobado para volver a aprobarlo cuando pase.
+     */
+    @Transactional
+    public PostResponse devolverAPorAprobar(UUID id) {
+        return cancelar(id, true);
+    }
+
+    private PostResponse cancelar(UUID id, boolean sigueComoPropuesta) {
         Post post = findOrThrow(id);
         if (post.getStatus() == PostStatus.PUBLISHING) {
             throw new IllegalStateException(
@@ -254,6 +268,13 @@ public class PostService {
         cola.cancelarDePost(post.getId());
         post.setStatus(PostStatus.DRAFT);
         post.setScheduledAt(null);
+        // Una propuesta del agente ya aprobada que se cancela es un "no" de la
+        // persona: queda como borrador suyo y no vuelve a "Por aprobar" (29 oct
+        // 2026: una cancelada en CMRG reapareció en la bandeja como nueva).
+        if (post.delAgente() && !sigueComoPropuesta) {
+            post.setPropuestaAgente(false);
+            post.setFechaPropuesta(null);
+        }
         post.getTargets().forEach(target -> {
             target.setStatus(PostTargetStatus.PENDING);
             target.setErrorMessage(null);

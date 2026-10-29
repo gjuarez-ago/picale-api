@@ -138,6 +138,32 @@ class CancelarYEliminarPostTest {
     }
 
     @Test
+    @DisplayName("Una propuesta del agente aprobada y cancelada no vuelve a Por aprobar; archivada, tampoco")
+    void propuestaCanceladaNoVuelveALaBandeja() {
+        enElWorkspace(() -> {
+            Post aprobada = publicacion(PostStatus.SCHEDULED, PostTargetStatus.QUEUED);
+            aprobada.setPropuestaAgente(true);
+            aprobada.setFechaPropuesta(aprobada.getScheduledAt());
+            posts.save(aprobada);
+            Post archivada = publicacion(PostStatus.DRAFT);
+            archivada.setPropuestaAgente(true);
+            archivada.setFechaPropuesta(LocalDateTime.now().plusDays(2));
+            archivada.setArchivedAt(LocalDateTime.now());
+            posts.save(archivada);
+
+            postService.cancel(aprobada.getId());
+
+            assertThat(posts.findById(aprobada.getId())).get().satisfies(p -> {
+                assertThat(p.getStatus()).isEqualTo(PostStatus.DRAFT);
+                assertThat(p.delAgente()).isFalse();
+            });
+            assertThat(posts.propuestasDelAgente().stream().map(Post::getId))
+                    .doesNotContain(aprobada.getId(), archivada.getId());
+            assertThat(posts.contarPropuestasDelAgente()).isZero();
+        });
+    }
+
+    @Test
     @DisplayName("No se cancela lo que está saliendo, lo que ya salió en alguna red, ni un borrador")
     void cancelarNoSiempre() {
         enElWorkspace(() -> {
