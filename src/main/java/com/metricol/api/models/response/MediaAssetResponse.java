@@ -39,6 +39,9 @@ public class MediaAssetResponse {
     /** Solo en una copia PROCESSING o FAILED. */
     private String processingError;
 
+    /** Es la copia de un video con subtítulos pintados (en curso o lista). */
+    private boolean conSubtitulos;
+
     /** En qué va con el agente (PROPUESTA, OBSERVACION, DESCARTADA…), o nulo. */
     private String agenteEtapa;
 

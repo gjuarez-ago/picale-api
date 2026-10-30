@@ -151,6 +151,42 @@ public class OpenAiClient {
     }
 
     /**
+     * Lo dicho en un audio con el segundo en que empieza y termina cada
+     * palabra, y los tramos con la probabilidad de que ahí no hable nadie
+     * (para tirar lo que Whisper inventa: ver {@code LecturaDeWhisper}).
+     *
+     * @return la respuesta tal cual ({@code words}, {@code segments}, {@code text})
+     */
+    @SuppressWarnings("unchecked")
+    public Map<String, Object> transcribirConTiempos(byte[] audio, String nombre) {
+        if (!props.isConfigured()) {
+            throw new IllegalStateException("Falta configurar OPENAI_API_KEY.");
+        }
+        org.springframework.util.LinkedMultiValueMap<String, Object> partes = new org.springframework.util.LinkedMultiValueMap<>();
+        partes.add("file", new org.springframework.core.io.ByteArrayResource(audio) {
+            @Override
+            public String getFilename() {
+                return nombre;
+            }
+        });
+        partes.add("model", props.getSubtitlesModel());
+        partes.add("language", "es");
+        partes.add("response_format", "verbose_json");
+        partes.add("timestamp_granularities[]", "word");
+        partes.add("timestamp_granularities[]", "segment");
+
+        Map<String, Object> respuesta = transcripciones.post()
+                .uri("/audio/transcriptions")
+                .header("Authorization", "Bearer " + props.getApiKey())
+                .contentType(MediaType.MULTIPART_FORM_DATA)
+                .body(partes)
+                .retrieve()
+                .body(Map.class);
+        anotar(AiOperacion.SUBTITULAR, respuesta);
+        return respuesta == null ? Map.of() : respuesta;
+    }
+
+    /**
      * Mirar imágenes con un modelo elegido —uno que razona, en alta
      * resolución— cuando el detalle importa más que el costo: el director de
      * foto del agente y la revisión de que la foto mejorada sigue siendo la

@@ -412,6 +412,38 @@ public class FfmpegImagen {
         }
     }
 
+    /**
+     * Pinta los subtítulos de un guion ASS encima del video, con la letra de
+     * la imagen (Montserrat, ver Dockerfile). El sonido se conserva; el video
+     * se vuelve a codificar porque las letras pasan a ser parte de la imagen.
+     */
+    public boolean subtitularVideo(String fuente, Path guion, Path destino) {
+        List<String> comando = List.of(
+                props.getFfmpeg(),
+                "-hide_banner", "-loglevel", "error", "-y",
+                "-i", fuente,
+                "-map", "0:v:0", "-map", "0:a?",
+                "-vf", "subtitles=filename=" + rutaParaFiltro(guion),
+                "-c:v", "libx264", "-preset", "veryfast", "-crf", "20",
+                "-pix_fmt", "yuv420p",
+                "-c:a", "aac", "-b:a", "128k",
+                "-movflags", "+faststart",
+                "-map_metadata", "-1",
+                destino.toString());
+        String salida = ejecutar(comando, "ffmpeg-subtitulos", 1800);
+        try {
+            return salida != null && Files.size(destino) > 0;
+        } catch (IOException ex) {
+            return false;
+        }
+    }
+
+    /** Dentro de un filtro, ':', ',', '\'' y '\\' son parte de la sintaxis: se escapan. */
+    static String rutaParaFiltro(Path ruta) {
+        return ruta.toAbsolutePath().toString().replace("\\", "/")
+                .replace(":", "\\\\:").replace("'", "\\\\'").replace(",", "\\,");
+    }
+
     private static List<Double> numeros(Pattern patron, String texto) {
         List<Double> valores = new ArrayList<>();
         Matcher matcher = patron.matcher(texto);

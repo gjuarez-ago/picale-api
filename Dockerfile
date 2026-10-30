@@ -32,6 +32,12 @@ WORKDIR /app
 # no conoce America/Mexico_City y la JVM se queda en UTC aunque se lo pidan.
 RUN apk add --no-cache ffmpeg tzdata fontconfig ttf-dejavu
 
+# La letra de los subtítulos que se pintan en los videos (Montserrat
+# ExtraBold y Black, licencia OFL): gruesa, como la de TikTok. libass la busca
+# por nombre a través de fontconfig, por eso va a las fuentes del sistema.
+COPY docker/fonts/ /usr/share/fonts/picale/
+RUN fc-cache -f
+
 # El commit de git que se construyó, para que /api/v1/ops/version diga qué corre
 # sin tener que adivinarlo. Lo escribe deploy-vps.sh antes de empaquetar; sin
 # ese archivo, ni siquiera para una prueba local, la build fallaría en este

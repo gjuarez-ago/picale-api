@@ -1066,6 +1066,7 @@ public class MediaService {
                 .createdAt(asset.getCreatedAt())
                 .archivedAt(asset.getArchivedAt())
                 .processingError(asset.getProcessingError())
+                .conSubtitulos(asset.getSubtitulos() != null && !asset.getSubtitulos().isBlank())
                 .agenteEtapa(asset.getAgenteEtapa() == null ? null : asset.getAgenteEtapa().name())
                 .agenteMotivo(asset.getAgenteMotivo())
                 .usos(uso.total())

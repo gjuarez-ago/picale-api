@@ -1,6 +1,7 @@
 package com.metricol.api.service.media;
 
 import java.io.IOException;
+import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.time.LocalDateTime;
@@ -10,11 +11,14 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Service;
 
+import com.fasterxml.jackson.databind.ObjectMapper;
+
 import com.metricol.api.entity.MediaAsset;
 import com.metricol.api.enums.MediaAssetStatus;
 import com.metricol.api.repository.MediaAssetRepository;
 import com.metricol.api.service.storage.R2StorageService;
 import com.metricol.api.service.storage.StorageQuotaService;
+import com.metricol.api.service.media.subtitulos.SubtitulosService;
 
 /** Materializa una copia solicitada. Nunca modifica el video fuente. */
 @Service
@@ -26,14 +30,17 @@ public class VideoTrimProcessor {
     private final StorageQuotaService quota;
     private final FfmpegImagen ffmpeg;
     private final MiniaturasEnSegundoPlano thumbnails;
+    private final ObjectMapper json;
 
     public VideoTrimProcessor(MediaAssetRepository assets, R2StorageService storage,
-            StorageQuotaService quota, FfmpegImagen ffmpeg, MiniaturasEnSegundoPlano thumbnails) {
+            StorageQuotaService quota, FfmpegImagen ffmpeg, MiniaturasEnSegundoPlano thumbnails,
+            ObjectMapper json) {
         this.assets = assets;
         this.storage = storage;
         this.quota = quota;
         this.ffmpeg = ffmpeg;
         this.thumbnails = thumbnails;
+        this.json = json;
     }
 
     public void process(UUID jobId) {
@@ -51,9 +58,17 @@ public class VideoTrimProcessor {
         Path output = null;
         try {
             output = Files.createTempFile("picale-trim-", ".mp4");
-            if (!ffmpeg.recortarVideo(source.getUrl(), output,
-                    job.getTrimStartSeconds(), job.getTrimEndSeconds())) {
-                fail(job, "No pude crear el recorte. Intenta otra vez.");
+            // La misma cola hace recortes y copias con subtítulos: un solo
+            // ffmpeg pesado a la vez para no quitarle CPU a las publicaciones.
+            boolean subtitulos = SubtitulosService.esDeSubtitulos(job);
+            boolean listo = subtitulos
+                    ? subtitular(source, job, output)
+                    : ffmpeg.recortarVideo(source.getUrl(), output,
+                            job.getTrimStartSeconds(), job.getTrimEndSeconds());
+            if (!listo) {
+                fail(job, subtitulos
+                        ? "No pude ponerle los subtítulos. Intenta otra vez."
+                        : "No pude crear el recorte. Intenta otra vez.");
                 return;
             }
             long bytes = Files.size(output);
@@ -78,6 +93,21 @@ public class VideoTrimProcessor {
                     log.debug("Quedo un video temporal sin borrar: {}", output);
                 }
             }
+        }
+    }
+
+    /** Escribe el guion al tamaño real del video y lo pinta encima. */
+    private boolean subtitular(MediaAsset source, MediaAsset job, Path output) throws IOException {
+        FfmpegImagen.MedidasVideo medidas = ffmpeg.medirVideo(source.getUrl());
+        if (medidas == null) {
+            return false;
+        }
+        Path guion = Files.createTempFile("picale-subs-", ".ass");
+        try {
+            Files.writeString(guion, SubtitulosService.guion(json, job, medidas), StandardCharsets.UTF_8);
+            return ffmpeg.subtitularVideo(source.getUrl(), guion, output);
+        } finally {
+            Files.deleteIfExists(guion);
         }
     }
 

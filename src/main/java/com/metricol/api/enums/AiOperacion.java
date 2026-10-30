@@ -43,6 +43,9 @@ public enum AiOperacion {
     /** El agente pasa a texto lo que se dice en un video. */
     AGENTE_TRANSCRIBIR,
 
+    /** Lo dicho en un video con el segundo de cada palabra, para pintarle subtítulos. */
+    SUBTITULAR,
+
     /** El agente mira un video completo (varios cuadros y lo que se dice). */
     AGENTE_VIDEO,
 

@@ -1,0 +1,119 @@
+package com.metricol.api.service.media.subtitulos;
+
+import static org.assertj.core.api.Assertions.assertThat;
+
+import java.util.List;
+import java.util.Map;
+
+import org.junit.jupiter.api.DisplayName;
+import org.junit.jupiter.api.Test;
+
+/**
+ * Subtítulos con estilo: lo que se lee de Whisper, cómo se corrige y cómo se
+ * pinta. Sin ffmpeg ni red: el guion ASS es texto y se revisa como texto.
+ */
+class SubtitulosTest {
+
+    private static Map<String, Object> palabra(String w, double s, double e) {
+        return Map.of("word", w, "start", s, "end", e);
+    }
+
+    @Test
+    @DisplayName("Whisper inventa 'Amara.org' sobre un tono sin voz: se tira")
+    void tiraLoInventado() {
+        // La respuesta real del 30 oct 2026 a dos segundos de un tono de 440 Hz.
+        Map<String, Object> respuesta = Map.of(
+                "segments", List.of(Map.of("start", 0.0, "end", 2.0,
+                        "text", " Subtítulos realizados por la comunidad de Amara.org", "no_speech_prob", 0.2)),
+                "words", List.of(palabra("Subtítulos", 0, 1.28), palabra("realizados", 1.28, 1.28),
+                        palabra("por", 1.28, 1.28), palabra("la", 1.28, 1.28), palabra("comunidad", 1.28, 1.28),
+                        palabra("de", 1.28, 1.28), palabra("Amara.org", 1.28, 1.28)));
+        assertThat(LecturaDeWhisper.palabras(respuesta)).isEmpty();
+    }
+
+    @Test
+    @DisplayName("Un tramo marcado como 'aquí no habla nadie' se tira; lo dicho se queda, en orden")
+    void tiraElSilencioYConservaLoDicho() {
+        Map<String, Object> respuesta = Map.of(
+                "segments", List.of(
+                        Map.of("start", 0.0, "end", 2.0, "text", " Hola a todos", "no_speech_prob", 0.05),
+                        Map.of("start", 5.0, "end", 7.0, "text", " Gracias", "no_speech_prob", 0.9)),
+                "words", List.of(palabra(" Hola", 0.2, 0.5), palabra("a", 0.5, 0.6), palabra("todos", 0.4, 1.0),
+                        palabra("Gracias", 5.5, 6.0)));
+        List<Palabra> palabras = LecturaDeWhisper.palabras(respuesta);
+        assertThat(palabras).extracting(Palabra::texto).containsExactly("Hola", "a", "todos");
+        // "todos" decía empezar antes que "a": nunca hacia atrás.
+        assertThat(palabras.get(2).inicio()).isGreaterThanOrEqualTo(palabras.get(1).inicio());
+    }
+
+    @Test
+    @DisplayName("Las frases cortan en las pausas y en lo que se lee de un vistazo")
+    void agrupaEnFrases() {
+        List<Palabra> palabras = List.of(new Palabra("Hola", 0, 0.3), new Palabra("amigos", 0.3, 0.8),
+                new Palabra("hoy", 2.0, 2.2), new Palabra("vendemos", 2.2, 2.7));
+        List<Frase> frases = Frases.agrupar(palabras);
+        assertThat(frases).extracting(Frase::texto).containsExactly("Hola amigos", "hoy vendemos");
+        assertThat(frases.get(1).inicio()).isEqualTo(2.0);
+    }
+
+    @Test
+    @DisplayName("Corregir letras conserva el tiempo de cada palabra; cambiar palabras lo reparte")
+    void corregirFrases() {
+        Frase frase = Frases.agrupar(List.of(new Palabra("cuida", 1, 1.4), new Palabra("al", 1.4, 1.5),
+                new Palabra("sat", 1.5, 2.0))).get(0);
+
+        List<Palabra> letras = Frases.palabras(List.of(new Frase(frase.inicio(), frase.fin(),
+                "Cuida al SAT", frase.palabras())));
+        assertThat(letras).extracting(Palabra::texto).containsExactly("Cuida", "al", "SAT");
+        assertThat(letras.get(2).inicio()).isEqualTo(1.5);
+
+        List<Palabra> otras = Frases.palabras(List.of(new Frase(1, 2, "Ojo con el SAT", frase.palabras()),
+                new Frase(3, 4, "   ", List.of())));
+        assertThat(otras).extracting(Palabra::texto).containsExactly("Ojo", "con", "el", "SAT");
+        assertThat(otras.get(0).inicio()).isEqualTo(1.0);
+        assertThat(otras.get(3).fin()).isEqualTo(2.0, org.assertj.core.data.Offset.offset(1e-9));
+    }
+
+    @Test
+    @DisplayName("El resalte es el color vivo de la marca que se lee sobre video; si no hay, amarillo")
+    void colorDeResalte() {
+        // Los de Juan Rodríguez: negro, dorado casi blanco, dorado oscuro y dorado vivo.
+        assertThat(GuionAss.resalteLegible("#030202,#F3DA97,#946A29,#D4A858")).isEqualTo("#D4A858");
+        assertThat(GuionAss.resalteLegible("#1A3A6B,#000000")).isEqualTo(GuionAss.AMARILLO);
+        assertThat(GuionAss.resalteLegible(null)).isEqualTo(GuionAss.AMARILLO);
+        assertThat(GuionAss.colorAss("#D4A858")).isEqualTo("&H0058A8D4&");
+    }
+
+    @Test
+    @DisplayName("Palabra por palabra: un evento por palabra, con la que suena resaltada")
+    void estiloPalabra() {
+        List<Palabra> palabras = List.of(new Palabra("Hola", 0, 0.4), new Palabra("a", 0.4, 0.5),
+                new Palabra("todos", 0.5, 1.0), new Palabra("hoy", 1.0, 1.3));
+        String ass = GuionAss.escribir(palabras, EstiloSubtitulos.PALABRA, 1080, 1920, "#D4A858");
+        assertThat(ass).contains("PlayResX: 1080").contains("PlayResY: 1920").contains("Montserrat ExtraBold");
+        List<String> eventos = ass.lines().filter(l -> l.startsWith("Dialogue:")).toList();
+        assertThat(eventos).hasSize(4);
+        assertThat(eventos.get(0)).contains("{\\c&H0058A8D4&\\fscx112\\fscy112}Hola{\\r} a todos");
+        // "hoy" ya no cabe en el trozo de tres: va solo.
+        assertThat(eventos.get(3)).endsWith("{\\c&H0058A8D4&\\fscx112\\fscy112}hoy{\\r}");
+    }
+
+    @Test
+    @DisplayName("Rebote en mayúsculas con animación; clásico con franja; en vertical, lejos de los botones")
+    void estilosReboteYClasico() {
+        List<Palabra> palabras = List.of(new Palabra("¿Alguna", 0, 0.4), new Palabra("vez?", 0.4, 0.8));
+        String rebote = GuionAss.escribir(palabras, EstiloSubtitulos.REBOTE, 1080, 1920, null);
+        assertThat(rebote).contains("Montserrat Black").contains("¿ALGUNA VEZ?").contains("\\t(0,90,");
+        String clasico = GuionAss.escribir(palabras, EstiloSubtitulos.CLASICO, 1920, 1080, null);
+        // BorderStyle 3 = franja detrás; en horizontal va abajo, como en la tele.
+        assertThat(clasico).containsPattern("Style: Default,Montserrat ExtraBold,54,.*,3,.*,2,154,154,76,1");
+    }
+
+    @Test
+    @DisplayName("Una palabra no puede meter órdenes de ASS, y los tiempos van en centésimas")
+    void escapaYFormatea() {
+        assertThat(GuionAss.limpio("{\\b1}hola\\N")).isEqualTo("b1holaN");
+        assertThat(GuionAss.tiempo(3725.456)).isEqualTo("1:02:05.46");
+        assertThat(SubtitulosService.nombreSubtitulado("reel.MOV")).isEqualTo("reel-subtitulado.mp4");
+    }
+}

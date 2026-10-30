@@ -113,6 +113,21 @@ public class MediaAsset {
     private String processingError;
 
     /**
+     * Lo que se dice en este video, palabra por palabra con sus tiempos (JSON).
+     * Se guarda para no volver a pagar la transcripción cada vez que alguien
+     * corrige el texto o cambia de estilo.
+     */
+    @Column(columnDefinition = "text")
+    private String transcripcion;
+
+    /**
+     * En una copia con subtítulos: el estilo, el color y las palabras que se
+     * pintan (JSON). Es lo que la distingue de un recorte en la cola de video.
+     */
+    @Column(columnDefinition = "text")
+    private String subtitulos;
+
+    /**
      * Lo que la IA vio en este archivo, en una frase.
      *
      * <p>Vive aquí y no en una cache en memoria porque así se analiza UNA vez

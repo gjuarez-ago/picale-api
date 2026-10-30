@@ -87,6 +87,13 @@ public class OpenAiProperties {
     private String transcriptionModel = "gpt-4o-mini-transcribe";
 
     /**
+     * El que transcribe para los subtítulos. Tiene que ser Whisper: es el
+     * único que dice en qué segundo suena cada palabra, y sin eso no hay
+     * palabra que se ilumine al decirla.
+     */
+    private String subtitlesModel = "whisper-1";
+
+    /**
      * El director de foto del agente: mira cada foto en alta resolución y
      * escribe la mejora a su medida. Vacío = el mismo del director de arte.
      */
