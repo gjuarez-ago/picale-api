@@ -691,13 +691,24 @@ public class AgenteService {
      * Inicia el render sin bloquear al agente. Las fotos quedan en una etapa
      * explícita y la siguiente vuelta materializa el video como propuesta.
      */
+    /**
+     * El título que se pinta sobre el reel. Láminas ya diseñadas traen su
+     * propio encabezado y el título caía encima, tapándolo: con una sola pieza
+     * terminada entre las fotos, el reel va sin título.
+     */
+    static String tituloDelReel(List<EnTanda> fotos, String tema) {
+        boolean conDiseno = fotos.stream().anyMatch(f -> f.revision() != null
+                && f.revision().diagnostico() != null && f.revision().diagnostico().esArte());
+        return conDiseno || tema == null || tema.isBlank() ? null : tema.strip();
+    }
+
     private boolean proponerReel(Workspace w, List<EnTanda> fotos, String tema, String porque) {
         if (fotos.size() < 4 || fotos.size() > 8 || cuentasParaVideo(PostFormat.REEL, true).isEmpty()) return false;
         try {
             ReelCreateRequest request = new ReelCreateRequest();
             request.setAssetIds(fotos.stream().map(f -> f.asset().getId()).toList());
             request.setDurationSeconds(20);
-            request.setTitle(tema == null || tema.isBlank() ? null : tema.strip());
+            request.setTitle(tituloDelReel(fotos, tema));
             request.setMusicTheme(tema);
             request.setMusicIntent(porque);
             request.setAutomaticMusic(true);

@@ -46,6 +46,8 @@ public class SubtitulosAutomaticos {
     public static final String HACIENDO = "HACIENDO";
     public static final String LISTO = "LISTO";
     public static final String SIN_SUBTITULOS = "SIN_SUBTITULOS";
+    /** Ya traía subtítulos pegados: se suelta tal cual, sin ponerle otros encima. */
+    public static final String YA_TENIA = "YA_TENIA";
 
     static final int MAX_INTENTOS = 3;
 
@@ -150,6 +152,11 @@ public class SubtitulosAutomaticos {
         int intentos = (video.getSubtitulosIntentos() == null ? 0 : video.getSubtitulosIntentos()) + 1;
         try {
             subtitulos.texto(id, workspaceId);
+            if (subtitulos.yaTraeSubtitulos(id, workspaceId)) {
+                log.info("Video {} ya traía subtítulos: no se le ponen otros.", id);
+                guardar(id, YA_TENIA, intentos);
+                return;
+            }
             // "Haciendo" ANTES de encargar la copia: si la cola la termina (o
             // la tira) en un instante, su aviso llega después de esta marca y
             // no al revés. Al revés, esta marca pisaba el "listo" y el agente

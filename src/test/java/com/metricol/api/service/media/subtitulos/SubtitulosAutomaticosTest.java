@@ -61,6 +61,15 @@ class SubtitulosAutomaticosTest {
     }
 
     @Test
+    @DisplayName("Si ya traía subtítulos pegados, se suelta tal cual: no salen dobles")
+    void yaTenia() {
+        when(subtitulos.yaTraeSubtitulos(video.getId(), WS)).thenReturn(true);
+        automaticos.procesar(video.getId());
+        assertThat(video.getSubtitulosEstado()).isEqualTo(SubtitulosAutomaticos.YA_TENIA);
+        verify(subtitulos, never()).pedir(any(), any(), any(), any(), any());
+    }
+
+    @Test
     @DisplayName("Si nadie habla, se suelta sin subtítulos a la primera")
     void sinVozSeSuelta() {
         doThrow(new IllegalArgumentException("No escuché a nadie hablando en este video."))

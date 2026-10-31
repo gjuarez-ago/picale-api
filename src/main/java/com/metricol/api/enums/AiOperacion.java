@@ -46,6 +46,9 @@ public enum AiOperacion {
     /** Lo dicho en un video con el segundo de cada palabra, para pintarle subtítulos. */
     SUBTITULAR,
 
+    /** Mira si un video ya trae subtítulos pegados, para no ponerle otros encima. */
+    SUBTITULOS_PREVIOS,
+
     /** El agente mira un video completo (varios cuadros y lo que se dice). */
     AGENTE_VIDEO,
 

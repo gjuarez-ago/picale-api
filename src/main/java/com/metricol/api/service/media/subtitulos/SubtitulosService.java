@@ -12,6 +12,7 @@ import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.metricol.api.entity.MediaAsset;
 import com.metricol.api.entity.Workspace;
+import com.metricol.api.enums.AiOperacion;
 import com.metricol.api.enums.MediaAssetStatus;
 import com.metricol.api.enums.MediaType;
 import com.metricol.api.exception.ResourceNotFoundException;
@@ -177,6 +178,44 @@ public class SubtitulosService {
         }
         return GuionAss.escribir(encargo.palabras(), encargo.estilo(), medidas.ancho(), medidas.alto(),
                 encargo.color());
+    }
+
+    private static final String SISTEMA_PREVIOS = """
+            Miras cuadros de un video tomados mientras alguien habla. Dices si el video YA TRAE \
+            SUBTITULOS PEGADOS: texto que transcribe lo que se dice en ese momento, normalmente una o \
+            dos lineas abajo o al centro, que cambia de un cuadro a otro. NO cuentan como subtitulos: \
+            logotipos, titulos o rotulos fijos, letreros del lugar, textos de un diseno o grafica, \
+            nombres de la persona, marcas de agua. Contestas SOLO SI o NO.""";
+
+    /**
+     * Si el video ya trae subtítulos pegados (mucha gente los pone en CapCut
+     * antes de subir): encima de esos, los nuestros salían dobles. Mira tres
+     * cuadros en momentos en que se habla, así que va después de {@link #texto}.
+     * Probado con videos reales: acierta con subtítulos chicos, grandes y de
+     * colores, y no confunde los textos de un diseño.
+     *
+     * @throws IllegalStateException si no pudo mirar; quien llama reintenta
+     */
+    public boolean yaTraeSubtitulos(UUID videoId, UUID workspaceId) {
+        MediaAsset video = videoDe(videoId, workspaceId);
+        List<Palabra> palabras = leer(video.getTranscripcion());
+        if (palabras.isEmpty()) {
+            return false;
+        }
+        List<String> cuadros = new java.util.ArrayList<>();
+        for (double parte : new double[] { 0.25, 0.5, 0.75 }) {
+            Palabra p = palabras.get(Math.min(palabras.size() - 1, (int) (palabras.size() * parte)));
+            byte[] jpg = ffmpeg.cuadro(video.getUrl(), (p.inicio() + p.fin()) / 2, 720, 5);
+            if (jpg != null) {
+                cuadros.add("data:image/jpeg;base64," + java.util.Base64.getEncoder().encodeToString(jpg));
+            }
+        }
+        if (cuadros.isEmpty()) {
+            throw new IllegalStateException("No pude ver los cuadros del video.");
+        }
+        String respuesta = ia.describeImages(AiOperacion.SUBTITULOS_PREVIOS, SISTEMA_PREVIOS,
+                "Tres cuadros del mismo video, en orden. Ya trae subtitulos pegados?", cuadros);
+        return respuesta != null && respuesta.strip().toUpperCase(java.util.Locale.ROOT).startsWith("SI");
     }
 
     private MediaAsset videoDe(UUID id, UUID workspaceId) {

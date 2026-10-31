@@ -130,7 +130,8 @@ public class MediaAsset {
     /**
      * En un video original con subtítulos automáticos: ESPERANDO mientras se
      * hacen (el agente no lo toma todavía), LISTO cuando ya hay copia, y
-     * SIN_SUBTITULOS si no se pudieron poner (no habla nadie, o falló). Nulo =
+     * SIN_SUBTITULOS si no se pudieron poner (no habla nadie, o falló) y YA_TENIA
+     * si ya traía subtítulos pegados. Nulo =
      * no aplica. Ver {@code SubtitulosAutomaticos}.
      */
     @Column(length = 20)

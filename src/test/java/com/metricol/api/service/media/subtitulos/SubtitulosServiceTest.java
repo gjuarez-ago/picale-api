@@ -75,6 +75,22 @@ class SubtitulosServiceTest {
     }
 
     @Test
+    @DisplayName("Mira tres cuadros mientras se habla y dice si el video ya trae subtítulos")
+    void yaTraeSubtitulos() {
+        service.texto(video.getId(), WS);
+        when(ffmpeg.cuadro(anyString(), org.mockito.ArgumentMatchers.anyDouble(), anyInt(), anyInt())).thenReturn(new byte[] { 1 });
+        when(ia.describeImages(any(), anyString(), anyString(), any())).thenReturn("SI");
+        assertThat(service.yaTraeSubtitulos(video.getId(), WS)).isTrue();
+        verify(ffmpeg, times(3)).cuadro(anyString(), org.mockito.ArgumentMatchers.anyDouble(), anyInt(), anyInt());
+
+        when(ia.describeImages(any(), anyString(), anyString(), any())).thenReturn(" No.");
+        assertThat(service.yaTraeSubtitulos(video.getId(), WS)).isFalse();
+
+        when(ffmpeg.cuadro(anyString(), org.mockito.ArgumentMatchers.anyDouble(), anyInt(), anyInt())).thenReturn(null);
+        assertThatThrownBy(() -> service.yaTraeSubtitulos(video.getId(), WS)).isInstanceOf(IllegalStateException.class);
+    }
+
+    @Test
     @DisplayName("El texto se saca una vez y se guarda: corregir o cambiar de estilo no vuelve a cobrar")
     void textoUnaSolaVez() {
         assertThat(service.texto(video.getId(), WS)).extracting(Frase::texto).containsExactly("Hola amigos");
