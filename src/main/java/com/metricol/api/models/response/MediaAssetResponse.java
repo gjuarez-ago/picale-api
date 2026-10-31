@@ -42,8 +42,14 @@ public class MediaAssetResponse {
     /** Es la copia de un video con subtítulos pintados (en curso o lista). */
     private boolean conSubtitulos;
 
+    /** Es una copia hecha por Pícale (subtítulos y/o música), en curso o lista. */
+    private boolean copiaEditada;
+
     /** En un original con subtítulos automáticos: ESPERANDO, HACIENDO, LISTO o SIN_SUBTITULOS. */
     private String subtitulosEstado;
+
+    /** PUESTA o YA_TENIA en un video con música automática; nulo = no aplica. */
+    private String musicaFondo;
 
     /** En qué va con el agente (PROPUESTA, OBSERVACION, DESCARTADA…), o nulo. */
     private String agenteEtapa;

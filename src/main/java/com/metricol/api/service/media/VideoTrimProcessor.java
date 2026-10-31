@@ -20,6 +20,7 @@ import com.metricol.api.service.storage.R2StorageService;
 import com.metricol.api.service.storage.StorageQuotaService;
 import com.metricol.api.service.media.subtitulos.SubtitulosAutomaticos;
 import com.metricol.api.service.media.subtitulos.SubtitulosService;
+import com.metricol.api.service.reels.ReelMusicCatalog;
 
 /** Materializa una copia solicitada. Nunca modifica el video fuente. */
 @Service
@@ -32,16 +33,18 @@ public class VideoTrimProcessor {
     private final FfmpegImagen ffmpeg;
     private final MiniaturasEnSegundoPlano thumbnails;
     private final ObjectMapper json;
+    private final ReelMusicCatalog musica;
 
     public VideoTrimProcessor(MediaAssetRepository assets, R2StorageService storage,
             StorageQuotaService quota, FfmpegImagen ffmpeg, MiniaturasEnSegundoPlano thumbnails,
-            ObjectMapper json) {
+            ObjectMapper json, ReelMusicCatalog musica) {
         this.assets = assets;
         this.storage = storage;
         this.quota = quota;
         this.ffmpeg = ffmpeg;
         this.thumbnails = thumbnails;
         this.json = json;
+        this.musica = musica;
     }
 
     public void process(UUID jobId) {
@@ -59,16 +62,16 @@ public class VideoTrimProcessor {
         Path output = null;
         try {
             output = Files.createTempFile("picale-trim-", ".mp4");
-            // La misma cola hace recortes y copias con subtítulos: un solo
+            // La misma cola hace recortes y copias con subtítulos y/o música: un solo
             // ffmpeg pesado a la vez para no quitarle CPU a las publicaciones.
             boolean subtitulos = SubtitulosService.esDeSubtitulos(job);
             boolean listo = subtitulos
-                    ? subtitular(source, job, output)
+                    ? editar(source, job, output)
                     : ffmpeg.recortarVideo(source.getUrl(), output,
                             job.getTrimStartSeconds(), job.getTrimEndSeconds());
             if (!listo) {
                 fail(job, subtitulos
-                        ? "No pude ponerle los subtítulos. Intenta otra vez."
+                        ? "No pude editar el video. Intenta otra vez."
                         : "No pude crear el recorte. Intenta otra vez.");
                 return;
             }
@@ -100,18 +103,40 @@ public class VideoTrimProcessor {
         }
     }
 
-    /** Escribe el guion al tamaño real del video y lo pinta encima. */
-    private boolean subtitular(MediaAsset source, MediaAsset job, Path output) throws IOException {
+    /**
+     * Escribe el guion al tamaño real del video (si lleva subtítulos), prepara
+     * la canción (si lleva música) y hace la copia en una sola pasada.
+     */
+    private boolean editar(MediaAsset source, MediaAsset job, Path output) throws IOException {
         FfmpegImagen.MedidasVideo medidas = ffmpeg.medirVideo(source.getUrl());
         if (medidas == null) {
             return false;
         }
-        Path guion = Files.createTempFile("picale-subs-", ".ass");
+        String texto = SubtitulosService.guion(json, job, medidas);
+        SubtitulosService.MusicaDeCopia cancion = SubtitulosService.musica(json, job);
+        Path carpeta = Files.createTempDirectory("picale-edicion-");
         try {
-            Files.writeString(guion, SubtitulosService.guion(json, job, medidas), StandardCharsets.UTF_8);
-            return ffmpeg.subtitularVideo(source.getUrl(), guion, output);
+            Path guion = null;
+            if (texto != null) {
+                guion = carpeta.resolve("subtitulos.ass");
+                Files.writeString(guion, texto, StandardCharsets.UTF_8);
+            }
+            Path pista = null;
+            if (cancion != null) {
+                ReelMusicCatalog.Selection elegida = musica.selection(cancion.cancion());
+                if (elegida == null) {
+                    throw new IllegalStateException("Esa canción ya no está en el catálogo.");
+                }
+                pista = musica.materialize(elegida, carpeta);
+            }
+            return ffmpeg.editarVideo(source.getUrl(), guion, pista,
+                    cancion == null ? 1 : cancion.volumen(), medidas.segundos(),
+                    pista != null && ffmpeg.tieneSonido(source.getUrl()), output);
         } finally {
-            Files.deleteIfExists(guion);
+            try (var archivos = Files.list(carpeta)) {
+                archivos.forEach(a -> a.toFile().delete());
+            }
+            Files.deleteIfExists(carpeta);
         }
     }
 

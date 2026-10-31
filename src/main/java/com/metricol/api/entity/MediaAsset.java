@@ -128,10 +128,10 @@ public class MediaAsset {
     private String subtitulos;
 
     /**
-     * En un video original con subtítulos automáticos: ESPERANDO mientras se
-     * hacen (el agente no lo toma todavía), LISTO cuando ya hay copia, y
-     * SIN_SUBTITULOS si no se pudieron poner (no habla nadie, o falló) y YA_TENIA
-     * si ya traía subtítulos pegados. Nulo =
+     * En un video original con edición automática (subtítulos y/o música):
+     * ESPERANDO mientras se hace (el agente no lo toma todavía), LISTO cuando
+     * ya hay copia, SIN_SUBTITULOS si no se le puso nada (no habla nadie, o
+     * falló) y YA_TENIA si ya traía subtítulos pegados y no llevó música. Nulo =
      * no aplica. Ver {@code SubtitulosAutomaticos}.
      */
     @Column(length = 20)
@@ -139,6 +139,13 @@ public class MediaAsset {
 
     /** Cuántas veces se intentó ponerle los automáticos; a las tres se suelta sin ellos. */
     private Integer subtitulosIntentos;
+
+    /**
+     * En un video original con música automática: PUESTA si su copia la lleva,
+     * YA_TENIA si ya traía música o sonido de fondo y se dejó así. Nulo = no aplica.
+     */
+    @Column(length = 20)
+    private String musicaFondo;
 
     /**
      * Lo que la IA vio en este archivo, en una frase.

@@ -34,19 +34,28 @@ class MusicaDeReelsTest {
     @Test
     @DisplayName("Sin tocar nada: con música y el ambiente lo pone el giro")
     void deFabrica() {
-        assertThat(musica.ajustes(ws)).isEqualTo(new MusicaDeReels.Ajustes(true, null));
-        assertThat(musica.ajustes(UUID.randomUUID())).isEqualTo(new MusicaDeReels.Ajustes(true, null));
+        assertThat(musica.ajustes(ws)).isEqualTo(new MusicaDeReels.Ajustes(true, null, false));
+        assertThat(musica.ajustes(UUID.randomUUID())).isEqualTo(new MusicaDeReels.Ajustes(true, null, false));
     }
 
     @Test
     @DisplayName("Se guarda apagada o con ambiente; un ambiente inventado no se acepta")
     void guardar() {
-        assertThat(musica.guardar(ws, new MusicaDeReels.Ajustes(false, "elegante")))
-                .isEqualTo(new MusicaDeReels.Ajustes(false, "elegante"));
+        assertThat(musica.guardar(ws, new MusicaDeReels.Ajustes(false, "elegante", false)))
+                .isEqualTo(new MusicaDeReels.Ajustes(false, "elegante", false));
         assertThat(espacio.getMusicaReels()).isFalse();
-        assertThat(musica.guardar(ws, new MusicaDeReels.Ajustes(true, " "))).isEqualTo(new MusicaDeReels.Ajustes(true, null));
-        assertThatThrownBy(() -> musica.guardar(ws, new MusicaDeReels.Ajustes(true, "reguetón")))
+        assertThat(musica.guardar(ws, new MusicaDeReels.Ajustes(true, " ", false))).isEqualTo(new MusicaDeReels.Ajustes(true, null, false));
+        assertThatThrownBy(() -> musica.guardar(ws, new MusicaDeReels.Ajustes(true, "reguetón", false)))
                 .isInstanceOf(IllegalArgumentException.class);
+    }
+
+    @Test
+    @DisplayName("La música en los videos subidos va apagada de entrada; al guardar sin decir nada, se queda como estaba")
+    void videos() {
+        assertThat(musica.guardar(ws, new MusicaDeReels.Ajustes(true, null, true)).videos()).isTrue();
+        assertThat(espacio.getMusicaVideos()).isTrue();
+        assertThat(musica.guardar(ws, new MusicaDeReels.Ajustes(true, "alegre", null)).videos()).isTrue();
+        assertThat(musica.guardar(ws, new MusicaDeReels.Ajustes(true, null, false)).videos()).isFalse();
     }
 
     @Test

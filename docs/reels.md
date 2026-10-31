@@ -249,6 +249,20 @@ interno y mantener un solo worker. El go/no-go inicial es p95 <= 120 segundos y
 sin degradación apreciable de las solicitudes web. Hasta tener esa medición,
 la capacidad y el costo por reel en producción siguen siendo hipótesis.
 
+## Música de fondo en los videos que se suben
+
+La misma música del catálogo puede ir de fondo en los videos que sube la
+persona (`Workspace.musicaVideos`, apagada de entrada; el ambiente es el mismo
+de los reels). Lo hace `SubtitulosAutomaticos`, en la misma copia que los
+subtítulos y en una sola pasada de ffmpeg (`FfmpegImagen.editarVideo`):
+
+- Con voz, al 25% (unos 6 dB debajo de la voz); sin voz o sin pista de sonido, completa.
+- Si el video ya trae música o sonido de fondo, se deja así (`FondoDelAudio`):
+  se escuchan las pausas entre palabras y, si más del 60% suena por encima de
+  -38 dB, ya trae fondo. Calibrado con videos reales el 31 oct 2026.
+- El original nunca se toca; `musicaFondo` dice en el original si se le puso
+  (PUESTA) o si ya la traía (YA_TENIA).
+
 ## Riesgos y decisiones pendientes
 
 - La memoria pico local fue mayor de lo anticipado. No aumentar workers sin

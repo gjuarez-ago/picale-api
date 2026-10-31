@@ -42,6 +42,7 @@ import com.metricol.api.service.media.VideoTrimDispatcher;
 import com.metricol.api.service.storage.R2StorageService;
 import com.metricol.api.service.storage.StorageQuotaService;
 import com.metricol.api.service.media.subtitulos.SubtitulosAutomaticos;
+import com.metricol.api.service.media.subtitulos.SubtitulosService;
 
 /**
  * Los medios del workspace: subir, medir el espacio y borrar.
@@ -801,16 +802,16 @@ public class MediaService {
     }
 
     /**
-     * Con subtítulos automáticos encendidos, un video recién subido queda
-     * esperando los suyos: así el agente no lo toma antes de tiempo y publica
-     * la copia con subtítulos y no el original. Ver {@code SubtitulosAutomaticos}.
+     * Con subtítulos automáticos o música de fondo encendidos, un video recién
+     * subido queda esperando su copia: así el agente no lo toma antes de
+     * tiempo y publica la copia editada y no el original. Ver {@code SubtitulosAutomaticos}.
      */
     private void esperarSubtitulos(MediaAsset asset, String tenantId) {
         if (asset.getType() != MediaType.VIDEO || asset.getSourceAssetId() != null || tenantId == null) {
             return;
         }
         workspaces.findById(UUID.fromString(tenantId))
-                .filter(w -> Boolean.TRUE.equals(w.getSubtitulosAuto()))
+                .filter(w -> Boolean.TRUE.equals(w.getSubtitulosAuto()) || Boolean.TRUE.equals(w.getMusicaVideos()))
                 .ifPresent(w -> asset.setSubtitulosEstado(SubtitulosAutomaticos.ESPERANDO));
     }
 
@@ -1083,8 +1084,10 @@ public class MediaService {
                 .createdAt(asset.getCreatedAt())
                 .archivedAt(asset.getArchivedAt())
                 .processingError(asset.getProcessingError())
-                .conSubtitulos(asset.getSubtitulos() != null && !asset.getSubtitulos().isBlank())
+                .conSubtitulos(SubtitulosService.pintaSubtitulos(asset))
+                .copiaEditada(SubtitulosService.esDeSubtitulos(asset))
                 .subtitulosEstado(asset.getSubtitulosEstado())
+                .musicaFondo(asset.getMusicaFondo())
                 .agenteEtapa(asset.getAgenteEtapa() == null ? null : asset.getAgenteEtapa().name())
                 .agenteMotivo(asset.getAgenteMotivo())
                 .usos(uso.total())

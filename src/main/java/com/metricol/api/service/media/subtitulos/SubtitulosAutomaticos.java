@@ -1,5 +1,6 @@
 package com.metricol.api.service.media.subtitulos;
 
+import java.util.List;
 import java.util.Set;
 import java.util.UUID;
 import java.util.concurrent.ConcurrentHashMap;
@@ -16,12 +17,19 @@ import com.metricol.api.entity.MediaAsset;
 import com.metricol.api.entity.Workspace;
 import com.metricol.api.repository.MediaAssetRepository;
 import com.metricol.api.repository.WorkspaceRepository;
+import com.metricol.api.service.reels.FfmpegReelRenderer;
+import com.metricol.api.service.reels.MusicaDeReels;
+import com.metricol.api.service.reels.ReelMusicCatalog;
 
 import jakarta.annotation.PreDestroy;
 
 /**
- * Subtítulos automáticos: todo video que se sube a una cuenta que los tiene
- * encendidos sale con subtítulos, sin que nadie toque un botón.
+ * Subtítulos automáticos y música de fondo: todo video que se sube a una
+ * cuenta que los tiene encendidos sale con ellos, sin que nadie toque un
+ * botón. Si lleva los dos, se ponen en una sola copia.
+ *
+ * <p>La música se pone bajita si en el video alguien habla, completa si no, y
+ * nada si el video ya trae música o sonido de fondo (ver {@link FondoDelAudio}).
  *
  * <p>El recorrido de un video original:
  * <ol>
@@ -48,12 +56,16 @@ public class SubtitulosAutomaticos {
     public static final String SIN_SUBTITULOS = "SIN_SUBTITULOS";
     /** Ya traía subtítulos pegados: se suelta tal cual, sin ponerle otros encima. */
     public static final String YA_TENIA = "YA_TENIA";
+    /** La copia lleva música de fondo (en {@code musicaFondo} del original). */
+    public static final String MUSICA_PUESTA = "PUESTA";
 
     static final int MAX_INTENTOS = 3;
 
     private final MediaAssetRepository assets;
     private final WorkspaceRepository workspaces;
     private final SubtitulosService subtitulos;
+    private final MusicaDeReels musicaDeCuenta;
+    private final ReelMusicCatalog catalogo;
     /** Uno a la vez: transcribir y encargar es corto, pero no debe correr dos veces el mismo video. */
     private final ExecutorService hilo = Executors.newSingleThreadExecutor(r -> {
         Thread t = new Thread(r, "subtitulos-auto");
@@ -63,10 +75,12 @@ public class SubtitulosAutomaticos {
     private final Set<UUID> enCurso = ConcurrentHashMap.newKeySet();
 
     public SubtitulosAutomaticos(MediaAssetRepository assets, WorkspaceRepository workspaces,
-            SubtitulosService subtitulos) {
+            SubtitulosService subtitulos, MusicaDeReels musicaDeCuenta, ReelMusicCatalog catalogo) {
         this.assets = assets;
         this.workspaces = workspaces;
         this.subtitulos = subtitulos;
+        this.musicaDeCuenta = musicaDeCuenta;
+        this.catalogo = catalogo;
     }
 
     /**
@@ -133,7 +147,10 @@ public class SubtitulosAutomaticos {
         hilo.shutdownNow();
     }
 
-    /** Un video que espera sus subtítulos: sacar el texto y encargar la copia. */
+    /**
+     * Un video que espera su copia: sacar el texto, decidir qué lleva
+     * (subtítulos, música o las dos) y encargarla.
+     */
     void procesar(UUID id) {
         MediaAsset video = assets.findById(id).orElse(null);
         if (video == null) return;
@@ -144,36 +161,66 @@ public class SubtitulosAutomaticos {
         if (!ESPERANDO.equals(video.getSubtitulosEstado())) return;
         UUID workspaceId = UUID.fromString(video.getTenantId());
         Workspace espacio = workspaces.findById(workspaceId).orElse(null);
-        if (espacio == null || !Boolean.TRUE.equals(espacio.getSubtitulosAuto())) {
+        boolean conSubtitulos = espacio != null && Boolean.TRUE.equals(espacio.getSubtitulosAuto());
+        boolean conMusica = espacio != null && Boolean.TRUE.equals(espacio.getMusicaVideos());
+        if (!conSubtitulos && !conMusica) {
             // Los apagaron mientras esperaba: se suelta tal cual.
             guardar(video, null, video.getSubtitulosIntentos());
             return;
         }
         int intentos = (video.getSubtitulosIntentos() == null ? 0 : video.getSubtitulosIntentos()) + 1;
         try {
-            subtitulos.texto(id, workspaceId);
-            if (subtitulos.yaTraeSubtitulos(id, workspaceId)) {
-                log.info("Video {} ya traía subtítulos: no se le ponen otros.", id);
-                guardar(id, YA_TENIA, intentos);
+            List<Palabra> palabras = subtitulos.palabras(id, workspaceId);
+            boolean yaTenia = false;
+            if (conSubtitulos && !palabras.isEmpty()) {
+                yaTenia = subtitulos.yaTraeSubtitulos(id, workspaceId);
+                if (yaTenia) log.info("Video {} ya traía subtítulos: no se le ponen otros.", id);
+            }
+            boolean ponerSubtitulos = conSubtitulos && !palabras.isEmpty() && !yaTenia;
+            SubtitulosService.MusicaDeCopia cancion = null;
+            String fondo = null;
+            if (conMusica) {
+                if (subtitulos.yaTraeMusica(id, workspaceId, palabras)) {
+                    log.info("Video {} ya trae música o sonido de fondo: se deja así.", id);
+                    fondo = YA_TENIA;
+                } else {
+                    cancion = cancion(espacio, id, !palabras.isEmpty());
+                    fondo = cancion == null ? null : MUSICA_PUESTA;
+                }
+            }
+            if (!ponerSubtitulos && cancion == null) {
+                guardar(id, yaTenia ? YA_TENIA : SIN_SUBTITULOS, intentos, fondo);
                 return;
             }
             // "Haciendo" ANTES de encargar la copia: si la cola la termina (o
             // la tira) en un instante, su aviso llega después de esta marca y
             // no al revés. Al revés, esta marca pisaba el "listo" y el agente
             // no tomaba nunca el video.
-            guardar(id, HACIENDO, intentos);
-            subtitulos.pedir(id, workspaceId, estiloDe(espacio), colorDe(espacio), null);
+            guardar(id, HACIENDO, intentos, fondo);
+            subtitulos.pedirEdicion(id, workspaceId, estiloDe(espacio), colorDe(espacio), ponerSubtitulos, cancion);
         } catch (IllegalArgumentException ex) {
-            // No habla nadie, no tiene sonido, es muy largo: no es un fallo, no hay qué poner.
-            log.info("Video {} sin subtítulos automáticos: {}", id, ex.getMessage());
-            guardar(id, SIN_SUBTITULOS, intentos);
+            // Muy largo, no se abre: no es un fallo, no hay qué poner.
+            log.info("Video {} sin edición automática: {}", id, ex.getMessage());
+            guardar(id, SIN_SUBTITULOS, intentos, null);
         } catch (SubtitulosService.ColaLlena ex) {
             // Muchos videos a la vez: espera su turno sin gastar un intento.
-            guardar(id, ESPERANDO, intentos - 1);
+            guardar(id, ESPERANDO, intentos - 1, null);
         } catch (Exception ex) {
-            log.warn("Subtítulos automáticos del video {} (intento {}): {}", id, intentos, ex.toString());
-            guardar(id, intentos >= MAX_INTENTOS ? SIN_SUBTITULOS : ESPERANDO, intentos);
+            log.warn("Edición automática del video {} (intento {}): {}", id, intentos, ex.toString());
+            guardar(id, intentos >= MAX_INTENTOS ? SIN_SUBTITULOS : ESPERANDO, intentos, null);
         }
+    }
+
+    /**
+     * La canción del video: el ambiente de la cuenta (o su giro), la misma para
+     * el mismo video. Con voz, bajita para que se entienda; sin voz, completa.
+     */
+    private SubtitulosService.MusicaDeCopia cancion(Workspace espacio, UUID videoId, boolean conVoz) {
+        String ambiente = musicaDeCuenta.ajustesDe(espacio).ambiente();
+        ReelMusicCatalog.Selection elegida = catalogo.select(espacio.getGiro(), null, null, conVoz,
+                videoId + (ambiente == null ? "" : "|" + ambiente), ambiente);
+        return elegida == null ? null : new SubtitulosService.MusicaDeCopia(elegida.track().id(),
+                conVoz ? FfmpegReelRenderer.MUSICA_BAJO_VOZ : FfmpegReelRenderer.MUSICA_SOLA);
     }
 
     private void soltarSiNoHayCopia(MediaAsset video) {
@@ -199,9 +246,12 @@ public class SubtitulosAutomaticos {
         assets.save(original);
     }
 
-    /** Relee la fila antes de guardar: texto() guarda la transcripción en ella y no hay que pisarla. */
-    private void guardar(UUID id, String estado, Integer intentos) {
-        assets.findById(id).ifPresent(fresco -> guardar(fresco, estado, intentos));
+    /** Relee la fila antes de guardar: palabras() guarda la transcripción en ella y no hay que pisarla. */
+    private void guardar(UUID id, String estado, Integer intentos, String fondo) {
+        assets.findById(id).ifPresent(fresco -> {
+            fresco.setMusicaFondo(fondo);
+            guardar(fresco, estado, intentos);
+        });
     }
 
     private void guardar(MediaAsset video, String estado, Integer intentos) {

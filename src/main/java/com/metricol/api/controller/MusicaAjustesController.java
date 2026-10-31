@@ -17,13 +17,13 @@ import com.metricol.api.service.PermissionService;
 import com.metricol.api.service.reels.MusicaDeReels;
 import com.metricol.api.service.reels.ReelMusicCatalog;
 
-/** Música de los reels que se arman con fotos: si llevan y con qué ambiente. */
+/** La música de la cuenta: en los reels de fotos, de fondo en los videos que se suben, y con qué ambiente. */
 @RestController
 @RequestMapping("/api/v1/musica/ajustes")
 public class MusicaAjustesController {
 
     /** Lo guardado más los ambientes que se pueden elegir, para no repetir la lista en la web. */
-    public record Respuesta(boolean activo, String ambiente, Set<String> ambientes) {
+    public record Respuesta(boolean activo, String ambiente, boolean videos, Set<String> ambientes) {
     }
 
     private final MusicaDeReels musica;
@@ -51,6 +51,7 @@ public class MusicaAjustesController {
     }
 
     private Respuesta respuesta(MusicaDeReels.Ajustes ajustes) {
-        return new Respuesta(ajustes.activo(), ajustes.ambiente(), catalogo.ambientes());
+        return new Respuesta(ajustes.activo(), ajustes.ambiente(), Boolean.TRUE.equals(ajustes.videos()),
+                catalogo.ambientes());
     }
 }

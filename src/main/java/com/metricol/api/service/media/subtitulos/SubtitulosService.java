@@ -61,8 +61,18 @@ public class SubtitulosService {
         }
     }
 
-    /** Lo que se guarda en la copia para pintarla. */
-    record Encargo(EstiloSubtitulos estilo, String color, List<Palabra> palabras) {
+    /**
+     * Lo que se guarda en la copia para hacerla. Las palabras pueden venir
+     * vacías (solo música) y la música nula (solo subtítulos).
+     *
+     * @param musica  la canción del catálogo; nula = sin música
+     * @param volumen de la música, ya igualada a -14 LUFS (1 = completa)
+     */
+    record Encargo(EstiloSubtitulos estilo, String color, List<Palabra> palabras, String musica, Double volumen) {
+    }
+
+    /** La música que lleva una copia y a qué volumen. */
+    public record MusicaDeCopia(String cancion, double volumen) {
     }
 
     private final MediaAssetRepository assets;
@@ -92,10 +102,25 @@ public class SubtitulosService {
 
     /** Lo que se dice en el video, por frases. La segunda vez sale de lo guardado. */
     public List<Frase> texto(UUID videoId, UUID workspaceId) {
+        return Frases.agrupar(palabras(videoId, workspaceId, true));
+    }
+
+    /**
+     * Lo que se dice en el video, palabra por palabra; vacío si no tiene
+     * sonido o nadie habla (para la música eso no es un error).
+     *
+     * @throws IllegalArgumentException si no se puede abrir o es muy largo
+     */
+    public List<Palabra> palabras(UUID videoId, UUID workspaceId) {
+        return palabras(videoId, workspaceId, false);
+    }
+
+    /** @param exigir si no hay voz es un error que se le dice a la persona */
+    private List<Palabra> palabras(UUID videoId, UUID workspaceId, boolean exigir) {
         MediaAsset video = videoDe(videoId, workspaceId);
         List<Palabra> guardadas = leer(video.getTranscripcion());
         if (!guardadas.isEmpty()) {
-            return Frases.agrupar(guardadas);
+            return guardadas;
         }
         FfmpegImagen.MedidasVideo medidas = ffmpeg.medirVideo(video.getUrl());
         if (medidas == null) {
@@ -106,15 +131,18 @@ public class SubtitulosService {
         }
         byte[] audio = ffmpeg.audio(video.getUrl(), (int) Math.ceil(Math.min(medidas.segundos(), MAX_SEGUNDOS)));
         if (audio == null) {
-            throw new IllegalArgumentException("Este video no tiene sonido.");
+            if (exigir) throw new IllegalArgumentException("Este video no tiene sonido.");
+            return List.of();
         }
         List<Palabra> palabras = LecturaDeWhisper.palabras(ia.transcribirConTiempos(audio, "audio.mp3"));
-        if (palabras.isEmpty()) {
+        if (palabras.isEmpty() && exigir) {
             throw new IllegalArgumentException("No escuché a nadie hablando en este video.");
         }
-        video.setTranscripcion(escribir(palabras));
-        assets.save(video);
-        return Frases.agrupar(palabras);
+        if (!palabras.isEmpty()) {
+            video.setTranscripcion(escribir(palabras));
+            assets.save(video);
+        }
+        return palabras;
     }
 
     /**
@@ -134,13 +162,43 @@ public class SubtitulosService {
                     ? "Primero saca el texto del video."
                     : "No quedó texto para poner. Escribe al menos una frase.");
         }
+        return encargar(video, workspaceId, encargo(workspaceId, estilo, color, palabras, null),
+                nombreSubtitulado(video.getFileName()));
+    }
+
+    /**
+     * La copia final de un video subido, como la pidió la cuenta: con
+     * subtítulos, con música de fondo, o con los dos en una sola pasada.
+     *
+     * @param conSubtitulos si se le pintan (con el texto ya sacado)
+     * @param musica        nula = sin música
+     */
+    public MediaAssetResponse pedirEdicion(UUID videoId, UUID workspaceId, EstiloSubtitulos estilo, Color color,
+            boolean conSubtitulos, MusicaDeCopia musica) {
+        MediaAsset video = videoDe(videoId, workspaceId);
+        List<Palabra> palabras = conSubtitulos ? leer(video.getTranscripcion()) : List.of();
+        if (conSubtitulos && palabras.isEmpty()) {
+            throw new IllegalArgumentException("Primero saca el texto del video.");
+        }
+        if (palabras.isEmpty() && musica == null) {
+            throw new IllegalArgumentException("No hay nada que ponerle a este video.");
+        }
+        return encargar(video, workspaceId, encargo(workspaceId, estilo, color, palabras, musica),
+                palabras.isEmpty() ? nombreConMusica(video.getFileName()) : nombreSubtitulado(video.getFileName()));
+    }
+
+    private Encargo encargo(UUID workspaceId, EstiloSubtitulos estilo, Color color, List<Palabra> palabras,
+            MusicaDeCopia musica) {
         EstiloSubtitulos elegido = estilo != null ? estilo
                 : EstiloSubtitulos.values()[azar.nextInt(EstiloSubtitulos.values().length)];
         Color tono = color != null ? color : Color.values()[azar.nextInt(Color.values().length)];
         String hex = tono == Color.AMARILLO ? GuionAss.AMARILLO : GuionAss.resalteLegible(coloresDe(workspaceId));
+        return new Encargo(elegido, hex, palabras, musica == null ? null : musica.cancion(),
+                musica == null ? null : musica.volumen());
+    }
 
+    private MediaAssetResponse encargar(MediaAsset video, UUID workspaceId, Encargo encargo, String nombre) {
         long reservados = video.getSizeBytes() == null ? 1 : video.getSizeBytes();
-        String nombre = nombreSubtitulado(video.getFileName());
         cuota.verificar(reservados, nombre);
         String key = storage.claveNueva(workspaceId, nombre, "video/mp4");
         MediaAsset copia = assets.save(MediaAsset.builder()
@@ -152,7 +210,8 @@ public class SubtitulosService {
                 .contentType("video/mp4")
                 .status(MediaAssetStatus.PROCESSING)
                 .sourceAssetId(video.getId())
-                .subtitulos(escribir(new Encargo(elegido, hex, palabras)))
+                .subtitulos(escribir(encargo))
+                .musicaFondo(encargo.musica() == null ? null : SubtitulosAutomaticos.MUSICA_PUESTA)
                 .generadaPorIa(false)
                 .creadaConIa(false)
                 .build());
@@ -160,7 +219,8 @@ public class SubtitulosService {
             assets.delete(copia);
             throw new ColaLlena();
         }
-        log.info("Subtítulos {} en {} para el video {}", elegido, hex, video.getId());
+        log.info("Copia de {}: subtítulos {} en {} ({} palabras), música {}", video.getId(), encargo.estilo(),
+                encargo.color(), encargo.palabras().size(), encargo.musica());
         return media.respuesta(copia);
     }
 
@@ -170,14 +230,52 @@ public class SubtitulosService {
      * esa cola; como bean sería una dependencia en círculo.
      */
     public static String guion(ObjectMapper json, MediaAsset copia, FfmpegImagen.MedidasVideo medidas) {
-        Encargo encargo;
-        try {
-            encargo = json.readValue(copia.getSubtitulos(), Encargo.class);
-        } catch (Exception ex) {
-            throw new IllegalStateException("No pude leer cómo pintar los subtítulos.", ex);
+        Encargo encargo = encargoDe(json, copia);
+        if (encargo.palabras() == null || encargo.palabras().isEmpty()) {
+            return null;
         }
         return GuionAss.escribir(encargo.palabras(), encargo.estilo(), medidas.ancho(), medidas.alto(),
                 encargo.color());
+    }
+
+    /** La música de una copia encargada; nula si solo lleva subtítulos. */
+    public static MusicaDeCopia musica(ObjectMapper json, MediaAsset copia) {
+        Encargo encargo = encargoDe(json, copia);
+        return encargo.musica() == null ? null
+                : new MusicaDeCopia(encargo.musica(), encargo.volumen() == null ? 1 : encargo.volumen());
+    }
+
+    private static Encargo encargoDe(ObjectMapper json, MediaAsset copia) {
+        try {
+            return json.readValue(copia.getSubtitulos(), Encargo.class);
+        } catch (Exception ex) {
+            throw new IllegalStateException("No pude leer cómo hacer la copia del video.", ex);
+        }
+    }
+
+    /**
+     * Si el video ya trae música o sonido de fondo: escucha las pausas entre
+     * palabras (ver {@link FondoDelAudio}). Un video sin pista de sonido no
+     * trae nada.
+     *
+     * @throws IllegalStateException si no pudo escucharlo; quien llama reintenta
+     */
+    public boolean yaTraeMusica(UUID videoId, UUID workspaceId, List<Palabra> palabras) {
+        MediaAsset video = videoDe(videoId, workspaceId);
+        double[] niveles = ffmpeg.nivelesDeAudio(video.getUrl(), MAX_SEGUNDOS);
+        if (niveles == null) {
+            throw new IllegalStateException("No pude escuchar el video.");
+        }
+        return niveles.length > 0 && FondoDelAudio.yaTraeFondo(niveles, palabras);
+    }
+
+    /** Lo que dura el video, para cortar la música justo ahí. */
+    public double segundos(UUID videoId, UUID workspaceId) {
+        FfmpegImagen.MedidasVideo medidas = ffmpeg.medirVideo(videoDe(videoId, workspaceId).getUrl());
+        if (medidas == null) {
+            throw new IllegalStateException("No pude abrir este video.");
+        }
+        return medidas.segundos();
     }
 
     private static final String SISTEMA_PREVIOS = """
@@ -246,6 +344,10 @@ public class SubtitulosService {
         return nombre + "-subtitulado.mp4";
     }
 
+    static String nombreConMusica(String original) {
+        return nombreSubtitulado(original).replace("-subtitulado.mp4", "-con-musica.mp4");
+    }
+
     private List<Palabra> leer(String texto) {
         if (texto == null || texto.isBlank()) return List.of();
         try {
@@ -262,6 +364,15 @@ public class SubtitulosService {
         } catch (Exception ex) {
             throw new IllegalStateException("No pude guardar los subtítulos.", ex);
         }
+    }
+
+    /**
+     * Si una copia lleva subtítulos pintados (una de solo música no). Se lee
+     * del JSON tal como lo escribe Jackson, sin espacios: así la biblioteca no
+     * tiene que interpretar cada copia para ponerle su etiqueta.
+     */
+    public static boolean pintaSubtitulos(MediaAsset copia) {
+        return esDeSubtitulos(copia) && !copia.getSubtitulos().contains("\"palabras\":[]");
     }
 
     /** Para que la cola sepa si una copia es de subtítulos o un recorte. */

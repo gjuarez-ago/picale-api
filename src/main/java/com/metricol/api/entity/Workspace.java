@@ -273,6 +273,13 @@ public class Workspace {
     @Column(length = 20)
     private String musicaAmbiente;
 
+    /**
+     * Música de fondo en los videos que se suben, con el mismo ambiente; nulo
+     * = no. Apagada de entrada a propósito: el video es de la persona, y
+     * cambiarle el sonido solo se hace si lo pidió.
+     */
+    private Boolean musicaVideos;
+
     /** El último aviso al teléfono de "tengo publicaciones listas": entre uno y otro pasa al menos una hora. */
     private java.time.LocalDateTime agenteUltimoAviso;
 

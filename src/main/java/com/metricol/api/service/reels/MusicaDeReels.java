@@ -9,15 +9,21 @@ import com.metricol.api.exception.ResourceNotFoundException;
 import com.metricol.api.repository.WorkspaceRepository;
 
 /**
- * La música de los reels que se arman con fotos, a gusto de cada cuenta: si
- * llevan y con qué ambiente. Sin tocar nada, llevan música elegida por el giro
- * del negocio, como siempre.
+ * La música de cada cuenta: si los reels que se arman con fotos llevan, si los
+ * videos que se suben llevan de fondo, y con qué ambiente. Sin tocar nada, los
+ * reels llevan música elegida por el giro del negocio y los videos subidos se
+ * quedan con su sonido.
  */
 @Service
 public class MusicaDeReels {
 
-    /** @param ambiente nulo = lo elige el giro del negocio */
-    public record Ajustes(boolean activo, String ambiente) {
+    /**
+     * @param activo   música en los reels de fotos
+     * @param ambiente nulo = lo elige el giro del negocio
+     * @param videos   música de fondo en los videos que se suben; al guardar,
+     *                 nulo = dejarlo como estaba
+     */
+    public record Ajustes(boolean activo, String ambiente, Boolean videos) {
     }
 
     private final WorkspaceRepository workspaces;
@@ -30,14 +36,15 @@ public class MusicaDeReels {
 
     /** Sin la cuenta a la mano, lo de siempre: con música, elegida por el giro. */
     public Ajustes ajustes(UUID workspaceId) {
-        return workspaces.findById(workspaceId).map(this::ajustesDe).orElse(new Ajustes(true, null));
+        return workspaces.findById(workspaceId).map(this::ajustesDe).orElse(new Ajustes(true, null, false));
     }
 
     /** Un ambiente que ya no está en el catálogo cuenta como "automático", no rompe el reel. */
     public Ajustes ajustesDe(Workspace espacio) {
         String ambiente = espacio.getMusicaAmbiente();
         return new Ajustes(!Boolean.FALSE.equals(espacio.getMusicaReels()),
-                ambiente != null && catalogo.ambientes().contains(ambiente) ? ambiente : null);
+                ambiente != null && catalogo.ambientes().contains(ambiente) ? ambiente : null,
+                Boolean.TRUE.equals(espacio.getMusicaVideos()));
     }
 
     public Ajustes guardar(UUID workspaceId, Ajustes nuevos) {
@@ -48,6 +55,9 @@ public class MusicaDeReels {
         Workspace espacio = espacio(workspaceId);
         espacio.setMusicaReels(nuevos.activo());
         espacio.setMusicaAmbiente(ambiente);
+        if (nuevos.videos() != null) {
+            espacio.setMusicaVideos(nuevos.videos());
+        }
         workspaces.save(espacio);
         return ajustesDe(espacio);
     }

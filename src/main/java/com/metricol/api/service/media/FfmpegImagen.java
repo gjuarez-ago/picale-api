@@ -438,6 +438,127 @@ public class FfmpegImagen {
         }
     }
 
+    /**
+     * Qué tan fuerte suena un video cada décima de segundo, en dB (el silencio
+     * digital cuenta como -120). Con esto se sabe si ya trae música de fondo.
+     *
+     * @return los niveles, vacío si no tiene audio, o {@code null} si no se pudo leer
+     */
+    public double[] nivelesDeAudio(String fuente, int maxSegundos) {
+        if (!tieneSonido(fuente)) {
+            // Sin pista de sonido ffmpeg no tiene qué medir y termina en error.
+            return new double[0];
+        }
+        List<String> comando = List.of(
+                props.getFfmpeg(),
+                "-hide_banner", "-nostats",
+                "-i", fuente,
+                "-t", String.valueOf(maxSegundos),
+                "-vn",
+                // Se pasa a 16 kHz DENTRO del filtro: con -ar afuera, los
+                // 1600 de asetnsamples se contaban a 48 kHz (0.033 s, no 0.1).
+                "-af", "aresample=16000,aformat=channel_layouts=mono,asetnsamples=n=1600:p=0,"
+                        + "astats=metadata=1:reset=1,"
+                        + "ametadata=print:key=lavfi.astats.Overall.RMS_level:file=-",
+                "-f", "null", "-");
+        String salida = ejecutar(comando, "ffmpeg-niveles", Math.max(props.getTimeoutSeconds(), 120));
+        if (salida == null) {
+            return null;
+        }
+        return leerNiveles(salida);
+    }
+
+    /** Si el video tiene pista de sonido (los de pantalla o de algunas apps no la traen). */
+    public boolean tieneSonido(String fuente) {
+        String salida = ejecutar(List.of(
+                props.getFfprobe(), "-v", "error",
+                "-select_streams", "a",
+                "-show_entries", "stream=codec_type",
+                "-of", "csv=p=0",
+                fuente), "ffprobe-sonido");
+        return salida != null && salida.contains("audio");
+    }
+
+    static double[] leerNiveles(String salida) {
+        List<Double> niveles = new ArrayList<>();
+        Matcher m = NIVEL.matcher(salida);
+        while (m.find()) {
+            double valor;
+            try {
+                valor = Double.parseDouble(m.group(1));
+            } catch (NumberFormatException ex) {
+                valor = -120; // -inf: silencio digital
+            }
+            niveles.add(Double.isFinite(valor) ? Math.max(valor, -120) : -120);
+        }
+        return niveles.stream().mapToDouble(Double::doubleValue).toArray();
+    }
+
+    private static final Pattern NIVEL = Pattern.compile("lavfi\\.astats\\.Overall\\.RMS_level=(\\S+)");
+
+    /**
+     * La copia final de un video: subtítulos pintados, música de fondo, o los
+     * dos en una sola pasada. La música se iguala a -14 LUFS (lo de las redes),
+     * se baja al {@code volumen} pedido y se mezcla con el sonido original.
+     * Sin subtítulos el video no se vuelve a codificar: solo cambia el sonido.
+     *
+     * @param guion    nulo = sin subtítulos
+     * @param musica   nulo = sin música
+     * @param segundos lo que dura el video (para el desvanecido final)
+     */
+    public boolean editarVideo(String fuente, Path guion, Path musica, double volumen, double segundos,
+            boolean conSonido, Path destino) {
+        if (musica == null) {
+            return guion != null && subtitularVideo(fuente, guion, destino);
+        }
+        String salida = ejecutar(comandoEditar(fuente, guion, musica, volumen, segundos, conSonido, destino),
+                "ffmpeg-editar-video", 1800);
+        try {
+            return salida != null && Files.size(destino) > 0;
+        } catch (IOException ex) {
+            return false;
+        }
+    }
+
+    List<String> comandoEditar(String fuente, Path guion, Path musica, double volumen, double segundos,
+            boolean conSonido, Path destino) {
+        double largo = Math.max(segundos, 1);
+        String pista = "[1:a]atrim=duration=" + decimal(largo)
+                + ",asetpts=PTS-STARTPTS,loudnorm=I=-14:TP=-2:LRA=11,volume=" + decimal(volumen)
+                + ",afade=t=in:st=0:d=0.6"
+                + ",afade=t=out:st=" + decimal(Math.max(0, largo - 1.2)) + ":d=1.2"
+                + ",aresample=48000,aformat=sample_fmts=fltp:channel_layouts=stereo";
+        // normalize=0: amix no le baja el volumen a la voz por sumar otra pista.
+        String filtro = conSonido
+                ? pista + "[m];[0:a]aresample=48000,aformat=sample_fmts=fltp:channel_layouts=stereo[v];"
+                        + "[v][m]amix=inputs=2:duration=first:normalize=0,alimiter=limit=0.95[a]"
+                : pista + "[a]";
+        List<String> comando = new ArrayList<>(List.of(
+                props.getFfmpeg(),
+                "-hide_banner", "-loglevel", "error", "-y",
+                "-i", fuente,
+                "-stream_loop", "-1", "-i", musica.toString(),
+                "-filter_complex", filtro,
+                "-map", "0:v:0", "-map", "[a]"));
+        if (guion != null) {
+            comando.addAll(List.of("-vf", "subtitles=filename=" + rutaParaFiltro(guion),
+                    "-c:v", "libx264", "-preset", "veryfast", "-crf", "20", "-pix_fmt", "yuv420p"));
+        } else {
+            comando.addAll(List.of("-c:v", "copy"));
+        }
+        comando.addAll(List.of(
+                "-c:a", "aac", "-b:a", "160k",
+                "-t", decimal(largo),
+                "-movflags", "+faststart",
+                "-map_metadata", "-1",
+                destino.toString()));
+        return comando;
+    }
+
+    private static String decimal(double valor) {
+        return String.format(Locale.US, "%.3f", valor);
+    }
+
     /** Dentro de un filtro, ':', ',', '\'' y '\\' son parte de la sintaxis: se escapan. */
     static String rutaParaFiltro(Path ruta) {
         return ruta.toAbsolutePath().toString().replace("\\", "/")
