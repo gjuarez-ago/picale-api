@@ -35,19 +35,35 @@ public class FfmpegReelRenderer implements ReelRenderer {
 
     @Override
     public Rendered render(List<Path> photos, int durationSeconds, String title, Path workDirectory) {
+        return render(photos, durationSeconds, title, workDirectory, null);
+    }
+
+    @Override
+    public Rendered render(List<Path> photos, int durationSeconds, String title,
+            Path workDirectory, Path music) {
+        return render(photos, durationSeconds, title, workDirectory, music, 0.18);
+    }
+
+    @Override
+    public Rendered render(List<Path> photos, int durationSeconds, String title,
+            Path workDirectory, Path music, double musicVolume) {
         if (photos == null || photos.isEmpty()) {
             throw new ReelRenderException("El reel no tiene fotografías.");
         }
         Path output = workDirectory.resolve("reel.mp4");
         Path cover = workDirectory.resolve("portada.jpg");
         try {
-            List<String> command = buildCommand(photos, durationSeconds, title, workDirectory, output);
+            List<String> command = buildCommand(photos, durationSeconds, title, workDirectory, output, music,
+                    musicVolume);
             runProcess(command, properties.getTimeoutSeconds(), "FFmpeg");
             if (!Files.isRegularFile(output) || Files.size(output) == 0) {
                 throw new ReelRenderException("FFmpeg no produjo el video.");
             }
             ReelTechnicalMetadata metadata = probe(output);
             validate(metadata);
+            if (music != null) {
+                validateAudio(output);
+            }
             runProcess(List.of(properties.getFfmpeg(), "-hide_banner", "-loglevel", "error", "-y",
                     "-ss", "0.5", "-i", output.toString(), "-frames:v", "1",
                     "-vf", "scale=480:-2", "-q:v", "3", cover.toString()),
@@ -63,6 +79,16 @@ public class FfmpegReelRenderer implements ReelRenderer {
 
     List<String> buildCommand(List<Path> photos, int durationSeconds, String title,
             Path workDirectory, Path output) throws IOException {
+        return buildCommand(photos, durationSeconds, title, workDirectory, output, null);
+    }
+
+    List<String> buildCommand(List<Path> photos, int durationSeconds, String title,
+            Path workDirectory, Path output, Path music) throws IOException {
+        return buildCommand(photos, durationSeconds, title, workDirectory, output, music, 0.18);
+    }
+
+    List<String> buildCommand(List<Path> photos, int durationSeconds, String title,
+            Path workDirectory, Path output, Path music, double musicVolume) throws IOException {
         List<String> command = new ArrayList<>();
         command.add(properties.getFfmpeg());
         command.addAll(List.of("-hide_banner", "-loglevel", "error", "-y"));
@@ -71,6 +97,9 @@ public class FfmpegReelRenderer implements ReelRenderer {
         for (Path photo : photos) {
             command.addAll(List.of("-loop", "1", "-framerate", String.valueOf(FPS),
                     "-t", decimal(secondsPerPhoto), "-i", photo.toString()));
+        }
+        if (music != null) {
+            command.addAll(List.of("-stream_loop", "-1", "-i", music.toString()));
         }
 
         StringBuilder filter = new StringBuilder();
@@ -118,12 +147,46 @@ public class FfmpegReelRenderer implements ReelRenderer {
                 .append("]scale=in_range=auto:out_range=tv,format=yuv420p,setrange=limited[outv]");
         outputLabel = "outv";
 
-        command.addAll(List.of("-filter_complex", filter.toString(), "-map", "[" + outputLabel + "]",
-                "-an", "-c:v", "libx264", "-preset", "veryfast", "-crf", "23",
+        if (music != null) {
+            double fadeOut = Math.max(0, durationSeconds - 1.2);
+            filter.append(";[").append(photos.size()).append(":a]")
+                    .append("atrim=duration=").append(durationSeconds)
+                    .append(",asetpts=PTS-STARTPTS,volume=").append(decimal(musicVolume))
+                    .append(",afade=t=in:st=0:d=0.6")
+                    .append(",afade=t=out:st=").append(decimal(fadeOut)).append(":d=1.2")
+                    .append(",aresample=48000,aformat=sample_fmts=fltp:channel_layouts=stereo[outa]");
+        }
+
+        command.addAll(List.of("-filter_complex", filter.toString(), "-map", "[" + outputLabel + "]"));
+        if (music == null) {
+            command.add("-an");
+        } else {
+            command.addAll(List.of("-map", "[outa]", "-c:a", "aac", "-b:a", "192k", "-ar", "48000", "-ac", "2"));
+        }
+        command.addAll(List.of("-c:v", "libx264", "-preset", "veryfast", "-crf", "23",
                 "-profile:v", "high", "-level:v", "4.0", "-pix_fmt", "yuv420p",
                 "-r", String.valueOf(FPS), "-g", "60", "-flags", "+cgop",
                 "-movflags", "+faststart", "-t", String.valueOf(durationSeconds), output.toString()));
         return command;
+    }
+
+    private void validateAudio(Path output) throws IOException {
+        Path report = output.getParent().resolve("ffprobe-audio.json");
+        runToFile(List.of(properties.getFfprobe(), "-v", "error", "-select_streams", "a:0",
+                "-show_entries", "stream=codec_name,sample_rate,channels", "-of", "json", output.toString()),
+                30, "ffprobe (audio)", report);
+        try {
+            JsonNode stream = json.readTree(report.toFile()).path("streams").path(0);
+            if (!"aac".equals(stream.path("codec_name").asText())
+                    || stream.path("sample_rate").asInt() != 48000
+                    || stream.path("channels").asInt() != 2) {
+                throw new ReelRenderException("El audio no quedó en AAC estéreo a 48 kHz.");
+            }
+        } catch (ReelRenderException ex) {
+            throw ex;
+        } catch (Exception ex) {
+            throw new ReelRenderException("ffprobe no pudo validar el audio.", ex);
+        }
     }
 
     private ReelTechnicalMetadata probe(Path output) throws IOException {

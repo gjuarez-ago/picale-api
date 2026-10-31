@@ -73,7 +73,31 @@ class ReelRenderPersistenceTest {
         assertThat(second.id()).isEqualTo(first.id());
         assertThat(first.sourceAssetIds()).containsExactlyElementsOf(sourceIds);
         assertThat(first.status()).isEqualTo(ReelRenderStatus.PENDING);
+        assertThat(first.musicTrackId()).isNotBlank();
+        assertThat(first.musicTrackTitle()).isNotBlank();
         assertThat(jobs.findByWorkspaceIdOrderByCreatedAtDesc(workspace)).hasSize(1);
+    }
+
+    @Test
+    @DisplayName("un reel automático siempre fija música acorde al tema y la intención")
+    void automaticAgentReelAlwaysHasMusic() {
+        List<UUID> sourceIds = createPhotos(workspace, 4);
+        ReelCreateRequest request = request(sourceIds, 20, "Nuestro nuevo menú");
+        request.setAutomaticMusic(false); // createForAgent debe imponer el contrato automático.
+
+        ReelRenderResponse response = callAsTenant(workspace,
+                () -> service.createForAgent(request, workspace, "cafetería y alimentos", "promoción del menú"));
+        createdJobs.add(response.id());
+
+        assertThat(response.musicTrackId()).isNotBlank();
+        assertThat(response.musicTrackTitle()).isNotBlank();
+        ReelRenderJob stored = jobs.findById(response.id()).orElseThrow();
+        assertThat(stored.isAgentManaged()).isTrue();
+        assertThat(stored.getAgentTheme()).isEqualTo("cafetería y alimentos");
+        assertThat(stored.getAgentReason()).isEqualTo("promoción del menú");
+        assertThat(stored.getRecipeJson()).contains("\"musicTrackId\":\"")
+                .contains("\"musicTheme\":\"cafetería y alimentos\"")
+                .contains("\"musicIntent\":\"promoción del menú\"");
     }
 
     @Test

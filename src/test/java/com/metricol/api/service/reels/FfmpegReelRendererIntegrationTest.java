@@ -26,7 +26,7 @@ class FfmpegReelRendererIntegrationTest {
     Path inputDirectory;
 
     @Test
-    void rendersVerticalHorizontalAndSquarePhotosWithoutAudio() throws Exception {
+    void rendersVerticalHorizontalAndSquarePhotosWithCatalogMusic() throws Exception {
         Path artifactDirectory = Path.of("target", "reels-smoke").toAbsolutePath();
         Files.createDirectories(artifactDirectory);
         List<Path> photos = List.of(
@@ -53,7 +53,8 @@ class FfmpegReelRendererIntegrationTest {
         properties.setTimeoutSeconds(240);
         long started = System.nanoTime();
         ReelRenderer.Rendered rendered = new FfmpegReelRenderer(properties)
-                .render(photos, 15, "Café recién tostado", artifactDirectory);
+                .render(photos, 15, "Café recién tostado", artifactDirectory,
+                        Path.of("catalogo-musica", "audio", "latin-pop-06.mp3").toAbsolutePath());
         long elapsedMillis = TimeUnit.NANOSECONDS.toMillis(System.nanoTime() - started);
 
         assertThat(rendered.video()).exists();
@@ -68,12 +69,14 @@ class FfmpegReelRendererIntegrationTest {
                     .containsExactly(originals.get(photo));
         }
 
-        Process probe = new ProcessBuilder(properties.getFfprobe(), "-v", "error", "-select_streams", "a",
-                "-show_entries", "stream=index", "-of", "csv=p=0", rendered.video().toString())
+        Process probe = new ProcessBuilder(properties.getFfprobe(), "-v", "error", "-select_streams", "a:0",
+                "-show_entries", "stream=codec_name,sample_rate,channels", "-of", "csv=p=0",
+                rendered.video().toString())
                 .redirectErrorStream(true).start();
         assertThat(probe.waitFor(30, TimeUnit.SECONDS)).isTrue();
         assertThat(probe.exitValue()).isZero();
-        assertThat(new String(probe.getInputStream().readAllBytes(), StandardCharsets.UTF_8)).isBlank();
+        assertThat(new String(probe.getInputStream().readAllBytes(), StandardCharsets.UTF_8).strip())
+                .isEqualTo("aac,48000,2");
 
         Files.writeString(artifactDirectory.resolve("benchmark.txt"),
                 "duration_seconds=15\n"
@@ -85,7 +88,8 @@ class FfmpegReelRendererIntegrationTest {
                         + "dimensions=1080x1920\ncodec=h264\npixel_format=yuv420p\n"
                         + "fps=" + rendered.metadata().framesPerSecond() + "\n"
                         + "field_order=" + rendered.metadata().fieldOrder() + "\n"
-                        + "faststart=" + rendered.metadata().fastStart() + "\naudio_streams=0\n",
+                        + "faststart=" + rendered.metadata().fastStart()
+                        + "\naudio_codec=aac\naudio_sample_rate=48000\naudio_channels=2\n",
                 StandardCharsets.UTF_8);
     }
 

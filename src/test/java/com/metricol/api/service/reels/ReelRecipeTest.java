@@ -17,9 +17,13 @@ class ReelRecipeTest {
         ReelRecipe a = new ReelRecipe("photos-v1", workspace, List.of(first, second), 20, "  Café del día ");
         ReelRecipe b = new ReelRecipe("photos-v1", workspace, List.of(first, second), 20, "Café del día");
         ReelRecipe reversed = new ReelRecipe("photos-v1", workspace, List.of(second, first), 20, "Café del día");
+        ReelRecipe withMusic = new ReelRecipe("photos-v1", workspace, List.of(first, second), 20,
+                "Café del día", "latin-pop-06", "alimentos", "promoción", false);
 
         assertThat(a.hash()).isEqualTo(b.hash()).hasSize(64);
         assertThat(a.json()).contains(first.toString(), second.toString(), "Café del día");
         assertThat(reversed.hash()).isNotEqualTo(a.hash());
+        assertThat(withMusic.hash()).isNotEqualTo(a.hash());
+        assertThat(withMusic.json()).contains("latin-pop-06", "alimentos", "promoción");
     }
 }

@@ -30,3 +30,7 @@ uploads/
 # codigo, es un dato del momento del build.
 BUILD_SHA
 secretos/
+
+# Catálogo musical local. Los metadatos y la evidencia sí se versionan; los
+# MP3 se suben a R2 y no deben inflar el repositorio Git.
+catalogo-musica/audio/*.mp3

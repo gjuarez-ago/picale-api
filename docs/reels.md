@@ -49,6 +49,8 @@ interfaz.
 - Portada JPEG tomada del reel ya renderizado.
 - Nuevo `MediaAsset` de video; los originales nunca se escriben ni reemplazan.
 - Receta JSON versionada, hash idempotente, fuentes y orden persistidos.
+- Música CC0 seleccionada por tema, intención y presencia de voz; la pista queda
+  fijada en la receta para que un reintento produzca el mismo archivo.
 - Estados `PENDING`, `RUNNING`, `READY`, `FAILED` y `CANCELLED` con error
   legible, intentos y marcas de tiempo.
 - Aprobación humana persistida mediante una acción separada y exigida por el
@@ -58,7 +60,6 @@ interfaz.
 
 - Selección automática de fotografías.
 - Publicación o programación automática.
-- Música, biblioteca de audio y mezcla.
 - Subtítulos.
 - Videos de entrada, detección de escenas o montaje de varias tomas.
 - Cambios en web o app móvil.
@@ -153,8 +154,8 @@ El render se considera exitoso solo después de que `ffprobe` confirme:
 - Escaneo progresivo.
 - 30 fps.
 - GOP cerrado de 60 cuadros.
-- Sin audio en este MVP. Cuando exista audio en otra fase deberá ser AAC-LC a
-  48 kHz; esa fase no forma parte de esta implementación.
+- Audio AAC-LC estéreo a 48 kHz cuando la receta selecciona música; volumen 18%,
+  entrada de 0.6 s y salida de 1.2 s. Los avisos sensibles quedan en silencio.
 
 El primer ensayo real detectó que JPEG de rango completo podía producir
 `yuvj420p` aunque se indicara `-pix_fmt yuv420p`. La receta convierte el rango de
@@ -171,6 +172,9 @@ REELS_WORKERS=1
 REELS_TIMEOUT_SECONDS=240
 REELS_MAX_ATTEMPTS=3
 REELS_DEFAULT_DURATION_SECONDS=20
+REELS_MUSIC_ENABLED=true
+REELS_MUSIC_LOCAL_DIRECTORY=catalogo-musica/audio
+REELS_MUSIC_STORAGE_PREFIX=music/catalog/v1
 ```
 
 También son configurables el sondeo, rescate, lote y backoff. El render usa un
@@ -193,7 +197,7 @@ Pruebas añadidas:
 - Recuperación de un worker interrumpido.
 - Fotografías vertical, horizontal y cuadrada.
 - Nombre y titular con acentos.
-- Reel sin pista de audio.
+- Reel silencioso cuando se desactiva música y reel real con AAC a 48 kHz.
 - Portada válida.
 - Creación del activo derivado solo después de confirmar video y portada.
 - Aprobación explícita y rechazo del activo no aprobado al crear publicaciones.

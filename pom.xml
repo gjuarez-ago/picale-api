@@ -161,6 +161,20 @@
 
   <build>
     <finalName>metricol-api</finalName>
+    <resources>
+      <resource>
+        <directory>src/main/resources</directory>
+      </resource>
+      <resource>
+        <directory>catalogo-musica</directory>
+        <targetPath>music</targetPath>
+        <includes>
+          <include>catalogo.json</include>
+          <include>taxonomia.json</include>
+          <include>LICENSE.txt</include>
+        </includes>
+      </resource>
+    </resources>
     <plugins>
       <!--
         Cada clase de prueba con su propia configuracion levanta un contexto de

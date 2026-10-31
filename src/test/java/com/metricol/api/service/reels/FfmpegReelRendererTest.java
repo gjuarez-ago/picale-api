@@ -30,6 +30,29 @@ class FfmpegReelRendererTest {
     }
 
     @Test
+    void commandMixesSelectedMusicAsAac() throws Exception {
+        FfmpegReelRenderer renderer = new FfmpegReelRenderer(new ReelsProperties());
+        List<String> command = renderer.buildCommand(
+                List.of(temp.resolve("a.jpg"), temp.resolve("b.jpg"),
+                        temp.resolve("c.jpg"), temp.resolve("d.jpg")),
+                20, null, temp, temp.resolve("reel.mp4"), temp.resolve("music.mp3"));
+
+        assertThat(command).doesNotContain("-an");
+        assertThat(command).contains("-c:a", "aac", "-ar", "48000", "-ac", "2", "[outa]");
+        assertThat(String.join(" ", command)).contains("volume=0.18", "afade=t=in", "afade=t=out");
+    }
+
+    @Test
+    void lowersMusicUnderVoiceOver() throws Exception {
+        FfmpegReelRenderer renderer = new FfmpegReelRenderer(new ReelsProperties());
+        List<String> command = renderer.buildCommand(
+                List.of(temp.resolve("a.jpg")), 20, null, temp, temp.resolve("reel.mp4"),
+                temp.resolve("music.mp3"), 0.12);
+
+        assertThat(String.join(" ", command)).contains("volume=0.12");
+    }
+
+    @Test
     void wrapsTitleInsideThreeLines() {
         assertThat(FfmpegReelRenderer.wrapTitle("Café recién tostado para compartir hoy"))
                 .contains("Café").contains(System.lineSeparator());

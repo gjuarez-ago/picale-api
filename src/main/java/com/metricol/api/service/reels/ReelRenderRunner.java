@@ -13,6 +13,8 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Component;
 
+import com.fasterxml.jackson.databind.ObjectMapper;
+
 import com.metricol.api.config.TenantIdentifierResolver;
 import com.metricol.api.entity.MediaAsset;
 import com.metricol.api.entity.ReelRenderJob;
@@ -36,15 +38,20 @@ public class ReelRenderRunner {
     private final ReelRenderer renderer;
     private final ReelResultStore results;
     private final ReelRenderQueue queue;
+    private final ReelMusicCatalog music;
+    private final ObjectMapper json;
 
     public ReelRenderRunner(ReelRenderJobRepository jobs, MediaAssetRepository assets,
-            R2StorageService storage, ReelRenderer renderer, ReelResultStore results, ReelRenderQueue queue) {
+            R2StorageService storage, ReelRenderer renderer, ReelResultStore results, ReelRenderQueue queue,
+            ReelMusicCatalog music, ObjectMapper json) {
         this.jobs = jobs;
         this.assets = assets;
         this.storage = storage;
         this.renderer = renderer;
         this.results = results;
         this.queue = queue;
+        this.music = music;
+        this.json = json;
     }
 
     public void run(Work work) {
@@ -62,7 +69,17 @@ public class ReelRenderRunner {
             List<MediaAsset> ordered = orderedSources(job);
             directory = Files.createTempDirectory("picale-reel-" + work.jobId() + "-");
             List<Path> local = download(ordered, directory);
-            ReelRenderer.Rendered rendered = renderer.render(local, job.getDurationSeconds(), job.getTitle(), directory);
+            ReelRecipe recipe = recipe(job);
+            ReelMusicCatalog.Selection selection = recipe.musicTrackId() == null
+                    ? null : music.selection(recipe.musicTrackId());
+            if (recipe.musicTrackId() != null && selection == null) {
+                throw new PermanentRenderException("La pista de la receta ya no está en el catálogo.");
+            }
+            Path musicFile = music.materialize(selection, directory);
+            ReelRenderer.Rendered rendered = musicFile == null
+                    ? renderer.render(local, job.getDurationSeconds(), job.getTitle(), directory)
+                    : renderer.render(local, job.getDurationSeconds(), job.getTitle(), directory, musicFile,
+                            recipe.voiceOver() ? 0.12 : 0.18);
             if (queue.isCancelled(work.jobId())) {
                 return;
             }
@@ -71,9 +88,9 @@ public class ReelRenderRunner {
             if (resultId == null) {
                 return;
             }
-            log.info("Reel {} listo: {} bytes, {}x{}, {} fps", work.jobId(),
+            log.info("Reel {} listo: {} bytes, {}x{}, {} fps, musica={}", work.jobId(),
                     rendered.metadata().sizeBytes(), rendered.metadata().width(), rendered.metadata().height(),
-                    rendered.metadata().framesPerSecond());
+                    rendered.metadata().framesPerSecond(), recipe.musicTrackId());
         } catch (PermanentRenderException | IllegalArgumentException | QuotaExceededException ex) {
             queue.failOrRetry(work.jobId(), ex.getMessage(), false);
             log.warn("Reel {} no se puede renderizar: {}", work.jobId(), ex.getMessage());
@@ -91,6 +108,14 @@ public class ReelRenderRunner {
             } finally {
                 deleteTree(directory);
             }
+        }
+    }
+
+    private ReelRecipe recipe(ReelRenderJob job) {
+        try {
+            return json.readValue(job.getRecipeJson(), ReelRecipe.class);
+        } catch (Exception ex) {
+            throw new PermanentRenderException("La receta del reel no se puede leer.");
         }
     }
 

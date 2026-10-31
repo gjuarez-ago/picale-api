@@ -19,6 +19,18 @@ COPY pom.xml .
 RUN mvn -B dependency:go-offline
 
 COPY src ./src
+COPY catalogo-musica/catalogo.json catalogo-musica/taxonomia.json catalogo-musica/LICENSE.txt ./catalogo-musica/
+# kaino.dev contesta 429 si se le piden las 48 canciones seguidas: una pausa
+# entre cada una y reintentos con espera.
+RUN apk add --no-cache curl jq \
+    && mkdir -p catalogo-musica/audio \
+    && jq -r '.tracks[] | [.id, .downloadUrl, .sha256] | @tsv' catalogo-musica/catalogo.json \
+       | while IFS="$(printf '\t')" read -r id url checksum; do \
+           curl --fail --location --retry 6 --retry-delay 10 --retry-all-errors --silent --show-error \
+             "$url" -o "catalogo-musica/audio/$id.mp3"; \
+           echo "$checksum  catalogo-musica/audio/$id.mp3" | sha256sum -c -; \
+           sleep 2; \
+         done
 RUN mvn -B package -DskipTests
 
 # Etapa 2: ejecutar
@@ -44,6 +56,10 @@ RUN fc-cache -f
 # COPY, así que deploy-vps.sh SIEMPRE lo deja puesto (con "desconocido" si no
 # hay forma de saberlo).
 COPY BUILD_SHA .
+
+# Catálogo CC0 local para que el worker no dependa de una descarga externa al
+# renderizar. R2 sigue siendo el respaldo si se monta una imagen sin estos MP3.
+COPY --from=build /app/catalogo-musica/audio/ ./catalogo-musica/audio/
 
 COPY --from=build /app/target/metricol-api.jar app.jar
 

@@ -1,0 +1,21 @@
+Kaino Free Asset Library - CC0 1.0 Universal (Public Domain Dedication)
+
+To the extent possible under law, Kainotomic has waived all copyright and
+related or neighbouring rights to the audio files in this library. You may
+copy, modify, distribute and use them, including for commercial purposes,
+without asking permission and without giving credit. Credit is appreciated
+but never required.
+
+Full legal text:
+https://creativecommons.org/publicdomain/zero/1.0/legalcode
+
+Source library:
+https://kaino.dev/library/music
+
+The source page and this license were reviewed on 2026-10-30. A copy of the
+source page as seen on that date is kept in evidencia/.
+
+The provider states that files are supplied as-is and does not guarantee that
+no file resembles an existing work. Pícale should retain the source URL and
+SHA-256 hash, and should keep a takedown/disable mechanism for individual
+tracks.

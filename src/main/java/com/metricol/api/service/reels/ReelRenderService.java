@@ -12,6 +12,8 @@ import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import com.fasterxml.jackson.databind.ObjectMapper;
+
 import com.metricol.api.config.ReelsProperties;
 import com.metricol.api.entity.MediaAsset;
 import com.metricol.api.entity.ReelRenderJob;
@@ -33,14 +35,19 @@ public class ReelRenderService {
     private final ReelsProperties properties;
     private final ReelRenderQueue queue;
     private final ReelResultStore results;
+    private final ReelMusicCatalog music;
+    private final ObjectMapper json;
 
     public ReelRenderService(ReelRenderJobRepository jobs, MediaAssetRepository assets,
-            ReelsProperties properties, ReelRenderQueue queue, ReelResultStore results) {
+            ReelsProperties properties, ReelRenderQueue queue, ReelResultStore results,
+            ReelMusicCatalog music, ObjectMapper json) {
         this.jobs = jobs;
         this.assets = assets;
         this.properties = properties;
         this.queue = queue;
         this.results = results;
+        this.music = music;
+        this.json = json;
     }
 
     public ReelRenderResponse create(ReelCreateRequest request, UUID workspaceId) {
@@ -67,7 +74,14 @@ public class ReelRenderService {
         }
         validateSources(ids, workspaceId);
 
-        ReelRecipe recipe = new ReelRecipe(properties.getRecipeVersion(), workspaceId, ids, duration, title);
+        String theme = cut(request.getMusicTheme(), 300);
+        String intent = cut(request.getMusicIntent(), 300);
+        boolean voiceOver = Boolean.TRUE.equals(request.getVoiceOver());
+        String seed = workspaceId + "|" + ids + "|" + duration + "|" + title + "|" + theme + "|" + intent;
+        ReelMusicCatalog.Selection selected = Boolean.FALSE.equals(request.getAutomaticMusic()) ? null
+                : music.select(theme, intent, title, voiceOver, seed);
+        ReelRecipe recipe = new ReelRecipe(properties.getRecipeVersion(), workspaceId, ids, duration, title,
+                selected == null ? null : selected.track().id(), theme, intent, voiceOver);
         ReelRenderJob existing = jobs.findByRecipeHash(recipe.hash()).orElse(null);
         if (existing != null) {
             return response(existing);
@@ -98,6 +112,12 @@ public class ReelRenderService {
     /** Usa el render durable y lo vincula con la propuesta automática del agente. */
     @Transactional
     public ReelRenderResponse createForAgent(ReelCreateRequest request, UUID workspaceId, String theme, String reason) {
+        // Un reel propuesto por el agente siempre lleva la selección editorial
+        // del catálogo. La opción de dejarlo en silencio es solo para pedidos
+        // manuales de la persona.
+        request.setAutomaticMusic(true);
+        if (request.getMusicTheme() == null || request.getMusicTheme().isBlank()) request.setMusicTheme(theme);
+        if (request.getMusicIntent() == null || request.getMusicIntent().isBlank()) request.setMusicIntent(reason);
         ReelRenderResponse created = create(request, workspaceId);
         ReelRenderJob job = owned(created.id(), workspaceId);
         job.setAgentManaged(true);
@@ -190,10 +210,20 @@ public class ReelRenderService {
         if (job.getResultAssetId() != null) {
             result = assets.findById(job.getResultAssetId()).orElse(null);
         }
+        ReelMusicCatalog.Track track = music.track(musicTrackId(job));
         return new ReelRenderResponse(job.getId(), job.getStatus(), List.copyOf(job.getSourceAssetIds()),
                 job.getDurationSeconds(), job.getTitle(), job.getRecipeVersion(), job.getAttempts(),
                 job.getMaxAttempts(), job.getLastError(), job.getResultAssetId(),
                 result == null ? null : result.getUrl(), result == null ? null : result.getThumbnailUrl(),
+                track == null ? null : track.id(), track == null ? null : track.title(),
                 job.getApprovedAt() != null, job.getCreatedAt(), job.getUpdatedAt(), job.getFinishedAt());
+    }
+
+    private String musicTrackId(ReelRenderJob job) {
+        try {
+            return json.readValue(job.getRecipeJson(), ReelRecipe.class).musicTrackId();
+        } catch (Exception ignored) {
+            return null;
+        }
     }
 }

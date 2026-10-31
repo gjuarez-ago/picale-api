@@ -21,4 +21,18 @@ public class ReelCreateRequest {
 
     @Size(max = 160)
     private String title;
+
+    /** Nulo = automático; false conserva el reel en silencio. */
+    private Boolean automaticMusic;
+
+    /** Giro o tema editorial, libre; el catálogo lo normaliza a su taxonomía. */
+    @Size(max = 300)
+    private String musicTheme;
+
+    /** Promoción, tutorial, testimonio, evento, etc. */
+    @Size(max = 300)
+    private String musicIntent;
+
+    /** Si habrá narración, se prefieren camas musicales menos invasivas. */
+    private Boolean voiceOver;
 }

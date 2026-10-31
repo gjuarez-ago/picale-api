@@ -29,7 +29,12 @@ public class ReelsProperties {
     private int batchSize = 5;
     private String ffmpeg = "ffmpeg";
     private String ffprobe = "ffprobe";
-    private String recipeVersion = "photos-v1";
+    private String recipeVersion = "photos-music-v2";
+    /** Música curada incrustada en los reels generados. */
+    private boolean musicEnabled = true;
+    /** Directorio de desarrollo o de la imagen Docker; R2 es el respaldo. */
+    private String musicLocalDirectory = "catalogo-musica/audio";
+    private String musicStoragePrefix = "music/catalog/v1";
 
     public LocalDateTime nextAttempt(int attempt) {
         long delay = retryBaseSeconds;

@@ -141,6 +141,8 @@ public class CreativeDirectorService {
                     ReelCreateRequest request = new ReelCreateRequest();
                     request.setAssetIds(piece.assetIds()); request.setDurationSeconds(piece.durationSeconds());
                     request.setTitle(piece.title());
+                    request.setMusicTheme(piece.objective()); request.setMusicIntent(piece.reason());
+                    request.setAutomaticMusic(true);
                     ReelRenderResponse reel = reels.create(request, job.getWorkspaceId());
                     proposal.setReelJobId(reel.id());
                     proposal.setGenerationStatus(map(reel.status()));
@@ -394,6 +396,9 @@ public class CreativeDirectorService {
         request.setAssetIds(List.copyOf(p.getSourceAssetIds()));
         request.setDurationSeconds(p.getDurationSeconds());
         request.setTitle(p.getTitle());
+        request.setMusicTheme(p.getObjective());
+        request.setMusicIntent(p.getSelectionReason());
+        request.setAutomaticMusic(true);
         try {
             ReelRenderResponse reel = reels.create(request, workspaceId);
             p.setReelJobId(reel.id());
