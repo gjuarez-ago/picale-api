@@ -698,6 +698,9 @@ public class AgenteService {
             request.setAssetIds(fotos.stream().map(f -> f.asset().getId()).toList());
             request.setDurationSeconds(20);
             request.setTitle(tema == null || tema.isBlank() ? null : tema.strip());
+            request.setMusicTheme(tema);
+            request.setMusicIntent(porque);
+            request.setAutomaticMusic(true);
             reels.createForAgent(request, w.getId(), tema, porque);
             String motivo = "Agrupé " + fotos.size() + " fotos relacionadas y estoy creando un reel"
                     + (tema == null || tema.isBlank() ? "." : " sobre " + sinPunto(tema) + ".");
@@ -1143,6 +1146,10 @@ public class AgenteService {
                     return false;
                 }
                 publicar = recortado;
+            } else {
+                // Con subtítulos (automáticos o pedidos a mano), sale la copia
+                // que los trae: es la que la persona quiere ver publicada.
+                publicar = assets.copiasConSubtitulos(video.getId()).stream().findFirst().orElse(video);
             }
             int segundos = (int) Math.round(decision.fin() - decision.inicio());
 

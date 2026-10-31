@@ -41,6 +41,7 @@ import com.metricol.api.service.media.MiniaturasEnSegundoPlano;
 import com.metricol.api.service.media.VideoTrimDispatcher;
 import com.metricol.api.service.storage.R2StorageService;
 import com.metricol.api.service.storage.StorageQuotaService;
+import com.metricol.api.service.media.subtitulos.SubtitulosAutomaticos;
 
 /**
  * Los medios del workspace: subir, medir el espacio y borrar.
@@ -716,6 +717,7 @@ public class MediaService {
         if (enR2.contentType() != null && !enR2.contentType().isBlank()) {
             asset.setContentType(enR2.contentType());
         }
+        esperarSubtitulos(asset, asset.getTenantId());
         MediaAsset guardado = repository.save(asset);
 
         // La miniatura se pide aqui pero se hace en otro hilo: sacar un
@@ -793,8 +795,23 @@ public class MediaService {
                 // justifique un estado intermedio.
                 .status(MediaAssetStatus.READY)
                 .build();
+        esperarSubtitulos(asset, workspaceId.toString());
 
         return toResponse(repository.save(asset));
+    }
+
+    /**
+     * Con subtítulos automáticos encendidos, un video recién subido queda
+     * esperando los suyos: así el agente no lo toma antes de tiempo y publica
+     * la copia con subtítulos y no el original. Ver {@code SubtitulosAutomaticos}.
+     */
+    private void esperarSubtitulos(MediaAsset asset, String tenantId) {
+        if (asset.getType() != MediaType.VIDEO || asset.getSourceAssetId() != null || tenantId == null) {
+            return;
+        }
+        workspaces.findById(UUID.fromString(tenantId))
+                .filter(w -> Boolean.TRUE.equals(w.getSubtitulosAuto()))
+                .ifPresent(w -> asset.setSubtitulosEstado(SubtitulosAutomaticos.ESPERANDO));
     }
 
     /** Cuánto espacio lleva usado el workspace y cuánto le queda. */
@@ -1067,6 +1084,7 @@ public class MediaService {
                 .archivedAt(asset.getArchivedAt())
                 .processingError(asset.getProcessingError())
                 .conSubtitulos(asset.getSubtitulos() != null && !asset.getSubtitulos().isBlank())
+                .subtitulosEstado(asset.getSubtitulosEstado())
                 .agenteEtapa(asset.getAgenteEtapa() == null ? null : asset.getAgenteEtapa().name())
                 .agenteMotivo(asset.getAgenteMotivo())
                 .usos(uso.total())

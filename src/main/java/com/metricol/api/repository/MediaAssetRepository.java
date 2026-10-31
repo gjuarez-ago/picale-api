@@ -32,6 +32,43 @@ public interface MediaAssetRepository extends JpaRepository<MediaAsset, UUID> {
             """, nativeQuery = true)
     List<Object[]> videoTrimsToResume(LocalDateTime stale, int tope);
 
+    /**
+     * Videos que esperan sus subtítulos automáticos, de todos los espacios.
+     * Consulta global: el tenant va en el propio SQL.
+     */
+    @Query(value = """
+            select cast(id as varchar), tenant_id
+            from media_assets
+            where subtitulos_estado = 'ESPERANDO'
+              and status = 'READY'
+            order by created_at asc
+            limit :tope
+            """, nativeQuery = true)
+    List<Object[]> esperandoSubtitulos(int tope);
+
+    /** Videos "haciendo" sin ninguna copia con subtítulos en la cola: se cayó algo y hay que soltarlos. */
+    @Query(value = """
+            select cast(m.id as varchar), m.tenant_id
+            from media_assets m
+            where m.subtitulos_estado = HACIENDO
+              and not exists (
+                    select 1 from media_assets c
+                    where c.source_asset_id = m.id and c.subtitulos is not null and c.status = PROCESSING)
+            order by m.created_at asc
+            limit :tope
+            """, nativeQuery = true)
+    List<Object[]> haciendoSinCopiaEnCurso(int tope);
+
+    /** La copia con subtítulos de un video, si ya está lista. */
+    @Query("""
+            select m from MediaAsset m
+            where m.sourceAssetId = :original
+              and m.subtitulos is not null
+              and m.status = com.metricol.api.enums.MediaAssetStatus.READY
+            order by m.createdAt desc
+            """)
+    List<MediaAsset> copiasConSubtitulos(UUID original);
+
     long countByUploadBatchIdAndStatus(UUID uploadBatchId, MediaAssetStatus status);
 
     @Query("select count(m) from MediaAsset m where m.uploadBatchId = :batch "
@@ -266,6 +303,7 @@ public interface MediaAssetRepository extends JpaRepository<MediaAsset, UUID> {
               and m.archived_at is null
               and m.created_at < :limite
               and m.agente_etapa is null
+              and m.subtitulos_estado is null
               and not exists (
                     select 1 from post_media pm
                     join posts p on p.id = pm.post_id
@@ -280,6 +318,8 @@ public interface MediaAssetRepository extends JpaRepository<MediaAsset, UUID> {
     // agente_etapa: lo que el agente dejó en observación, descartado o en
     // espera no está en ninguna publicación, y sin esta condición se borraba
     // a los tres días. "Nada se borra" es una de sus reglas.
+    // subtitulos_estado: el original de un video con subtítulos automáticos
+    // se guarda aunque solo se publique su copia; así se le promete.
     List<Object[]> findListosSinUsar(LocalDateTime limite, int tope);
 
     /**
@@ -308,6 +348,8 @@ public interface MediaAssetRepository extends JpaRepository<MediaAsset, UUID> {
               and (m.agenteEtapa is null or m.agenteEtapa = com.metricol.api.enums.EtapaAgente.PENDIENTE
                    or (m.agenteEtapa = com.metricol.api.enums.EtapaAgente.REVISANDO and m.agenteTomadoEn < :vencido))
               and m.createdAt >= :desde
+              and m.subtitulos is null
+              and (m.subtitulosEstado is null or m.subtitulosEstado not in ('ESPERANDO', 'HACIENDO'))
               and (m.storageKey is null or m.storageKey not like 'logos/%')
               and not exists (select 1 from Workspace w where w.logoUrl = m.url)
               and not exists (select 1 from Post p join p.mediaUrls u where u = m.url and p.deletedAt is null)
@@ -353,6 +395,8 @@ public interface MediaAssetRepository extends JpaRepository<MediaAsset, UUID> {
                                                              com.metricol.api.enums.EtapaAgente.REVISANDO,
                                                              com.metricol.api.enums.EtapaAgente.ANALIZADA))
               and m.createdAt >= :desde
+              and m.subtitulos is null
+              and (m.subtitulosEstado is null or m.subtitulosEstado not in ('ESPERANDO', 'HACIENDO'))
               and (m.storageKey is null or m.storageKey not like 'logos/%')
               and not exists (select 1 from Workspace w where w.logoUrl = m.url)
               and not exists (select 1 from Post p join p.mediaUrls u where u = m.url and p.deletedAt is null)
@@ -373,6 +417,8 @@ public interface MediaAssetRepository extends JpaRepository<MediaAsset, UUID> {
                                                              com.metricol.api.enums.EtapaAgente.REVISANDO,
                                                              com.metricol.api.enums.EtapaAgente.ANALIZADA))
               and m.createdAt >= :desde
+              and m.subtitulos is null
+              and (m.subtitulosEstado is null or m.subtitulosEstado not in ('ESPERANDO', 'HACIENDO'))
               and (m.storageKey is null or m.storageKey not like 'logos/%')
               and not exists (select 1 from Workspace w where w.logoUrl = m.url)
               and not exists (select 1 from Post p join p.mediaUrls u where u = m.url and p.deletedAt is null)

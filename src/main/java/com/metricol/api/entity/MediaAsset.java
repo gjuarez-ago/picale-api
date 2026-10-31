@@ -128,6 +128,18 @@ public class MediaAsset {
     private String subtitulos;
 
     /**
+     * En un video original con subtítulos automáticos: ESPERANDO mientras se
+     * hacen (el agente no lo toma todavía), LISTO cuando ya hay copia, y
+     * SIN_SUBTITULOS si no se pudieron poner (no habla nadie, o falló). Nulo =
+     * no aplica. Ver {@code SubtitulosAutomaticos}.
+     */
+    @Column(length = 20)
+    private String subtitulosEstado;
+
+    /** Cuántas veces se intentó ponerle los automáticos; a las tres se suelta sin ellos. */
+    private Integer subtitulosIntentos;
+
+    /**
      * Lo que la IA vio en este archivo, en una frase.
      *
      * <p>Vive aquí y no en una cache en memoria porque así se analiza UNA vez

@@ -42,6 +42,9 @@ public class MediaAssetResponse {
     /** Es la copia de un video con subtítulos pintados (en curso o lista). */
     private boolean conSubtitulos;
 
+    /** En un original con subtítulos automáticos: ESPERANDO, HACIENDO, LISTO o SIN_SUBTITULOS. */
+    private String subtitulosEstado;
+
     /** En qué va con el agente (PROPUESTA, OBSERVACION, DESCARTADA…), o nulo. */
     private String agenteEtapa;
 

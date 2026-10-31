@@ -18,6 +18,7 @@ import com.metricol.api.enums.MediaAssetStatus;
 import com.metricol.api.repository.MediaAssetRepository;
 import com.metricol.api.service.storage.R2StorageService;
 import com.metricol.api.service.storage.StorageQuotaService;
+import com.metricol.api.service.media.subtitulos.SubtitulosAutomaticos;
 import com.metricol.api.service.media.subtitulos.SubtitulosService;
 
 /** Materializa una copia solicitada. Nunca modifica el video fuente. */
@@ -80,6 +81,9 @@ public class VideoTrimProcessor {
             job.setStatus(MediaAssetStatus.READY);
             job.setProcessingError(null);
             assets.save(job);
+            if (subtitulos) {
+                SubtitulosAutomaticos.copiaTerminada(assets, source.getId(), true);
+            }
             thumbnails.sacar(job.getId(), job.getTenantId());
         } catch (Exception ex) {
             storage.deleteByKey(job.getStorageKey());
@@ -116,6 +120,9 @@ public class VideoTrimProcessor {
         job.setSizeBytes(0L);
         job.setProcessingError(message.length() <= 500 ? message : message.substring(0, 500));
         assets.save(job);
+        if (SubtitulosService.esDeSubtitulos(job) && job.getSourceAssetId() != null) {
+            SubtitulosAutomaticos.copiaTerminada(assets, job.getSourceAssetId(), false);
+        }
     }
 
     private static String mensaje(Exception ex) {

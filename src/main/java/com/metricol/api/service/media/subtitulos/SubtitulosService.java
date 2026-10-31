@@ -53,6 +53,13 @@ public class SubtitulosService {
     /** El color de los subtítulos: el de la marca o el amarillo de TikTok. */
     public enum Color { MARCA, AMARILLO }
 
+    /** La cola de video está llena: no es un fallo del video, es esperar turno. */
+    public static class ColaLlena extends IllegalStateException {
+        public ColaLlena() {
+            super("Hay varios videos editándose. Intenta de nuevo en un momento.");
+        }
+    }
+
     /** Lo que se guarda en la copia para pintarla. */
     record Encargo(EstiloSubtitulos estilo, String color, List<Palabra> palabras) {
     }
@@ -150,7 +157,7 @@ public class SubtitulosService {
                 .build());
         if (!cola.dispatch(copia.getId(), copia.getTenantId())) {
             assets.delete(copia);
-            throw new IllegalStateException("Hay varios videos editándose. Intenta de nuevo en un momento.");
+            throw new ColaLlena();
         }
         log.info("Subtítulos {} en {} para el video {}", elegido, hex, video.getId());
         return media.respuesta(copia);

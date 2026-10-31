@@ -251,6 +251,21 @@ public class Workspace {
     /** Créditos al mes que el asistente puede usar en mejoras y diseños. Nulo = el de siempre. */
     private Integer agentePresupuesto;
 
+    /**
+     * Subtítulos automáticos: todo video que se suba sale con subtítulos
+     * pintados. Solo lo subido desde que se enciende: encenderlo no vuelve a
+     * procesar (ni a cobrar) la biblioteca entera.
+     */
+    private Boolean subtitulosAuto;
+
+    /** El estilo de los automáticos (PALABRA, REBOTE, CLASICO); nulo = uno al azar en cada video. */
+    @Column(length = 20)
+    private String subtitulosEstilo;
+
+    /** El color de los automáticos (MARCA, AMARILLO); nulo = al azar. */
+    @Column(length = 20)
+    private String subtitulosColor;
+
     /** El último aviso al teléfono de "tengo publicaciones listas": entre uno y otro pasa al menos una hora. */
     private java.time.LocalDateTime agenteUltimoAviso;
 
