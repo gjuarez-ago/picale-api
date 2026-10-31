@@ -67,12 +67,26 @@ public class ReelMusicCatalog {
      * quedan en silencio por defecto.
      */
     public Selection select(String theme, String intent, String title, boolean voiceOver, String seed) {
+        return select(theme, intent, title, voiceOver, seed, null);
+    }
+
+    /**
+     * @param ambiente el que eligió la cuenta (alegre, elegante…); pesa más que todo
+     *                 lo demás junto (tema, intención y voz solo desempatan dentro de él).
+     *                 Nulo = sin preferencia.
+     */
+    public Selection select(String theme, String intent, String title, boolean voiceOver, String seed,
+            String ambiente) {
         if (!properties.isMusicEnabled() || sensitive(theme, intent, title)) {
             return null;
         }
         Map<String, Integer> score = new HashMap<>();
         add(score, preferred("temas", match("temas", theme + " " + title)), 5);
         add(score, preferred("intenciones", match("intenciones", intent + " " + title)), 6);
+        if (ambiente != null) {
+            add(score, tracks.values().stream().filter(track -> ambiente.equals(track.ambiente()))
+                    .map(Track::id).toList(), 20);
+        }
         if (voiceOver) {
             add(score, strings(taxonomy.path("voiceoverPreferredTrackIds")), 4);
             tracks.values().stream().filter(track -> track.bpm() <= 120)
@@ -117,6 +131,12 @@ public class ReelMusicCatalog {
         } catch (IOException ex) {
             throw new ReelRenderException("No se pudo preparar la pista musical.", ex);
         }
+    }
+
+    /** Los ambientes que de verdad tienen canciones: lo único que una cuenta puede elegir. */
+    public java.util.Set<String> ambientes() {
+        return tracks.values().stream().map(Track::ambiente).filter(a -> !a.isBlank())
+                .collect(java.util.stream.Collectors.toCollection(java.util.TreeSet::new));
     }
 
     public Track track(String id) {

@@ -29,6 +29,19 @@ class ReelMusicCatalogTest {
     }
 
     @Test
+    void elAmbienteDeLaCuentaMandaSobreElGiroYLaVoz() {
+        assertThat(catalog.ambientes()).contains("alegre", "elegante", "relajada", "energetica");
+        for (String ambiente : catalog.ambientes()) {
+            ReelMusicCatalog.Selection elegida = catalog.select(
+                    "cafetería y alimentos", "promoción del menú", "Prueba nuestro café", true, "s", ambiente);
+            assertThat(elegida.track().ambiente()).as(ambiente).isEqualTo(ambiente);
+        }
+        // Sin ambiente, lo de antes: misma pista que sin el parámetro.
+        assertThat(catalog.select("gimnasio", "promoción", "Entrena hoy", false, "s", null).track().id())
+                .isEqualTo(catalog.select("gimnasio", "promoción", "Entrena hoy", false, "s").track().id());
+    }
+
+    @Test
     void seriousNoticeStaysSilentAndGlobalSwitchWins() {
         assertThat(catalog.select("restaurante", "comunicado urgente",
                 "Lamentamos el fallecimiento", false, "x")).isNull();

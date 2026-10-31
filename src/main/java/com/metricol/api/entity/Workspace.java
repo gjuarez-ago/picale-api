@@ -266,6 +266,13 @@ public class Workspace {
     @Column(length = 20)
     private String subtitulosColor;
 
+    /** Música en los reels que se arman con fotos; nulo = sí (lo de siempre), FALSE = en silencio. */
+    private Boolean musicaReels;
+
+    /** El ambiente de esa música (alegre, elegante…); nulo = la elige el giro del negocio. */
+    @Column(length = 20)
+    private String musicaAmbiente;
+
     /** El último aviso al teléfono de "tengo publicaciones listas": entre uno y otro pasa al menos una hora. */
     private java.time.LocalDateTime agenteUltimoAviso;
 

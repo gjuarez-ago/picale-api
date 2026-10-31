@@ -36,17 +36,19 @@ public class ReelRenderService {
     private final ReelRenderQueue queue;
     private final ReelResultStore results;
     private final ReelMusicCatalog music;
+    private final MusicaDeReels musica;
     private final ObjectMapper json;
 
     public ReelRenderService(ReelRenderJobRepository jobs, MediaAssetRepository assets,
             ReelsProperties properties, ReelRenderQueue queue, ReelResultStore results,
-            ReelMusicCatalog music, ObjectMapper json) {
+            ReelMusicCatalog music, MusicaDeReels musica, ObjectMapper json) {
         this.jobs = jobs;
         this.assets = assets;
         this.properties = properties;
         this.queue = queue;
         this.results = results;
         this.music = music;
+        this.musica = musica;
         this.json = json;
     }
 
@@ -78,8 +80,14 @@ public class ReelRenderService {
         String intent = cut(request.getMusicIntent(), 300);
         boolean voiceOver = Boolean.TRUE.equals(request.getVoiceOver());
         String seed = workspaceId + "|" + ids + "|" + duration + "|" + title + "|" + theme + "|" + intent;
-        ReelMusicCatalog.Selection selected = Boolean.FALSE.equals(request.getAutomaticMusic()) ? null
-                : music.select(theme, intent, title, voiceOver, seed);
+        // Si la cuenta apagó la música, el reel sale en silencio aunque lo pida
+        // el agente. El ambiente elegido entra a la semilla solo si lo hay: así
+        // los reels de cuentas sin preferencia conservan su misma receta.
+        MusicaDeReels.Ajustes cuenta = musica.ajustes(workspaceId);
+        ReelMusicCatalog.Selection selected = Boolean.FALSE.equals(request.getAutomaticMusic()) || !cuenta.activo()
+                ? null
+                : music.select(theme, intent, title, voiceOver,
+                        cuenta.ambiente() == null ? seed : seed + "|" + cuenta.ambiente(), cuenta.ambiente());
         ReelRecipe recipe = new ReelRecipe(properties.getRecipeVersion(), workspaceId, ids, duration, title,
                 selected == null ? null : selected.track().id(), theme, intent, voiceOver);
         ReelRenderJob existing = jobs.findByRecipeHash(recipe.hash()).orElse(null);

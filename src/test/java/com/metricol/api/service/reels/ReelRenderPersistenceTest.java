@@ -46,6 +46,8 @@ class ReelRenderPersistenceTest {
     @Autowired ReelRenderService service;
     @Autowired ReelRenderQueue queue;
     @Autowired ReelsProperties properties;
+    @Autowired com.metricol.api.repository.WorkspaceRepository workspaces;
+    @Autowired ReelMusicCatalog catalog;
 
     @BeforeEach
     void enableForRequestTests() {
@@ -58,6 +60,34 @@ class ReelRenderPersistenceTest {
         createdJobs.forEach(jobs::deleteById);
         asTenant(workspace, () -> createdAssets.forEach(assets::deleteById));
         asTenant(otherWorkspace, () -> createdAssets.forEach(assets::deleteById));
+    }
+
+    @Test
+    @DisplayName("la cuenta manda: sin música sale en silencio; con ambiente, la pista es de ese ambiente")
+    void laMusicaDeLaCuenta() {
+        com.metricol.api.entity.Workspace espacio = workspaces.save(com.metricol.api.entity.Workspace.builder()
+                .name("Reels con gusto").musicaReels(false).build());
+        try {
+            UUID ws = espacio.getId();
+            List<UUID> fotos = createPhotos(ws, 4);
+            ReelRenderResponse callado = callAsTenant(ws, () -> service.createForAgent(
+                    request(fotos, 20, "Café de otoño"), ws, "cafetería", "promoción"));
+            createdJobs.add(callado.id());
+            assertThat(callado.musicTrackId()).isNull();
+
+            espacio.setMusicaReels(true);
+            espacio.setMusicaAmbiente("elegante");
+            workspaces.save(espacio);
+            ReelRenderResponse elegante = callAsTenant(ws, () -> service.createForAgent(
+                    request(fotos, 20, "Café de otoño"), ws, "cafetería", "promoción"));
+            createdJobs.add(elegante.id());
+            assertThat(catalog.track(elegante.musicTrackId()).ambiente()).isEqualTo("elegante");
+            asTenant(ws, () -> createdAssets.forEach(assets::deleteById));
+        } finally {
+            createdJobs.forEach(jobs::deleteById);
+            createdJobs.clear();
+            workspaces.deleteById(espacio.getId());
+        }
     }
 
     @Test
