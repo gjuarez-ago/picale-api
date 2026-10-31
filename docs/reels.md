@@ -154,8 +154,8 @@ El render se considera exitoso solo después de que `ffprobe` confirme:
 - Escaneo progresivo.
 - 30 fps.
 - GOP cerrado de 60 cuadros.
-- Audio AAC-LC estéreo a 48 kHz cuando la receta selecciona música; volumen 18%,
-  entrada de 0.6 s y salida de 1.2 s. Los avisos sensibles quedan en silencio.
+- Audio AAC-LC estéreo a 48 kHz cuando la receta selecciona música; igualada a -14 LUFS
+  (completa sin voz, al 25% bajo una voz), entrada de 0.6 s y salida de 1.2 s. Los avisos sensibles quedan en silencio.
 
 El primer ensayo real detectó que JPEG de rango completo podía producir
 `yuvj420p` aunque se indicara `-pix_fmt yuv420p`. La receta convierte el rango de

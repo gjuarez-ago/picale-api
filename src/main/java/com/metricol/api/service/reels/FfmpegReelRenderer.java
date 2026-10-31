@@ -23,6 +23,14 @@ public class FfmpegReelRenderer implements ReelRenderer {
 
     static final int WIDTH = 1080;
     static final int HEIGHT = 1920;
+
+    /**
+     * Volumen de la canción después de igualarla a -14 LUFS, lo que usan las
+     * redes. Sin voz la música es todo el sonido y va completa; antes iba al
+     * 18% y en el teléfono casi no se oía. Con voz queda de fondo (~-26 LUFS).
+     */
+    public static final double MUSICA_SOLA = 1.0;
+    public static final double MUSICA_BAJO_VOZ = 0.25;
     static final int FPS = 30;
     private static final int TITLE_SECONDS = 3;
 
@@ -41,7 +49,7 @@ public class FfmpegReelRenderer implements ReelRenderer {
     @Override
     public Rendered render(List<Path> photos, int durationSeconds, String title,
             Path workDirectory, Path music) {
-        return render(photos, durationSeconds, title, workDirectory, music, 0.18);
+        return render(photos, durationSeconds, title, workDirectory, music, MUSICA_SOLA);
     }
 
     @Override
@@ -84,7 +92,7 @@ public class FfmpegReelRenderer implements ReelRenderer {
 
     List<String> buildCommand(List<Path> photos, int durationSeconds, String title,
             Path workDirectory, Path output, Path music) throws IOException {
-        return buildCommand(photos, durationSeconds, title, workDirectory, output, music, 0.18);
+        return buildCommand(photos, durationSeconds, title, workDirectory, output, music, MUSICA_SOLA);
     }
 
     List<String> buildCommand(List<Path> photos, int durationSeconds, String title,
@@ -151,7 +159,7 @@ public class FfmpegReelRenderer implements ReelRenderer {
             double fadeOut = Math.max(0, durationSeconds - 1.2);
             filter.append(";[").append(photos.size()).append(":a]")
                     .append("atrim=duration=").append(durationSeconds)
-                    .append(",asetpts=PTS-STARTPTS,volume=").append(decimal(musicVolume))
+                    .append(",asetpts=PTS-STARTPTS,loudnorm=I=-14:TP=-2:LRA=11,volume=").append(decimal(musicVolume))
                     .append(",afade=t=in:st=0:d=0.6")
                     .append(",afade=t=out:st=").append(decimal(fadeOut)).append(":d=1.2")
                     .append(",aresample=48000,aformat=sample_fmts=fltp:channel_layouts=stereo[outa]");

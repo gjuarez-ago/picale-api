@@ -39,7 +39,7 @@ class FfmpegReelRendererTest {
 
         assertThat(command).doesNotContain("-an");
         assertThat(command).contains("-c:a", "aac", "-ar", "48000", "-ac", "2", "[outa]");
-        assertThat(String.join(" ", command)).contains("volume=0.18", "afade=t=in", "afade=t=out");
+        assertThat(String.join(" ", command)).contains("loudnorm=I=-14", "volume=1.000000", "afade=t=in", "afade=t=out");
     }
 
     @Test
@@ -47,9 +47,9 @@ class FfmpegReelRendererTest {
         FfmpegReelRenderer renderer = new FfmpegReelRenderer(new ReelsProperties());
         List<String> command = renderer.buildCommand(
                 List.of(temp.resolve("a.jpg")), 20, null, temp, temp.resolve("reel.mp4"),
-                temp.resolve("music.mp3"), 0.12);
+                temp.resolve("music.mp3"), FfmpegReelRenderer.MUSICA_BAJO_VOZ);
 
-        assertThat(String.join(" ", command)).contains("volume=0.12");
+        assertThat(String.join(" ", command)).contains("loudnorm=I=-14", "volume=0.250000");
     }
 
     @Test

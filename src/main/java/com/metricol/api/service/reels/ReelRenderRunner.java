@@ -79,7 +79,7 @@ public class ReelRenderRunner {
             ReelRenderer.Rendered rendered = musicFile == null
                     ? renderer.render(local, job.getDurationSeconds(), job.getTitle(), directory)
                     : renderer.render(local, job.getDurationSeconds(), job.getTitle(), directory, musicFile,
-                            recipe.voiceOver() ? 0.12 : 0.18);
+                            recipe.voiceOver() ? FfmpegReelRenderer.MUSICA_BAJO_VOZ : FfmpegReelRenderer.MUSICA_SOLA);
             if (queue.isCancelled(work.jobId())) {
                 return;
             }
