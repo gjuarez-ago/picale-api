@@ -50,10 +50,10 @@ public interface MediaAssetRepository extends JpaRepository<MediaAsset, UUID> {
     @Query(value = """
             select cast(m.id as varchar), m.tenant_id
             from media_assets m
-            where m.subtitulos_estado = HACIENDO
+            where m.subtitulos_estado = 'HACIENDO'
               and not exists (
                     select 1 from media_assets c
-                    where c.source_asset_id = m.id and c.subtitulos is not null and c.status = PROCESSING)
+                    where c.source_asset_id = m.id and c.subtitulos is not null and c.status = 'PROCESSING')
             order by m.created_at asc
             limit :tope
             """, nativeQuery = true)

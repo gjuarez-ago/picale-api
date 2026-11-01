@@ -86,4 +86,18 @@ class FilaDelAgenteConSubtitulosTest {
                     .contains(esperando.getId().toString());
         });
     }
+
+    @Test
+    @DisplayName("Un video haciendo sin copia en curso aparece para soltarlo; con su copia en curso, no (la consulta corre de verdad)")
+    void haciendoSinCopia() {
+        TenantIdentifierResolver.comoTenant(WS, () -> {
+            MediaAsset solo = video("solo.mp4", SubtitulosAutomaticos.HACIENDO, null, null);
+            MediaAsset conCopia = video("con-copia.mp4", SubtitulosAutomaticos.HACIENDO, null, null);
+            MediaAsset copia = video("con-copia-subtitulado.mp4", null, "{}", conCopia.getId());
+            copia.setStatus(MediaAssetStatus.PROCESSING);
+            assets.save(copia);
+            List<String> ids = assets.haciendoSinCopiaEnCurso(50).stream().map(f -> String.valueOf(f[0])).toList();
+            assertThat(ids).contains(solo.getId().toString()).doesNotContain(conCopia.getId().toString());
+        });
+    }
 }
