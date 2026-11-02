@@ -11,8 +11,7 @@ import com.metricol.api.repository.WorkspaceRepository;
 /**
  * La música de cada cuenta: si los reels que se arman con fotos llevan, si los
  * videos que se suben llevan de fondo, y con qué ambiente. Sin tocar nada, los
- * reels llevan música elegida por el giro del negocio y los videos subidos se
- * quedan con su sonido.
+ * reels y los videos subidos llevan música elegida por el giro del negocio.
  */
 @Service
 public class MusicaDeReels {
@@ -36,7 +35,7 @@ public class MusicaDeReels {
 
     /** Sin la cuenta a la mano, lo de siempre: con música, elegida por el giro. */
     public Ajustes ajustes(UUID workspaceId) {
-        return workspaces.findById(workspaceId).map(this::ajustesDe).orElse(new Ajustes(true, null, false));
+        return workspaces.findById(workspaceId).map(this::ajustesDe).orElse(new Ajustes(true, null, true));
     }
 
     /** Un ambiente que ya no está en el catálogo cuenta como "automático", no rompe el reel. */
@@ -44,7 +43,7 @@ public class MusicaDeReels {
         String ambiente = espacio.getMusicaAmbiente();
         return new Ajustes(!Boolean.FALSE.equals(espacio.getMusicaReels()),
                 ambiente != null && catalogo.ambientes().contains(ambiente) ? ambiente : null,
-                Boolean.TRUE.equals(espacio.getMusicaVideos()));
+                !Boolean.FALSE.equals(espacio.getMusicaVideos()));
     }
 
     public Ajustes guardar(UUID workspaceId, Ajustes nuevos) {

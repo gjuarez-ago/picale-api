@@ -833,7 +833,7 @@ public class MediaService {
             return;
         }
         workspaces.findById(UUID.fromString(tenantId))
-                .filter(w -> Boolean.TRUE.equals(w.getSubtitulosAuto()) || Boolean.TRUE.equals(w.getMusicaVideos()))
+                .filter(w -> Boolean.TRUE.equals(w.getSubtitulosAuto()) || !Boolean.FALSE.equals(w.getMusicaVideos()))
                 .ifPresent(w -> asset.setSubtitulosEstado(SubtitulosAutomaticos.ESPERANDO));
     }
 

@@ -51,6 +51,8 @@ class SubtitulosAutomaticosTest {
         espacio = new Workspace();
         espacio.setSubtitulosAuto(true);
         espacio.setSubtitulosEstilo("REBOTE");
+        // Las pruebas de solo subtítulos apagan la música; las de música la encienden.
+        espacio.setMusicaVideos(false);
         when(workspaces.findById(WS)).thenReturn(Optional.of(espacio));
         when(workspaces.save(any(Workspace.class))).thenAnswer(i -> i.getArgument(0));
         video = MediaAsset.builder().id(UUID.randomUUID()).type(MediaType.VIDEO).status(MediaAssetStatus.READY)
@@ -184,6 +186,15 @@ class SubtitulosAutomaticosTest {
         assertThat(cancion.getValue().volumen()).isEqualTo(FfmpegReelRenderer.MUSICA_BAJO_VOZ);
         assertThat(video.getMusicaFondo()).isEqualTo(SubtitulosAutomaticos.MUSICA_PUESTA);
         assertThat(video.getSubtitulosEstado()).isEqualTo(SubtitulosAutomaticos.HACIENDO);
+    }
+
+    @Test
+    @DisplayName("Sin tocar el ajuste, la música va encendida")
+    void musicaDeEntrada() {
+        espacio.setMusicaVideos(null);
+        automaticos.procesar(video.getId());
+        verify(subtitulos).yaTraeMusica(video.getId(), WS, HABLA);
+        assertThat(video.getMusicaFondo()).isEqualTo(SubtitulosAutomaticos.MUSICA_PUESTA);
     }
 
     @Test

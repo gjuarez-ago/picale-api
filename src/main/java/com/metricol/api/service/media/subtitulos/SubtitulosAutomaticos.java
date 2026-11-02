@@ -162,7 +162,7 @@ public class SubtitulosAutomaticos {
         UUID workspaceId = UUID.fromString(video.getTenantId());
         Workspace espacio = workspaces.findById(workspaceId).orElse(null);
         boolean conSubtitulos = espacio != null && Boolean.TRUE.equals(espacio.getSubtitulosAuto());
-        boolean conMusica = espacio != null && Boolean.TRUE.equals(espacio.getMusicaVideos());
+        boolean conMusica = espacio != null && !Boolean.FALSE.equals(espacio.getMusicaVideos());
         if (!conSubtitulos && !conMusica) {
             // Los apagaron mientras esperaba: se suelta tal cual.
             guardar(video, null, video.getSubtitulosIntentos());

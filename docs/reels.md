@@ -252,7 +252,7 @@ la capacidad y el costo por reel en producción siguen siendo hipótesis.
 ## Música de fondo en los videos que se suben
 
 La misma música del catálogo puede ir de fondo en los videos que sube la
-persona (`Workspace.musicaVideos`, apagada de entrada; el ambiente es el mismo
+persona (`Workspace.musicaVideos`, encendida de entrada; el ambiente es el mismo
 de los reels). Lo hace `SubtitulosAutomaticos`, en la misma copia que los
 subtítulos y en una sola pasada de ffmpeg (`FfmpegImagen.editarVideo`):
 

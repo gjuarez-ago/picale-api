@@ -275,8 +275,8 @@ public class Workspace {
 
     /**
      * Música de fondo en los videos que se suben, con el mismo ambiente; nulo
-     * = no. Apagada de entrada a propósito: el video es de la persona, y
-     * cambiarle el sonido solo se hace si lo pidió.
+     * = sí, FALSE = sin música. Encendida de entrada, como en los reels (pedido
+     * de Gabriel, 1 nov 2026); un video que ya trae música se deja igual.
      */
     private Boolean musicaVideos;
 

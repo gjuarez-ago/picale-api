@@ -32,10 +32,10 @@ class MusicaDeReelsTest {
     }
 
     @Test
-    @DisplayName("Sin tocar nada: con música y el ambiente lo pone el giro")
+    @DisplayName("Sin tocar nada: con música en reels y videos, y el ambiente lo pone el giro")
     void deFabrica() {
-        assertThat(musica.ajustes(ws)).isEqualTo(new MusicaDeReels.Ajustes(true, null, false));
-        assertThat(musica.ajustes(UUID.randomUUID())).isEqualTo(new MusicaDeReels.Ajustes(true, null, false));
+        assertThat(musica.ajustes(ws)).isEqualTo(new MusicaDeReels.Ajustes(true, null, true));
+        assertThat(musica.ajustes(UUID.randomUUID())).isEqualTo(new MusicaDeReels.Ajustes(true, null, true));
     }
 
     @Test
@@ -50,7 +50,7 @@ class MusicaDeReelsTest {
     }
 
     @Test
-    @DisplayName("La música en los videos subidos va apagada de entrada; al guardar sin decir nada, se queda como estaba")
+    @DisplayName("La música en los videos subidos va encendida de entrada; al guardar sin decir nada, se queda como estaba")
     void videos() {
         assertThat(musica.guardar(ws, new MusicaDeReels.Ajustes(true, null, true)).videos()).isTrue();
         assertThat(espacio.getMusicaVideos()).isTrue();
