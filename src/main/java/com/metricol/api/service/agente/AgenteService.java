@@ -2402,6 +2402,16 @@ public class AgenteService {
         return postService.propuestasDelAgente(p -> p.getAgenteFotoUrl() != null && originales.contains(p.getAgenteFotoUrl()));
     }
 
+    /**
+     * Las propuestas pendientes que salieron de estos archivos: por la foto
+     * original, por las del carrusel, o porque publican el archivo (o la
+     * versión final de un video, que va en {@code urls} también).
+     */
+    public List<PostResponse> propuestasDeArchivos(java.util.Set<String> urls) {
+        return postService.propuestasDelAgente(p -> originalesDe(p).stream().anyMatch(urls::contains)
+                || p.getMediaUrls().stream().anyMatch(urls::contains));
+    }
+
     /** Las propuestas que salieron de una foto. */
     public List<PostResponse> propuestasDe(String fotoOriginal) {
         return postService.propuestasDelAgente(p -> fotoOriginal.equals(p.getAgenteFotoUrl()));
@@ -2456,6 +2466,60 @@ public class AgenteService {
      * camino que una foto nueva —marca, decisión, texto, fecha— y no se salta
      * nada que gaste, así que cuesta lo mismo que si la hubiera tomado solo.
      */
+    /**
+     * «Crear publicación»: lo que eligió la persona, trabajado ya y como una
+     * sola publicación (un video, o una o varias fotos en carrusel). Es el
+     * mismo camino que una subida —marca, decisión, texto, redes y hora—, pero
+     * sin esperar turno y aunque el agente esté apagado. Con la revisión de
+     * marca de siempre: lo que no va (o se repite, o es horizontal) queda en
+     * Observación con el motivo, y la persona decide con «Sí va». Si otro ya
+     * tomó un archivo (el proceso de fondo), se lo deja.
+     *
+     * @return cuántos archivos tomó
+     */
+    public int trabajarPedido(List<UUID> ids, UUID workspaceId) {
+        Workspace w = workspace(workspaceId);
+        List<MediaAsset> elegidos = new ArrayList<>();
+        for (UUID id : ids) {
+            assets.findById(id).ifPresent(elegidos::add);
+        }
+        if (elegidos.isEmpty()) {
+            return 0;
+        }
+        cupoIa.exigirCupo();
+        MediaAsset primero = elegidos.get(0);
+        if (primero.getType() == com.metricol.api.enums.MediaType.VIDEO) {
+            List<SocialAccount> destino = validarRevisable(primero);
+            if (!tomar(primero)) {
+                return 0;
+            }
+            procesar(primero, w, destino, false);
+            replanear(w);
+            return 1;
+        }
+        List<EnTanda> fotos = new ArrayList<>();
+        List<SocialAccount> destino = cuentasParaFotos();
+        for (MediaAsset foto : elegidos) {
+            validarRevisable(foto);
+            if (!tomar(foto)) {
+                continue;
+            }
+            analizarFoto(foto, w, destino, false);
+            MediaAsset vista = assets.findById(foto.getId()).orElse(foto);
+            RevisorDeMarca.Revision rev = RevisorDeMarca.deJson(vista.getAgenteAnalisis());
+            if (vista.getAgenteEtapa() == EtapaAgente.ANALIZADA && rev != null) {
+                marcar(vista, EtapaAgente.REVISANDO, vista.getAgenteMotivo());
+                fotos.add(new EnTanda(vista, rev, false));
+            }
+        }
+        if (!fotos.isEmpty()) {
+            organizarTanda(w, destino, fotos, fotos.size() == 1 ? null
+                    : "Es UNA sola publicacion que pidio el dueno: todas estas fotos juntas en un carrusel, en este orden.");
+        }
+        replanear(w);
+        return fotos.size();
+    }
+
     public Resultado revisarAhora(UUID assetId, UUID workspaceId) {
         MediaAsset asset = assets.findById(assetId)
                 .orElseThrow(() -> new ResourceNotFoundException("Archivo no encontrado."));
