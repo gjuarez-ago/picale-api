@@ -147,6 +147,10 @@ public class MediaAsset {
     @Column(length = 20)
     private String musicaFondo;
 
+    /** En una versión final recortada: qué se le quitó, en palabras de la persona. Nulo = sin recorte. */
+    @Column(length = 300)
+    private String recorteNota;
+
     /**
      * Lo que la IA vio en este archivo, en una frase.
      *

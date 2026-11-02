@@ -68,7 +68,12 @@ public class SubtitulosService {
      * @param musica  la canción del catálogo; nula = sin música
      * @param volumen de la música, ya igualada a -14 LUFS (1 = completa)
      */
-    record Encargo(EstiloSubtitulos estilo, String color, List<Palabra> palabras, String musica, Double volumen) {
+    record Encargo(EstiloSubtitulos estilo, String color, List<Palabra> palabras, String musica, Double volumen,
+            Double recorteInicio, Double recorteFin) {
+    }
+
+    /** El tramo que se queda de una copia recortada (segundos del original); nulo si va entera. */
+    public record TramoDeCopia(double inicio, double fin) {
     }
 
     /** La música que lleva una copia y a qué volumen. */
@@ -163,7 +168,7 @@ public class SubtitulosService {
                     : "No quedó texto para poner. Escribe al menos una frase.");
         }
         return encargar(video, workspaceId, encargo(workspaceId, estilo, color, palabras, null),
-                nombreSubtitulado(video.getFileName()));
+                nombreSubtitulado(video.getFileName()), null);
     }
 
     /**
@@ -175,16 +180,31 @@ public class SubtitulosService {
      */
     public MediaAssetResponse pedirEdicion(UUID videoId, UUID workspaceId, EstiloSubtitulos estilo, Color color,
             boolean conSubtitulos, MusicaDeCopia musica) {
+        return pedirEdicion(videoId, workspaceId, estilo, color, conSubtitulos, musica, null);
+    }
+
+    /** @param recorte nulo = entero; si no, solo ese tramo (los subtítulos se corren con él) */
+    public MediaAssetResponse pedirEdicion(UUID videoId, UUID workspaceId, EstiloSubtitulos estilo, Color color,
+            boolean conSubtitulos, MusicaDeCopia musica, RecorteAutomatico.Recorte recorte) {
         MediaAsset video = videoDe(videoId, workspaceId);
         List<Palabra> palabras = conSubtitulos ? leer(video.getTranscripcion()) : List.of();
         if (conSubtitulos && palabras.isEmpty()) {
             throw new IllegalArgumentException("Primero saca el texto del video.");
         }
-        if (palabras.isEmpty() && musica == null) {
+        if (palabras.isEmpty() && musica == null && recorte == null) {
             throw new IllegalArgumentException("No hay nada que ponerle a este video.");
         }
-        return encargar(video, workspaceId, encargo(workspaceId, estilo, color, palabras, musica),
-                palabras.isEmpty() ? nombreConMusica(video.getFileName()) : nombreSubtitulado(video.getFileName()));
+        if (recorte != null) {
+            palabras = RecorteAutomatico.corridas(palabras, recorte.inicio(), recorte.fin());
+        }
+        Encargo base = encargo(workspaceId, estilo, color, palabras, musica);
+        Encargo encargo = recorte == null ? base
+                : new Encargo(base.estilo(), base.color(), base.palabras(), base.musica(), base.volumen(),
+                        recorte.inicio(), recorte.fin());
+        String nombre = conSubtitulos ? nombreSubtitulado(video.getFileName())
+                : musica != null ? nombreConMusica(video.getFileName())
+                : nombreSubtitulado(video.getFileName()).replace("-subtitulado.mp4", "-recortado.mp4");
+        return encargar(video, workspaceId, encargo, nombre, recorte == null ? null : recorte.nota());
     }
 
     private Encargo encargo(UUID workspaceId, EstiloSubtitulos estilo, Color color, List<Palabra> palabras,
@@ -194,10 +214,11 @@ public class SubtitulosService {
         Color tono = color != null ? color : Color.values()[azar.nextInt(Color.values().length)];
         String hex = tono == Color.AMARILLO ? GuionAss.AMARILLO : GuionAss.resalteLegible(coloresDe(workspaceId));
         return new Encargo(elegido, hex, palabras, musica == null ? null : musica.cancion(),
-                musica == null ? null : musica.volumen());
+                musica == null ? null : musica.volumen(), null, null);
     }
 
-    private MediaAssetResponse encargar(MediaAsset video, UUID workspaceId, Encargo encargo, String nombre) {
+    private MediaAssetResponse encargar(MediaAsset video, UUID workspaceId, Encargo encargo, String nombre,
+            String recorteNota) {
         long reservados = video.getSizeBytes() == null ? 1 : video.getSizeBytes();
         cuota.verificar(reservados, nombre);
         String key = storage.claveNueva(workspaceId, nombre, "video/mp4");
@@ -212,6 +233,7 @@ public class SubtitulosService {
                 .sourceAssetId(video.getId())
                 .subtitulos(escribir(encargo))
                 .musicaFondo(encargo.musica() == null ? null : SubtitulosAutomaticos.MUSICA_PUESTA)
+                .recorteNota(recorteNota)
                 .generadaPorIa(false)
                 .creadaConIa(false)
                 .build());
@@ -236,6 +258,13 @@ public class SubtitulosService {
         }
         return GuionAss.escribir(encargo.palabras(), encargo.estilo(), medidas.ancho(), medidas.alto(),
                 encargo.color());
+    }
+
+    /** El tramo que se queda de una copia recortada; nulo si va entera. */
+    public static TramoDeCopia tramo(ObjectMapper json, MediaAsset copia) {
+        Encargo encargo = encargoDe(json, copia);
+        return encargo.recorteInicio() == null || encargo.recorteFin() == null ? null
+                : new TramoDeCopia(encargo.recorteInicio(), encargo.recorteFin());
     }
 
     /** La música de una copia encargada; nula si solo lleva subtítulos. */

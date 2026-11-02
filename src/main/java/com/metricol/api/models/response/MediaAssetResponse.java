@@ -57,6 +57,9 @@ public class MediaAssetResponse {
     /** PUESTA o YA_TENIA en un video con música automática; nulo = no aplica. */
     private String musicaFondo;
 
+    /** En una versión final recortada: qué se le quitó («Le quité 3 s del principio…»). */
+    private String recorteNota;
+
     /** En qué va con el agente (PROPUESTA, OBSERVACION, DESCARTADA…), o nulo. */
     private String agenteEtapa;
 

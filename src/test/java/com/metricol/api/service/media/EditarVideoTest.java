@@ -73,6 +73,19 @@ class EditarVideoTest {
     }
 
     @Test
+    @DisplayName("Recortado: se queda solo el tramo pedido, con subtítulos y música, y dura lo que el tramo")
+    void recortado() throws Exception {
+        Path salida = carpeta.resolve("recortado.mp4");
+        assertThat(ffmpeg.editarVideo(video(true).toString(), null, cancion(), 0.25, 1.5, 4.5, true, salida))
+                .isTrue();
+        assertThat(ffmpeg.medirVideo(salida.toString()).segundos()).isBetween(2.8, 3.2);
+        Path solo = carpeta.resolve("solo-recorte.mp4");
+        assertThat(ffmpeg.editarVideo(video(true).toString(), null, null, 1, 1, 5, true, solo)).isTrue();
+        assertThat(ffmpeg.medirVideo(solo.toString()).segundos()).isBetween(3.8, 4.2);
+        assertThat(ffmpeg.tieneSonido(solo.toString())).isTrue();
+    }
+
+    @Test
     @DisplayName("Un video sin pista de sonido sale con la música sola")
     void sinSonido() throws Exception {
         Path video = video(false);

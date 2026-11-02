@@ -48,6 +48,8 @@ public enum AiOperacion {
 
     /** Mira si un video ya trae subtítulos pegados, para no ponerle otros encima. */
     SUBTITULOS_PREVIOS,
+    /** El revisor del recorte automático: qué tan probable es que el video recortado quede bien. */
+    RECORTE_AUTOMATICO,
 
     /** El agente mira un video completo (varios cuadros y lo que se dice). */
     AGENTE_VIDEO,

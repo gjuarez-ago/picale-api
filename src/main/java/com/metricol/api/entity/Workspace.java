@@ -280,6 +280,13 @@ public class Workspace {
      */
     private Boolean musicaVideos;
 
+    /**
+     * Recorte automático de lo que sobra al principio y al final de los videos
+     * que se suben; nulo = sí, FALSE = no. Solo recorta cuando el revisor da
+     * 90% o más de que queda bien (ver {@code RecorteAutomatico}).
+     */
+    private Boolean recorteAuto;
+
     /** El último aviso al teléfono de "tengo publicaciones listas": entre uno y otro pasa al menos una hora. */
     private java.time.LocalDateTime agenteUltimoAviso;
 

@@ -114,6 +114,7 @@ public class VideoTrimProcessor {
         }
         String texto = SubtitulosService.guion(json, job, medidas);
         SubtitulosService.MusicaDeCopia cancion = SubtitulosService.musica(json, job);
+        SubtitulosService.TramoDeCopia tramo = SubtitulosService.tramo(json, job);
         Path carpeta = Files.createTempDirectory("picale-edicion-");
         try {
             Path guion = null;
@@ -130,7 +131,8 @@ public class VideoTrimProcessor {
                 pista = musica.materialize(elegida, carpeta);
             }
             return ffmpeg.editarVideo(source.getUrl(), guion, pista,
-                    cancion == null ? 1 : cancion.volumen(), medidas.segundos(),
+                    cancion == null ? 1 : cancion.volumen(),
+                    tramo == null ? 0 : tramo.inicio(), tramo == null ? medidas.segundos() : tramo.fin(),
                     pista != null && ffmpeg.tieneSonido(source.getUrl()), output);
         } finally {
             try (var archivos = Files.list(carpeta)) {

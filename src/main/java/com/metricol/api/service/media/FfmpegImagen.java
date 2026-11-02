@@ -508,10 +508,24 @@ public class FfmpegImagen {
      */
     public boolean editarVideo(String fuente, Path guion, Path musica, double volumen, double segundos,
             boolean conSonido, Path destino) {
-        if (musica == null) {
-            return guion != null && subtitularVideo(fuente, guion, destino);
+        return editarVideo(fuente, guion, musica, volumen, 0, segundos, conSonido, destino);
+    }
+
+    /**
+     * Igual, quedándose solo con el tramo del {@code inicio} al {@code fin}
+     * (el recorte automático quita lo que sobra al principio y al final). Con
+     * recorte el video se vuelve a codificar: copiado no se corta exacto.
+     *
+     * @param inicio segundos desde el principio del original; 0 = sin recorte al inicio
+     * @param fin    hasta dónde; lo que dura = sin recorte al final
+     */
+    public boolean editarVideo(String fuente, Path guion, Path musica, double volumen, double inicio, double fin,
+            boolean conSonido, Path destino) {
+        boolean recorta = inicio > 0.05;
+        if (guion == null && musica == null && !recorta && fin <= 0) {
+            return false;
         }
-        String salida = ejecutar(comandoEditar(fuente, guion, musica, volumen, segundos, conSonido, destino),
+        String salida = ejecutar(comandoEditar(fuente, guion, musica, volumen, inicio, fin, conSonido, destino),
                 "ffmpeg-editar-video", 1800);
         try {
             return salida != null && Files.size(destino) > 0;
@@ -522,31 +536,47 @@ public class FfmpegImagen {
 
     List<String> comandoEditar(String fuente, Path guion, Path musica, double volumen, double segundos,
             boolean conSonido, Path destino) {
-        double largo = Math.max(segundos, 1);
-        String pista = "[1:a]atrim=duration=" + decimal(largo)
-                + ",asetpts=PTS-STARTPTS,loudnorm=I=-14:TP=-2:LRA=11,volume=" + decimal(volumen)
-                + ",afade=t=in:st=0:d=0.6"
-                + ",afade=t=out:st=" + decimal(Math.max(0, largo - 1.2)) + ":d=1.2"
-                + ",aresample=48000,aformat=sample_fmts=fltp:channel_layouts=stereo";
-        // normalize=0: amix no le baja el volumen a la voz por sumar otra pista.
-        // Bajo una voz, la voz también se iguala (-14 LUFS): la música va a un
-        // nivel fijo, y un video de WhatsApp grabado bajito (-26) la tenía tan
-        // fuerte como la voz. Así queda siempre unos 12 dB por debajo.
-        String voz = volumen < 1 ? "loudnorm=I=-14:TP=-1.5:LRA=11," : "";
-        String filtro = conSonido
-                ? pista + "[m];[0:a]" + voz + "aresample=48000,aformat=sample_fmts=fltp:channel_layouts=stereo[v];"
-                        + "[v][m]amix=inputs=2:duration=first:normalize=0,alimiter=limit=0.95[a]"
-                : pista + "[a]";
+        return comandoEditar(fuente, guion, musica, volumen, 0, segundos, conSonido, destino);
+    }
+
+    List<String> comandoEditar(String fuente, Path guion, Path musica, double volumen, double inicio, double fin,
+            boolean conSonido, Path destino) {
+        double largo = Math.max(fin - inicio, 1);
+        boolean recorta = inicio > 0.05;
         List<String> comando = new ArrayList<>(List.of(
                 props.getFfmpeg(),
-                "-hide_banner", "-loglevel", "error", "-y",
-                "-i", fuente,
-                "-stream_loop", "-1", "-i", musica.toString(),
-                "-filter_complex", filtro,
-                "-map", "0:v:0", "-map", "[a]"));
+                "-hide_banner", "-loglevel", "error", "-y"));
+        // -ss antes de -i: el tramo empieza en 0, y así los subtítulos (ya
+        // corridos al recortar) y la música caen donde deben.
+        if (recorta) {
+            comando.addAll(List.of("-ss", decimal(inicio)));
+        }
+        comando.addAll(List.of("-i", fuente));
+        if (musica != null) {
+            String pista = "[1:a]atrim=duration=" + decimal(largo)
+                    + ",asetpts=PTS-STARTPTS,loudnorm=I=-14:TP=-2:LRA=11,volume=" + decimal(volumen)
+                    + ",afade=t=in:st=0:d=0.6"
+                    + ",afade=t=out:st=" + decimal(Math.max(0, largo - 1.2)) + ":d=1.2"
+                    + ",aresample=48000,aformat=sample_fmts=fltp:channel_layouts=stereo";
+            // normalize=0: amix no le baja el volumen a la voz por sumar otra pista.
+            // Bajo una voz, la voz también se iguala (-14 LUFS): la música va a un
+            // nivel fijo, y un video de WhatsApp grabado bajito (-26) la tenía tan
+            // fuerte como la voz. Así queda siempre unos 12 dB por debajo.
+            String voz = volumen < 1 ? "loudnorm=I=-14:TP=-1.5:LRA=11," : "";
+            String filtro = conSonido
+                    ? pista + "[m];[0:a]" + voz + "aresample=48000,aformat=sample_fmts=fltp:channel_layouts=stereo[v];"
+                            + "[v][m]amix=inputs=2:duration=first:normalize=0,alimiter=limit=0.95[a]"
+                    : pista + "[a]";
+            comando.addAll(List.of("-stream_loop", "-1", "-i", musica.toString(),
+                    "-filter_complex", filtro, "-map", "0:v:0", "-map", "[a]"));
+        } else {
+            comando.addAll(List.of("-map", "0:v:0", "-map", "0:a?"));
+        }
         if (guion != null) {
-            comando.addAll(List.of("-vf", "subtitles=filename=" + rutaParaFiltro(guion),
-                    "-c:v", "libx264", "-preset", "veryfast", "-crf", "20", "-pix_fmt", "yuv420p"));
+            comando.addAll(List.of("-vf", "subtitles=filename=" + rutaParaFiltro(guion)));
+        }
+        if (guion != null || recorta) {
+            comando.addAll(List.of("-c:v", "libx264", "-preset", "veryfast", "-crf", "20", "-pix_fmt", "yuv420p"));
         } else {
             comando.addAll(List.of("-c:v", "copy"));
         }

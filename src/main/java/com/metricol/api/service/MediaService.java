@@ -833,7 +833,8 @@ public class MediaService {
             return;
         }
         workspaces.findById(UUID.fromString(tenantId))
-                .filter(w -> Boolean.TRUE.equals(w.getSubtitulosAuto()) || !Boolean.FALSE.equals(w.getMusicaVideos()))
+                .filter(w -> Boolean.TRUE.equals(w.getSubtitulosAuto()) || !Boolean.FALSE.equals(w.getMusicaVideos())
+                        || !Boolean.FALSE.equals(w.getRecorteAuto()))
                 .ifPresent(w -> asset.setSubtitulosEstado(SubtitulosAutomaticos.ESPERANDO));
     }
 
@@ -1111,6 +1112,7 @@ public class MediaService {
                 .sourceAssetId(asset.getSourceAssetId())
                 .subtitulosEstado(asset.getSubtitulosEstado())
                 .musicaFondo(asset.getMusicaFondo())
+                .recorteNota(asset.getRecorteNota())
                 .agenteEtapa(asset.getAgenteEtapa() == null ? null : asset.getAgenteEtapa().name())
                 .agenteMotivo(asset.getAgenteMotivo())
                 .usos(uso.total())

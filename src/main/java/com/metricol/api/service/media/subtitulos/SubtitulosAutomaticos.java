@@ -30,6 +30,8 @@ import jakarta.annotation.PreDestroy;
  *
  * <p>La música se pone bajita si en el video alguien habla, completa si no, y
  * nada si el video ya trae música o sonido de fondo (ver {@link FondoDelAudio}).
+ * Y si sobra algo al principio o al final, se recorta cuando el revisor da 90%
+ * o más de que queda bien (ver {@link RecorteAutomatico}); todo en la misma copia.
  *
  * <p>El recorrido de un video original:
  * <ol>
@@ -66,6 +68,7 @@ public class SubtitulosAutomaticos {
     private final SubtitulosService subtitulos;
     private final MusicaDeReels musicaDeCuenta;
     private final ReelMusicCatalog catalogo;
+    private final RecorteAutomatico recortes;
     /** Uno a la vez: transcribir y encargar es corto, pero no debe correr dos veces el mismo video. */
     private final ExecutorService hilo = Executors.newSingleThreadExecutor(r -> {
         Thread t = new Thread(r, "subtitulos-auto");
@@ -75,27 +78,32 @@ public class SubtitulosAutomaticos {
     private final Set<UUID> enCurso = ConcurrentHashMap.newKeySet();
 
     public SubtitulosAutomaticos(MediaAssetRepository assets, WorkspaceRepository workspaces,
-            SubtitulosService subtitulos, MusicaDeReels musicaDeCuenta, ReelMusicCatalog catalogo) {
+            SubtitulosService subtitulos, MusicaDeReels musicaDeCuenta, ReelMusicCatalog catalogo,
+            RecorteAutomatico recortes) {
         this.assets = assets;
         this.workspaces = workspaces;
         this.subtitulos = subtitulos;
         this.musicaDeCuenta = musicaDeCuenta;
         this.catalogo = catalogo;
+        this.recortes = recortes;
     }
 
     /**
      * Los ajustes de la cuenta, para el panel.
      *
-     * @param estilo nulo = uno al azar en cada video
-     * @param color  nulo = al azar
+     * @param estilo   nulo = uno al azar en cada video
+     * @param color    nulo = al azar
+     * @param recortes recorte automático de lo que sobra al principio y al final;
+     *                 al guardar, nulo = dejarlo como estaba
      */
-    public record Ajustes(boolean activo, EstiloSubtitulos estilo, SubtitulosService.Color color) {
+    public record Ajustes(boolean activo, EstiloSubtitulos estilo, SubtitulosService.Color color, Boolean recortes) {
     }
 
     public Ajustes ajustes(UUID workspaceId) {
         Workspace espacio = workspaces.findById(workspaceId)
                 .orElseThrow(() -> new com.metricol.api.exception.ResourceNotFoundException("Ese negocio no existe."));
-        return new Ajustes(Boolean.TRUE.equals(espacio.getSubtitulosAuto()), estiloDe(espacio), colorDe(espacio));
+        return new Ajustes(Boolean.TRUE.equals(espacio.getSubtitulosAuto()), estiloDe(espacio), colorDe(espacio),
+                !Boolean.FALSE.equals(espacio.getRecorteAuto()));
     }
 
     public Ajustes guardar(UUID workspaceId, Ajustes nuevos) {
@@ -104,6 +112,9 @@ public class SubtitulosAutomaticos {
         espacio.setSubtitulosAuto(nuevos.activo());
         espacio.setSubtitulosEstilo(nuevos.estilo() == null ? null : nuevos.estilo().name());
         espacio.setSubtitulosColor(nuevos.color() == null ? null : nuevos.color().name());
+        if (nuevos.recortes() != null) {
+            espacio.setRecorteAuto(nuevos.recortes());
+        }
         workspaces.save(espacio);
         return ajustes(workspaceId);
     }
@@ -163,7 +174,8 @@ public class SubtitulosAutomaticos {
         Workspace espacio = workspaces.findById(workspaceId).orElse(null);
         boolean conSubtitulos = espacio != null && Boolean.TRUE.equals(espacio.getSubtitulosAuto());
         boolean conMusica = espacio != null && !Boolean.FALSE.equals(espacio.getMusicaVideos());
-        if (!conSubtitulos && !conMusica) {
+        boolean conRecorte = espacio != null && !Boolean.FALSE.equals(espacio.getRecorteAuto());
+        if (!conSubtitulos && !conMusica && !conRecorte) {
             // Los apagaron mientras esperaba: se suelta tal cual.
             guardar(video, null, video.getSubtitulosIntentos());
             return;
@@ -188,7 +200,11 @@ public class SubtitulosAutomaticos {
                     fondo = cancion == null ? null : MUSICA_PUESTA;
                 }
             }
-            if (!ponerSubtitulos && cancion == null) {
+            // Solo con voz: sin palabras no hay cómo saber qué sobra.
+            RecorteAutomatico.Recorte recorte = conRecorte && !palabras.isEmpty()
+                    ? recortes.decidir(id, palabras, subtitulos.segundos(id, workspaceId))
+                    : null;
+            if (!ponerSubtitulos && cancion == null && recorte == null) {
                 guardar(id, yaTenia ? YA_TENIA : SIN_SUBTITULOS, intentos, fondo);
                 return;
             }
@@ -197,7 +213,8 @@ public class SubtitulosAutomaticos {
             // no al revés. Al revés, esta marca pisaba el "listo" y el agente
             // no tomaba nunca el video.
             guardar(id, HACIENDO, intentos, fondo);
-            subtitulos.pedirEdicion(id, workspaceId, estiloDe(espacio), colorDe(espacio), ponerSubtitulos, cancion);
+            subtitulos.pedirEdicion(id, workspaceId, estiloDe(espacio), colorDe(espacio), ponerSubtitulos, cancion,
+                    recorte);
         } catch (IllegalArgumentException ex) {
             // Muy largo, no se abre: no es un fallo, no hay qué poner.
             log.info("Video {} sin edición automática: {}", id, ex.getMessage());
