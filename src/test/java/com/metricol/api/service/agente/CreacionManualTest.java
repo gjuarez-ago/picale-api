@@ -32,12 +32,14 @@ class CreacionManualTest {
     private MediaAssetRepository assets;
     private AgenteService agente;
     private CreacionManual creacion;
+    private com.metricol.api.service.avisos.AvisosPush avisos;
 
     @BeforeEach
     void preparar() {
         assets = mock(MediaAssetRepository.class);
         agente = mock(AgenteService.class);
-        creacion = new CreacionManual(assets, agente);
+        avisos = mock(com.metricol.api.service.avisos.AvisosPush.class);
+        creacion = new CreacionManual(assets, agente, avisos);
         when(agente.propuestasDeArchivos(any())).thenReturn(List.of());
         when(assets.copiasEditadas(any())).thenReturn(List.of());
     }
@@ -138,5 +140,31 @@ class CreacionManualTest {
         MediaAsset b = archivo(MediaType.IMAGE);
         creacion.trabajar(List.of(a.getId(), b.getId()), WS, true);
         verify(agente).trabajarPedido(List.of(a.getId(), b.getId()), WS, true);
+    }
+
+    @Test
+    @DisplayName("Al terminar algo que tardó, avisa al teléfono: lista para aprobar, o que decida")
+    void avisaAlTelefono() {
+        MediaAsset video = archivo(MediaType.VIDEO);
+        when(agente.propuestasDeArchivos(any())).thenReturn(List.of(PostResponse.builder().id(UUID.randomUUID()).build()));
+        creacion.avisar(List.of(video.getId()), WS);
+        verify(avisos).avisarAlEquipo(org.mockito.ArgumentMatchers.eq(WS), org.mockito.ArgumentMatchers.eq("Tu publicación está lista"),
+                org.mockito.ArgumentMatchers.contains("v.mp4"), any());
+
+        when(agente.propuestasDeArchivos(any())).thenReturn(List.of());
+        video.setAgenteEtapa(EtapaAgente.OBSERVACION);
+        video.setAgenteMotivo("Es horizontal.");
+        creacion.avisar(List.of(video.getId()), WS);
+        verify(avisos).avisarAlEquipo(org.mockito.ArgumentMatchers.eq(WS), org.mockito.ArgumentMatchers.eq("Necesito que decidas"),
+                org.mockito.ArgumentMatchers.contains("Es horizontal."), any());
+    }
+
+    @Test
+    @DisplayName("Una foto que sale en segundos no manda aviso: la persona la está viendo")
+    void sinAvisoSiFueRapido() {
+        MediaAsset foto = archivo(MediaType.IMAGE);
+        when(agente.propuestasDeArchivos(any())).thenReturn(List.of(PostResponse.builder().id(UUID.randomUUID()).build()));
+        creacion.trabajar(List.of(foto.getId()), WS, false);
+        org.mockito.Mockito.verifyNoInteractions(avisos);
     }
 }

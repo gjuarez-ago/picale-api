@@ -325,6 +325,7 @@ public class MediaService {
         String contentType = normalizar(request.getContentType());
         exigirTipoDeMedio(contentType);
         exigirTopeDiario();
+        exigirQueNoEsteRepetido(request, contentType);
         cuota.verificar(request.getSizeBytes(), request.getFileName());
 
         String key = storage.claveNueva(workspaceId, request.getFileName(), contentType);
@@ -393,6 +394,27 @@ public class MediaService {
         return transaccion.execute(estado -> cerrarConfirmacion(assetId, real));
     }
 
+    /** Menos que esto no se compara: un ícono o una foto chica coinciden de tamaño por casualidad. */
+    static final long REPETIDO_DESDE_BYTES = 100 * 1024;
+
+    /**
+     * El mismo archivo subido otra vez (Juan subió un video tres veces con tres
+     * nombres): se detiene antes de gastar datos, espacio y trabajo del
+     * agente, y se pregunta. Se reconoce por el tipo y el tamaño exacto al
+     * byte, que para un video o una foto real no coincide por casualidad.
+     */
+    private void exigirQueNoEsteRepetido(MediaPresignRequest request, String contentType) {
+        if (Boolean.TRUE.equals(request.getAunqueRepetido()) || request.getSizeBytes() < REPETIDO_DESDE_BYTES) {
+            return;
+        }
+        MediaType tipo = contentType != null && contentType.startsWith("video/") ? MediaType.VIDEO : MediaType.IMAGE;
+        repository.mismoTamano(request.getSizeBytes(), tipo, org.springframework.data.domain.PageRequest.of(0, 1))
+                .stream().findFirst().ifPresent(igual -> {
+                    throw new ConflictoException("MEDIA_REPETIDO", "Ya subiste este archivo: «"
+                            + igual.getFileName() + "». ¿Lo subo otra vez?");
+                });
+    }
+
     /** Renew the same pending upload; never create another asset or charge quota again. */
     @Transactional
     public MediaPresignResponse renewUpload(UUID assetId, UUID workspaceId) {
@@ -450,6 +472,7 @@ public class MediaService {
         String contentType = normalizar(request.getContentType());
         exigirTipoDeMedio(contentType);
         exigirTopeDiario();
+        exigirQueNoEsteRepetido(request, contentType);
         cuota.verificar(request.getSizeBytes(), request.getFileName());
 
         long tamanoParte = tamanoDeParte(request.getSizeBytes(), limites.getMultipart().getTamanoParteBytes());

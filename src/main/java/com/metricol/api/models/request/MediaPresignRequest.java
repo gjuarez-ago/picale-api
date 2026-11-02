@@ -40,4 +40,10 @@ public class MediaPresignRequest {
 
     @Positive
     private long sizeBytes;
+
+    /**
+     * La persona ya vio «este archivo ya lo subiste» y dijo que lo suba otra
+     * vez. Sin esto, uno con el mismo tipo y tamaño exacto se detiene.
+     */
+    private Boolean aunqueRepetido;
 }

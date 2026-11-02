@@ -59,6 +59,21 @@ public interface MediaAssetRepository extends JpaRepository<MediaAsset, UUID> {
             """, nativeQuery = true)
     List<Object[]> haciendoSinCopiaEnCurso(int tope);
 
+    /**
+     * Archivos de este espacio del mismo tipo y del mismo tamaño exacto, al
+     * byte: así se reconoce el mismo video subido otra vez con otro nombre.
+     */
+    @Query("""
+            select m from MediaAsset m
+            where m.status = com.metricol.api.enums.MediaAssetStatus.READY
+              and m.archivedAt is null
+              and m.sizeBytes = :tamano
+              and m.type = :tipo
+            order by m.createdAt desc
+            """)
+    List<MediaAsset> mismoTamano(long tamano, com.metricol.api.enums.MediaType tipo,
+            org.springframework.data.domain.Pageable pagina);
+
     /** Los recortes hechos a mano de un video. */
     @Query("select m from MediaAsset m where m.sourceAssetId = :original and m.trimEndSeconds is not null")
     List<MediaAsset> recortesDe(UUID original);

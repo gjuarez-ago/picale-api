@@ -60,16 +60,26 @@ public class CreacionManual {
 
     private final MediaAssetRepository assets;
     private final AgenteService agente;
+    private final com.metricol.api.service.avisos.AvisosPush avisos;
     private final ExecutorService hilo = Executors.newFixedThreadPool(2, r -> {
         Thread t = new Thread(r, "crear-manual");
         t.setDaemon(true);
         return t;
     });
 
-    public CreacionManual(MediaAssetRepository assets, AgenteService agente) {
+    public CreacionManual(MediaAssetRepository assets, AgenteService agente,
+            com.metricol.api.service.avisos.AvisosPush avisos) {
         this.assets = assets;
         this.agente = agente;
+        this.avisos = avisos;
     }
+
+    /**
+     * Más que esto ya no se espera con la pantalla abierta (un video tarda de 1
+     * a 3 minutos): al terminar, aviso al teléfono. Una foto sale en segundos,
+     * con la persona mirando, y avisarle sería ruido.
+     */
+    static final long AVISAR_DESDE_MS = 20_000;
 
     @PreDestroy
     void apagar() {
@@ -126,9 +136,13 @@ public class CreacionManual {
     }
 
     void trabajar(List<UUID> ids, UUID workspaceId, boolean forzar) {
+        long inicio = System.currentTimeMillis();
         try {
             esperarEdicion(ids.get(0));
             agente.trabajarPedido(ids, workspaceId, forzar);
+            if (System.currentTimeMillis() - inicio >= AVISAR_DESDE_MS) {
+                avisar(ids, workspaceId);
+            }
         } catch (InterruptedException ex) {
             Thread.currentThread().interrupt();
         } catch (RuntimeException ex) {
@@ -143,6 +157,27 @@ public class CreacionManual {
                     }
                 });
             }
+        }
+    }
+
+    /**
+     * «Tu publicación está lista»: la persona pudo irse mientras se hacía. Al
+     * tocar el aviso la app abre Hoy, donde está para aprobarla. Nunca rompe:
+     * sin avisos configurados, la propuesta igual está en Pendientes.
+     */
+    void avisar(List<UUID> ids, UUID workspaceId) {
+        try {
+            Estado e = estado(ids, workspaceId);
+            String nombre = assets.findById(ids.get(0)).map(MediaAsset::getFileName).orElse("tu archivo");
+            if ("LISTA".equals(e.fase())) {
+                avisos.avisarAlEquipo(workspaceId, "Tu publicación está lista",
+                        "Pícale preparó «" + nombre + "». Ábrela para aprobarla.", java.util.Map.of("tipo", "nuevas"));
+            } else if ("DECIDIR".equals(e.fase())) {
+                avisos.avisarAlEquipo(workspaceId, "Necesito que decidas",
+                        "«" + nombre + "»: " + e.mensaje(), java.util.Map.of("tipo", "nuevas"));
+            }
+        } catch (RuntimeException ex) {
+            log.warn("No pude avisar de la publicación {}: {}", ids, ex.toString());
         }
     }
 

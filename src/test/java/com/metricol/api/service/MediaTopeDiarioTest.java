@@ -79,6 +79,42 @@ class MediaTopeDiarioTest {
     }
 
     @Test
+    @org.junit.jupiter.api.DisplayName("El mismo archivo otra vez se detiene y pregunta; con «súbelo igual» pasa; en otro negocio no cuenta")
+    void repetido() {
+        long tamano = 3_456_789;
+        TenantIdentifierResolver.comoTenant(ws.toString(), () -> {
+            assets.save(com.metricol.api.entity.MediaAsset.builder().fileName("video-1.mp4").url("https://cdn.test/v1")
+                    .storageKey("media/" + ws + "/v1.mp4").type(MediaType.VIDEO).contentType("video/mp4")
+                    .sizeBytes(tamano).status(MediaAssetStatus.READY).build());
+            MediaPresignRequest otra = new MediaPresignRequest();
+            otra.setFileName("video-1 (copia).mp4");
+            otra.setContentType("video/mp4");
+            otra.setSizeBytes(tamano);
+            assertThatThrownBy(() -> media.presign(otra, ws))
+                    .isInstanceOf(com.metricol.api.exception.ConflictoException.class)
+                    .hasMessageContaining("Ya subiste este archivo: «video-1.mp4»");
+            otra.setAunqueRepetido(true);
+            assertThat(media.presign(otra, ws).getAssetId()).isNotNull();
+
+            // Otro tamaño, aunque sea del mismo tipo, no es el mismo archivo.
+            MediaPresignRequest distinto = new MediaPresignRequest();
+            distinto.setFileName("video-2.mp4");
+            distinto.setContentType("video/mp4");
+            distinto.setSizeBytes(tamano + 1);
+            assertThat(media.presign(distinto, ws).getAssetId()).isNotNull();
+        });
+        UUID otroNegocio = UUID.randomUUID();
+        TenantIdentifierResolver.comoTenant(otroNegocio.toString(), () -> {
+            MediaPresignRequest suyo = new MediaPresignRequest();
+            suyo.setFileName("video-1.mp4");
+            suyo.setContentType("video/mp4");
+            suyo.setSizeBytes(tamano);
+            assertThat(media.presign(suyo, otroNegocio).getAssetId()).isNotNull();
+        });
+        sql.update("delete from media_assets where tenant_id = :t", Map.of("t", otroNegocio.toString()));
+    }
+
+    @Test
     void batchMetadataAndPendingCountAreTenantScoped() {
         var batch = UUID.randomUUID();
         TenantIdentifierResolver.comoTenant(ws.toString(), () -> {

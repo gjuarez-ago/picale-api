@@ -124,7 +124,8 @@ public class SubtitulosAutomaticos {
      * planificador de Spring tiene uno solo para todas las tareas, y
      * transcribir ahí frenaba la cola de publicaciones mientras tanto.
      */
-    @Scheduled(initialDelay = 40000, fixedDelay = 30000)
+    @Scheduled(initialDelayString = "${app.subtitulos.vuelta-inicial-ms:40000}",
+            fixedDelayString = "${app.subtitulos.vuelta-ms:30000}")
     public void vuelta() {
         for (Object[] fila : assets.esperandoSubtitulos(10)) {
             encargar(UUID.fromString(String.valueOf(fila[0])), String.valueOf(fila[1]));
