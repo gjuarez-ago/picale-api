@@ -34,10 +34,11 @@ public class VideoTrimProcessor {
     private final MiniaturasEnSegundoPlano thumbnails;
     private final ObjectMapper json;
     private final ReelMusicCatalog musica;
+    private final VersionesDeVideo versiones;
 
     public VideoTrimProcessor(MediaAssetRepository assets, R2StorageService storage,
             StorageQuotaService quota, FfmpegImagen ffmpeg, MiniaturasEnSegundoPlano thumbnails,
-            ObjectMapper json, ReelMusicCatalog musica) {
+            ObjectMapper json, ReelMusicCatalog musica, VersionesDeVideo versiones) {
         this.assets = assets;
         this.storage = storage;
         this.quota = quota;
@@ -45,6 +46,7 @@ public class VideoTrimProcessor {
         this.thumbnails = thumbnails;
         this.json = json;
         this.musica = musica;
+        this.versiones = versiones;
     }
 
     public void process(UUID jobId) {
@@ -83,9 +85,14 @@ public class VideoTrimProcessor {
             job.setSizeBytes(bytes);
             job.setStatus(MediaAssetStatus.READY);
             job.setProcessingError(null);
+            if (!subtitulos) {
+                // Un recorte a mano pasa a ser el video: ver VersionesDeVideo.
+                versiones.alTerminarRecorte(job);
+            }
             assets.save(job);
             if (subtitulos) {
                 SubtitulosAutomaticos.copiaTerminada(assets, source.getId(), true);
+                versiones.alTerminarVersionFinal(job);
             }
             thumbnails.sacar(job.getId(), job.getTenantId());
         } catch (Exception ex) {

@@ -59,6 +59,10 @@ public interface MediaAssetRepository extends JpaRepository<MediaAsset, UUID> {
             """, nativeQuery = true)
     List<Object[]> haciendoSinCopiaEnCurso(int tope);
 
+    /** Los recortes hechos a mano de un video. */
+    @Query("select m from MediaAsset m where m.sourceAssetId = :original and m.trimEndSeconds is not null")
+    List<MediaAsset> recortesDe(UUID original);
+
     /** Las versiones finales de un video (subtítulos y/o música), en cualquier estado. */
     @Query("select m from MediaAsset m where m.sourceAssetId = :original and m.subtitulos is not null")
     List<MediaAsset> copiasEditadas(UUID original);

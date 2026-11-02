@@ -355,6 +355,35 @@ public class PostService {
      * @return cuántas se eliminaron
      */
     @Transactional
+    /**
+     * Descarta las propuestas del agente que esperan aprobación y usan este
+     * archivo (las aprobadas o programadas no se tocan).
+     */
+    public int descartarPropuestasQueUsan(String url) {
+        List<Post> pendientes = propuestasPendientesQueUsan(url);
+        pendientes.forEach(this::eliminar);
+        return pendientes.size();
+    }
+
+    /** Cambia el archivo de las propuestas pendientes del agente: la versión nueva en lugar de la vieja. */
+    public int cambiarArchivoDePropuestas(String viejo, String nuevo, String miniatura) {
+        List<Post> pendientes = propuestasPendientesQueUsan(viejo);
+        for (Post p : pendientes) {
+            p.getMediaUrls().replaceAll(u -> viejo.equals(u) ? nuevo : u);
+            if (miniatura != null) {
+                p.setThumbnailUrl(miniatura);
+            }
+            postRepository.save(p);
+        }
+        return pendientes.size();
+    }
+
+    private List<Post> propuestasPendientesQueUsan(String url) {
+        return postRepository.findQueUsan(url).stream()
+                .filter(p -> p.delAgente() && p.getStatus() == PostStatus.DRAFT)
+                .toList();
+    }
+
     public int eliminarLasQueUsan(String url) {
         List<Post> afectadas = postRepository.findQueUsan(url);
         afectadas.forEach(this::eliminar);

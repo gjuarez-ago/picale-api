@@ -174,7 +174,9 @@ public class SubtitulosAutomaticos {
         Workspace espacio = workspaces.findById(workspaceId).orElse(null);
         boolean conSubtitulos = espacio != null && Boolean.TRUE.equals(espacio.getSubtitulosAuto());
         boolean conMusica = espacio != null && !Boolean.FALSE.equals(espacio.getMusicaVideos());
-        boolean conRecorte = espacio != null && !Boolean.FALSE.equals(espacio.getRecorteAuto());
+        // Un recorte hecho a mano no se vuelve a recortar: ya lo decidió la persona.
+        boolean conRecorte = espacio != null && !Boolean.FALSE.equals(espacio.getRecorteAuto())
+                && video.getTrimEndSeconds() == null;
         if (!conSubtitulos && !conMusica && !conRecorte) {
             // Los apagaron mientras esperaba: se suelta tal cual.
             guardar(video, null, video.getSubtitulosIntentos());
