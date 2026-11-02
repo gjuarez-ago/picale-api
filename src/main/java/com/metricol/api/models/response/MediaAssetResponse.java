@@ -45,6 +45,12 @@ public class MediaAssetResponse {
     /** Es una copia hecha por Pícale (subtítulos y/o música), en curso o lista. */
     private boolean copiaEditada;
 
+    /**
+     * En una copia (editada o recorte): el video del que salió. Así la
+     * biblioteca enseña original y versión final como un solo video.
+     */
+    private UUID sourceAssetId;
+
     /** En un original con subtítulos automáticos: ESPERANDO, HACIENDO, LISTO o SIN_SUBTITULOS. */
     private String subtitulosEstado;
 

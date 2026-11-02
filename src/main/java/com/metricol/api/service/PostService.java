@@ -971,6 +971,7 @@ public class PostService {
                 // solo conoce el campo viejo sigue enseñando su miniatura.
                 .mediaUrls(List.copyOf(post.getMediaUrls()))
                 .mediaUrl(post.primerMedio())
+                .mediaOriginalUrl(originalDe(post))
                 .thumbnailUrl(miniaturaDe(post))
                 .videoDurationSeconds(post.getVideoDurationSeconds())
                 .format(post.getFormat() == null ? null : post.getFormat().name())
@@ -989,6 +990,22 @@ public class PostService {
                 .targets(targets)
                 .decisionesRuteo(decisiones(post))
                 .build();
+    }
+
+    /** El original de la versión final que lleva una propuesta del agente; nulo si no es una. */
+    private String originalDe(Post post) {
+        if (!post.delAgente() || !post.esVideo() || post.primerMedio() == null) {
+            return null;
+        }
+        return mediaAssetRepository.findByUrlIn(List.of(post.primerMedio())).stream()
+                .filter(com.metricol.api.service.media.subtitulos.SubtitulosService::esDeSubtitulos)
+                .map(com.metricol.api.entity.MediaAsset::getSourceAssetId)
+                .filter(java.util.Objects::nonNull)
+                .findFirst()
+                .flatMap(mediaAssetRepository::findById)
+                .filter(o -> o.getStatus() == com.metricol.api.enums.MediaAssetStatus.READY)
+                .map(com.metricol.api.entity.MediaAsset::getUrl)
+                .orElse(null);
     }
 
     private List<DecisionRuteoResponse> decisiones(Post post) {

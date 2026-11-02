@@ -178,6 +178,47 @@ class MediaEliminacionTest {
     }
 
     @Test
+    @DisplayName("Borrar un video se lleva su versión final; la publicación del agente que la usa cuenta como uso")
+    void conSuVersionFinal() {
+        enElWorkspace(() -> {
+            MediaAsset original = subir("charla.mp4", MediaType.VIDEO, 4000L);
+            MediaAsset finalVersion = subir("charla-subtitulado.mp4", MediaType.VIDEO, 3000L);
+            finalVersion.setSourceAssetId(original.getId());
+            finalVersion.setSubtitulos("{\"palabras\":[]}");
+            assets.save(finalVersion);
+            Post propuesta = publicacion(finalVersion, PostStatus.DRAFT);
+
+            assertThatThrownBy(() -> media.eliminar(original.getId(), false, WS_ID))
+                    .isInstanceOf(ConflictoException.class);
+            assertThat(assets.findById(finalVersion.getId())).isPresent();
+
+            MediaEliminadoResponse hecho = media.eliminar(original.getId(), true, WS_ID);
+            assertThat(assets.findById(original.getId())).isEmpty();
+            assertThat(assets.findById(finalVersion.getId())).isEmpty();
+            assertThat(hecho.getBytesLiberados()).isEqualTo(7000L);
+            assertThat(hecho.getPublicacionesEliminadas()).isEqualTo(1);
+            assertThat(posts.findById(propuesta.getId())).get().extracting(Post::getDeletedAt).isNotNull();
+        });
+    }
+
+    @Test
+    @DisplayName("La galería dice de qué video sale cada versión final")
+    void laGaleriaEnlazaLaVersionFinal() {
+        enElWorkspace(() -> {
+            MediaAsset original = subir("enlace.mp4", MediaType.VIDEO, 4000L);
+            MediaAsset finalVersion = subir("enlace-con-musica.mp4", MediaType.VIDEO, 3000L);
+            finalVersion.setSourceAssetId(original.getId());
+            finalVersion.setSubtitulos("{\"palabras\":[],\"musica\":\"x\"}");
+            assets.save(finalVersion);
+            MediaAssetResponse r = media.list().stream().filter(a -> a.getId().equals(finalVersion.getId()))
+                    .findFirst().orElseThrow();
+            assertThat(r.getSourceAssetId()).isEqualTo(original.getId());
+            assertThat(r.isCopiaEditada()).isTrue();
+            assertThat(r.isConSubtitulos()).isFalse();
+        });
+    }
+
+    @Test
     @DisplayName("Un archivo en uso no se elimina sin confirmar: MEDIA_IN_USE y todo sigue igual")
     void enUsoSinConfirmarNoPasaNada() {
         enElWorkspace(() -> {

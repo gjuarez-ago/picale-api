@@ -160,14 +160,29 @@ public class MediaService {
                     "Es el logotipo de este espacio. Cámbialo en Mi marca antes de eliminarlo.");
         }
 
-        Uso uso = usosDe(asset.getUrl());
+        // Original y versión final son un solo video para la persona: se van
+        // juntos, y cuentan juntas las publicaciones que los usan (la del
+        // agente suele llevar la versión final).
+        List<MediaAsset> finales = repository.copiasEditadas(id);
+        Map<String, Uso> usos = usosPorUrl();
+        Uso uso = Uso.NINGUNO;
+        for (MediaAsset a : concatenar(asset, finales)) {
+            Uso u = a.getUrl() == null ? Uso.NINGUNO : usos.getOrDefault(a.getUrl(), Uso.NINGUNO);
+            uso = new Uso(uso.total() + u.total(), uso.sinSalir() + u.sinSalir());
+        }
         if (uso.total() > 0 && !conPublicaciones) {
             throw new ConflictoException("MEDIA_IN_USE", mensajeEnUso(uso));
         }
 
-        int eliminadas = uso.total() == 0 ? 0 : posts.eliminarLasQueUsan(asset.getUrl());
-        long bytes = bytesQueOcupa(asset);
-        delete(id);
+        int eliminadas = 0;
+        long bytes = 0;
+        for (MediaAsset a : concatenar(asset, finales)) {
+            if (uso.total() > 0 && a.getUrl() != null) {
+                eliminadas += posts.eliminarLasQueUsan(a.getUrl());
+            }
+            bytes += bytesQueOcupa(a);
+            delete(a.getId());
+        }
 
         log.info("Archivo eliminado a petición: {} ({}); publicaciones eliminadas: {}",
                 asset.getFileName(), MediaLimitsProperties.legible(bytes), eliminadas);
@@ -256,6 +271,13 @@ public class MediaService {
     }
 
     /** Lo que devuelve eliminarlo: nada si el archivo ya no estaba en R2. */
+    private static List<MediaAsset> concatenar(MediaAsset primero, List<MediaAsset> resto) {
+        List<MediaAsset> todos = new java.util.ArrayList<>();
+        todos.add(primero);
+        todos.addAll(resto);
+        return todos;
+    }
+
     private static long bytesQueOcupa(MediaAsset asset) {
         if (asset.getStatus() == MediaAssetStatus.RELEASED || asset.getSizeBytes() == null) {
             return 0;
@@ -1086,6 +1108,7 @@ public class MediaService {
                 .processingError(asset.getProcessingError())
                 .conSubtitulos(SubtitulosService.pintaSubtitulos(asset))
                 .copiaEditada(SubtitulosService.esDeSubtitulos(asset))
+                .sourceAssetId(asset.getSourceAssetId())
                 .subtitulosEstado(asset.getSubtitulosEstado())
                 .musicaFondo(asset.getMusicaFondo())
                 .agenteEtapa(asset.getAgenteEtapa() == null ? null : asset.getAgenteEtapa().name())

@@ -40,6 +40,12 @@ public class PostResponse {
     private String mediaUrl;
 
     /**
+     * Cuando el video de una propuesta del agente es la versión final (con
+     * subtítulos y/o música): el original, para compararlos antes de aprobar.
+     */
+    private String mediaOriginalUrl;
+
+    /**
      * El fotograma del video, para poder enseñarlo sin reproducirlo.
      *
      * <p>Lo saca {@code MiniaturaDeVideo} al confirmar la subida y vive en la
