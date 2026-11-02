@@ -92,6 +92,17 @@ class EditarVideoTest {
     }
 
     @Test
+    @DisplayName("Bajo una voz, la voz se iguala antes de mezclar; sin voz, el sonido original va tal cual")
+    void igualaLaVoz() {
+        java.nio.file.Path m = carpeta.resolve("m.mp3");
+        java.nio.file.Path d = carpeta.resolve("d.mp4");
+        String conVoz = String.join(" ", ffmpeg.comandoEditar("v.mp4", null, m, 0.25, 10, true, d));
+        assertThat(conVoz).contains("[0:a]loudnorm=I=-14");
+        String sinVoz = String.join(" ", ffmpeg.comandoEditar("v.mp4", null, m, 1, 10, true, d));
+        assertThat(sinVoz).doesNotContain("[0:a]loudnorm");
+    }
+
+    @Test
     @DisplayName("El silencio digital (-inf) cuenta como -120")
     void leerNiveles() {
         assertThat(FfmpegImagen.leerNiveles("""

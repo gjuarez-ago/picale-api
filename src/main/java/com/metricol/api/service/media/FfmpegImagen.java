@@ -529,8 +529,12 @@ public class FfmpegImagen {
                 + ",afade=t=out:st=" + decimal(Math.max(0, largo - 1.2)) + ":d=1.2"
                 + ",aresample=48000,aformat=sample_fmts=fltp:channel_layouts=stereo";
         // normalize=0: amix no le baja el volumen a la voz por sumar otra pista.
+        // Bajo una voz, la voz también se iguala (-14 LUFS): la música va a un
+        // nivel fijo, y un video de WhatsApp grabado bajito (-26) la tenía tan
+        // fuerte como la voz. Así queda siempre unos 12 dB por debajo.
+        String voz = volumen < 1 ? "loudnorm=I=-14:TP=-1.5:LRA=11," : "";
         String filtro = conSonido
-                ? pista + "[m];[0:a]aresample=48000,aformat=sample_fmts=fltp:channel_layouts=stereo[v];"
+                ? pista + "[m];[0:a]" + voz + "aresample=48000,aformat=sample_fmts=fltp:channel_layouts=stereo[v];"
                         + "[v][m]amix=inputs=2:duration=first:normalize=0,alimiter=limit=0.95[a]"
                 : pista + "[a]";
         List<String> comando = new ArrayList<>(List.of(

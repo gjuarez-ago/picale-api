@@ -256,7 +256,7 @@ persona (`Workspace.musicaVideos`, encendida de entrada; el ambiente es el mismo
 de los reels). Lo hace `SubtitulosAutomaticos`, en la misma copia que los
 subtítulos y en una sola pasada de ffmpeg (`FfmpegImagen.editarVideo`):
 
-- Con voz, al 25% (unos 6 dB debajo de la voz); sin voz o sin pista de sonido, completa.
+- Con voz, la voz se iguala a -14 LUFS y la música va al 25% (unos 12 dB debajo); sin voz o sin pista de sonido, completa.
 - Si el video ya trae música o sonido de fondo, se deja así (`FondoDelAudio`):
   se escuchan las pausas entre palabras y, si más del 60% suena por encima de
   -38 dB, ya trae fondo. Calibrado con videos reales el 31 oct 2026.
