@@ -85,13 +85,28 @@ public class VisorDeMedios {
 
         List<String> yaVistas = new ArrayList<>();
         List<String> pendientes = new ArrayList<>();
+        // A quién se le guarda lo que se vio en cada pendiente: a una foto,
+        // ella misma; a un video, el video (de él se mira la portada).
+        Map<String, MediaAsset> duenoDe = new LinkedHashMap<>();
         for (String url : mirar) {
             MediaAsset asset = porUrl.get(url);
             String descripcion = asset == null ? null : asset.getDescripcionIa();
             if (descripcion != null && !descripcion.isBlank()) {
                 yaVistas.add(descripcion);
+            } else if (asset != null && asset.getType() == com.metricol.api.enums.MediaType.VIDEO) {
+                // Un video no se le puede enseñar como imagen: se mira su portada.
+                if (asset.getThumbnailUrl() != null && !asset.getThumbnailUrl().isBlank()) {
+                    pendientes.add(asset.getThumbnailUrl());
+                    duenoDe.put(asset.getThumbnailUrl(), asset);
+                }
             } else {
                 pendientes.add(url);
+                if (asset != null) duenoDe.put(url, asset);
+            }
+            // Y de un video, lo que se dice: con eso se escribe aunque nadie lo cuente.
+            String dicho = asset == null ? null : loQueSeDice(asset);
+            if (dicho != null) {
+                yaVistas.add("En el video se dice: " + dicho);
             }
         }
 
@@ -112,7 +127,7 @@ public class VisorDeMedios {
                 String descripcion = lineas.get(i);
                 yaVistas.add(descripcion);
 
-                MediaAsset asset = porUrl.get(pendientes.get(i));
+                MediaAsset asset = duenoDe.get(pendientes.get(i));
                 if (asset != null) {
                     asset.setDescripcionIa(recortar(descripcion));
                     repository.save(asset);
@@ -124,6 +139,41 @@ public class VisorDeMedios {
 
         return yaVistas;
     }
+
+    /** Hasta cuánto de lo que se dice entra en el encargo: lo demás no cambia el texto. */
+    private static final int MAX_DICHO = 1500;
+
+    /**
+     * Lo que se dice en un video, de su transcripción (la que sacan los
+     * subtítulos automáticos). Una versión final no la tiene: es la del original.
+     */
+    private String loQueSeDice(MediaAsset asset) {
+        if (asset.getType() != com.metricol.api.enums.MediaType.VIDEO) {
+            return null;
+        }
+        String transcripcion = asset.getTranscripcion();
+        if ((transcripcion == null || transcripcion.isBlank()) && asset.getSourceAssetId() != null) {
+            transcripcion = repository.findById(asset.getSourceAssetId()).map(MediaAsset::getTranscripcion)
+                    .orElse(null);
+        }
+        if (transcripcion == null || transcripcion.isBlank()) {
+            return null;
+        }
+        try {
+            StringBuilder sb = new StringBuilder();
+            for (com.fasterxml.jackson.databind.JsonNode p : JSON.readTree(transcripcion)) {
+                String t = p.path("texto").asText("");
+                if (!t.isBlank()) sb.append(sb.length() == 0 ? "" : " ").append(t.strip());
+                if (sb.length() > MAX_DICHO) break;
+            }
+            String dicho = sb.toString().strip();
+            return dicho.isEmpty() ? null : (dicho.length() > MAX_DICHO ? dicho.substring(0, MAX_DICHO) + "…" : dicho);
+        } catch (Exception ex) {
+            return null;
+        }
+    }
+
+    private static final com.fasterxml.jackson.databind.ObjectMapper JSON = new com.fasterxml.jackson.databind.ObjectMapper();
 
     /**
      * Parte la respuesta en una descripción por imagen.

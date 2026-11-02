@@ -3,7 +3,6 @@ package com.metricol.api.models.request;
 import java.util.ArrayList;
 import java.util.List;
 
-import jakarta.validation.constraints.NotBlank;
 import lombok.Getter;
 import lombok.Setter;
 
@@ -16,8 +15,9 @@ public class ComposeRequest {
      * Lo que dictó: la INTENCIÓN, no el texto final.
      *
      * <p>"Anuncia el 2x1 de hoy, tono divertido", no un caption ya escrito.
+     * Opcional: sin él, Pícale lo descubre del archivo (pedido de Gabriel,
+     * 2 nov 2026: «no tiene que contarle a Pícale, que lo descubra solo»).
      */
-    @NotBlank
     private String brief;
 
     /** Las fotos de la publicación. Puede venir vacío: hay posts de solo texto. */

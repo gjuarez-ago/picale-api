@@ -127,7 +127,7 @@ public class AiController {
         cupo.exigirCupo();
         List<String> queSeVe = visor.describir(request.getMediaUrls());
         Redactor.Borrador borrador = redactor.redactar(
-                request.getBrief(),
+                encargoDe(request.getBrief(), queSeVe),
                 queSeVe,
                 redesDe(request.getPlatforms()),
                 negocioDe(currentUser));
@@ -137,6 +137,21 @@ public class AiController {
 
         return ResponseEntity.ok(ApiResponse.success(
                 new ComposeResponse(borrador.titulo(), borrador.guion(), textos)));
+    }
+
+    /**
+     * Lo que pidió la persona, o, si no dijo nada, que Pícale lo descubra de lo
+     * que se ve y se dice en el archivo.
+     */
+    static String encargoDe(String brief, List<String> queSeVe) {
+        if (brief != null && !brief.isBlank()) {
+            return brief;
+        }
+        if (queSeVe.isEmpty()) {
+            throw new IllegalArgumentException("Agrega una foto o un video para que Pícale sepa de qué se trata.");
+        }
+        return "Haz una publicacion para las redes del negocio con este contenido. El dueno no explico nada: "
+                + "descubre de que se trata por lo que se ve y lo que se dice, y escribelo con la voz de la marca.";
     }
 
     /**
