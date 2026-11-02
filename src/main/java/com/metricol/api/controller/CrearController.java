@@ -27,8 +27,11 @@ import com.metricol.api.service.brand.BrandAccess;
 @RequestMapping("/api/v1/crear")
 public class CrearController {
 
-    /** Un video, o una o varias fotos (en el orden en que se eligieron). */
-    public record Pedido(List<UUID> archivos) {
+    /**
+     * @param archivos un video, o una o varias fotos (en el orden en que se eligieron)
+     * @param forzar   «publícala de todos modos», después de ver por qué no iba
+     */
+    public record Pedido(List<UUID> archivos, Boolean forzar) {
     }
 
     private final CreacionManual creacion;
@@ -47,7 +50,7 @@ public class CrearController {
             @RequestBody Pedido pedido) {
         permisos.exigir(currentUser, Permission.POST_CREATE);
         marca.exigirCompleta(currentUser);
-        creacion.pedir(pedido.archivos(), currentUser.getWorkspace().getId());
+        creacion.pedir(pedido.archivos(), currentUser.getWorkspace().getId(), Boolean.TRUE.equals(pedido.forzar()));
         return ResponseEntity.ok(ApiResponse.success(null));
     }
 

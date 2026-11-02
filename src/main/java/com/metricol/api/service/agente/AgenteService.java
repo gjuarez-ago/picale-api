@@ -2478,6 +2478,11 @@ public class AgenteService {
      * @return cuántos archivos tomó
      */
     public int trabajarPedido(List<UUID> ids, UUID workspaceId) {
+        return trabajarPedido(ids, workspaceId, false);
+    }
+
+    /** @param forzar la persona ya dijo «publícala de todos modos»: va aunque no pase la revisión de marca */
+    public int trabajarPedido(List<UUID> ids, UUID workspaceId, boolean forzar) {
         Workspace w = workspace(workspaceId);
         List<MediaAsset> elegidos = new ArrayList<>();
         for (UUID id : ids) {
@@ -2493,7 +2498,7 @@ public class AgenteService {
             if (!tomar(primero)) {
                 return 0;
             }
-            procesar(primero, w, destino, false);
+            procesar(primero, w, destino, forzar);
             replanear(w);
             return 1;
         }
@@ -2504,12 +2509,12 @@ public class AgenteService {
             if (!tomar(foto)) {
                 continue;
             }
-            analizarFoto(foto, w, destino, false);
+            analizarFoto(foto, w, destino, forzar);
             MediaAsset vista = assets.findById(foto.getId()).orElse(foto);
             RevisorDeMarca.Revision rev = RevisorDeMarca.deJson(vista.getAgenteAnalisis());
             if (vista.getAgenteEtapa() == EtapaAgente.ANALIZADA && rev != null) {
                 marcar(vista, EtapaAgente.REVISANDO, vista.getAgenteMotivo());
-                fotos.add(new EnTanda(vista, rev, false));
+                fotos.add(new EnTanda(vista, rev, forzar));
             }
         }
         if (!fotos.isEmpty()) {

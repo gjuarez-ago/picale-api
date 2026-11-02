@@ -99,7 +99,7 @@ class CreacionManualTest {
     void fallo() {
         MediaAsset foto = archivo(MediaType.IMAGE);
         doThrow(new IllegalStateException("Conecta al menos una red que acepte fotos."))
-                .when(agente).trabajarPedido(anyList(), any());
+                .when(agente).trabajarPedido(anyList(), any(), org.mockito.ArgumentMatchers.anyBoolean());
         creacion.trabajar(List.of(foto.getId()), WS);
         assertThat(foto.getAgenteEtapa()).isEqualTo(EtapaAgente.PENDIENTE);
         CreacionManual.Estado e = creacion.estado(List.of(foto.getId()), WS);
@@ -112,6 +112,31 @@ class CreacionManualTest {
     void fotoDeInmediato() {
         MediaAsset foto = archivo(MediaType.IMAGE);
         creacion.trabajar(List.of(foto.getId()), WS);
-        verify(agente).trabajarPedido(List.of(foto.getId()), WS);
+        verify(agente).trabajarPedido(List.of(foto.getId()), WS, false);
+    }
+
+    @Test
+    @DisplayName("Lo que el agente dijo antes se borra al pedir: la pantalla no se queda en un «¿la publico?» viejo")
+    void borraLoViejo() {
+        MediaAsset foto = archivo(MediaType.IMAGE);
+        foto.setAgenteEtapa(EtapaAgente.OBSERVACION);
+        foto.setAgenteMotivo("Está oscura.");
+        creacion.pedir(List.of(foto.getId()), WS);
+        assertThat(foto.getAgenteEtapa()).isEqualTo(EtapaAgente.PENDIENTE);
+        assertThat(creacion.estado(List.of(foto.getId()), WS).fase()).isEqualTo("PREPARANDO");
+
+        // Un error de un intento anterior tampoco se enseña como si fuera de ahora.
+        foto.setAgenteMotivo("No pude prepararla: se cayó la red.");
+        creacion.pedir(List.of(foto.getId()), WS);
+        assertThat(creacion.estado(List.of(foto.getId()), WS).fase()).isEqualTo("PREPARANDO");
+    }
+
+    @Test
+    @DisplayName("«Publicar de todos modos» vuelve a pedir todo junto, forzado: varias fotos siguen siendo un carrusel")
+    void forzado() {
+        MediaAsset a = archivo(MediaType.IMAGE);
+        MediaAsset b = archivo(MediaType.IMAGE);
+        creacion.trabajar(List.of(a.getId(), b.getId()), WS, true);
+        verify(agente).trabajarPedido(List.of(a.getId(), b.getId()), WS, true);
     }
 }

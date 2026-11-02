@@ -81,6 +81,14 @@ public class CreacionManual {
      * {@link #MAX_FOTOS}, en una sola publicación.
      */
     public void pedir(List<UUID> ids, UUID workspaceId) {
+        pedir(ids, workspaceId, false);
+    }
+
+    /**
+     * @param forzar la persona ya vio por qué no va y dijo «publícala de todos
+     *               modos»: se trabaja otra vez, como una sola publicación
+     */
+    public void pedir(List<UUID> ids, UUID workspaceId, boolean forzar) {
         List<MediaAsset> elegidos = elegidos(ids, workspaceId);
         boolean hayVideo = elegidos.stream().anyMatch(a -> a.getType() == MediaType.VIDEO);
         if (hayVideo && elegidos.size() > 1) {
@@ -95,15 +103,32 @@ public class CreacionManual {
                         + "» ya tiene una propuesta: está en Pendientes o ya la aprobaste.");
             }
         }
+        // Lo que dijo el agente antes (Observación, Descartada, un error de un
+        // intento anterior) se borra ya: si no, la pantalla lo leía al primer
+        // vistazo y se quedaba en «¿la publico?» mientras Pícale sí la preparaba.
+        for (MediaAsset a : elegidos) {
+            if (a.getAgenteEtapa() != EtapaAgente.REVISANDO) {
+                a.setAgenteEtapa(EtapaAgente.PENDIENTE);
+                a.setAgenteMotivo(PREPARANDO);
+                assets.save(a);
+            }
+        }
         String tenant = workspaceId.toString();
         List<UUID> orden = elegidos.stream().map(MediaAsset::getId).toList();
-        hilo.execute(() -> TenantIdentifierResolver.comoTenant(tenant, () -> trabajar(orden, workspaceId)));
+        hilo.execute(() -> TenantIdentifierResolver.comoTenant(tenant, () -> trabajar(orden, workspaceId, forzar)));
     }
 
+    /** Lo que dice un archivo mientras se prepara a pedido. */
+    static final String PREPARANDO = "La estoy preparando.";
+
     void trabajar(List<UUID> ids, UUID workspaceId) {
+        trabajar(ids, workspaceId, false);
+    }
+
+    void trabajar(List<UUID> ids, UUID workspaceId, boolean forzar) {
         try {
             esperarEdicion(ids.get(0));
-            agente.trabajarPedido(ids, workspaceId);
+            agente.trabajarPedido(ids, workspaceId, forzar);
         } catch (InterruptedException ex) {
             Thread.currentThread().interrupt();
         } catch (RuntimeException ex) {
