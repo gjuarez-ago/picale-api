@@ -534,6 +534,51 @@ public interface MediaAssetRepository extends JpaRepository<MediaAsset, UUID> {
     List<Object[]> findClavesVivas();
 
     /**
+     * Las claves de los reels ya armados. Viven en {@code media/<ws>/reels/}
+     * y la limpieza semanal no debe tomarlas por sueltas aunque su archivo
+     * todavía no tenga fila.
+     */
+    @Query(value = "select j.output_storage_key from reel_render_jobs j"
+            + " where j.output_storage_key is not null", nativeQuery = true)
+    List<String> findClavesDeReels();
+
+    /**
+     * Versiones finales viejas que ya no usa nadie.
+     *
+     * <p>Al terminar una versión final nueva, la anterior se archiva
+     * ({@code VersionesDeVideo}) y la limpieza diaria no toca lo archivado: se
+     * quedaban en el bucket para siempre. Esta las suelta pasado el plazo, si
+     * ninguna publicación viva la usa —ni como archivo ni como portada— y
+     * ningún reel se armó con ella. Una que siga en algo publicado o
+     * programado se queda.
+     *
+     * <p>Nativa y sin tenant, como {@link #findListosSinUsar}.
+     */
+    @Query(value = """
+            select cast(m.id as varchar), m.tenant_id
+            from media_assets m
+            where m.source_asset_id is not null
+              and m.archived_at is not null
+              and m.archived_at < :limite
+              and not exists (
+                    select 1 from post_media pm
+                    join posts p on p.id = pm.post_id
+                    where pm.url = m.url and p.deleted_at is null
+              )
+              and not exists (
+                    select 1 from posts p
+                    where p.deleted_at is null
+                      and (p.thumbnail_url = m.url or p.thumbnail_url = m.thumbnail_url)
+              )
+              and not exists (
+                    select 1 from reel_render_sources r where r.asset_id = m.id
+              )
+            order by m.archived_at asc
+            limit :tope
+            """, nativeQuery = true)
+    List<Object[]> findVersionesViejasSinUsar(LocalDateTime limite, int tope);
+
+    /**
      * Los videos que ya salieron hace tiempo y se pueden liberar.
      *
      * <p>Tres condiciones, y las tres importan:

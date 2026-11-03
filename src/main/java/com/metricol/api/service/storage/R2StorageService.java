@@ -436,11 +436,20 @@ public class R2StorageService {
      * limpieza, la que hay que volver a hacer sin saberlo.
      */
     public List<String> listarClaves(String prefijo) {
+        return listarObjetos(prefijo).stream().map(ObjetoGuardado::clave).toList();
+    }
+
+    /** Un objeto del bucket: su clave, cuándo se escribió y cuánto pesa. */
+    public record ObjetoGuardado(String clave, java.time.Instant modificado, long bytes) {
+    }
+
+    /** Como {@link #listarClaves}, con la fecha y el tamaño de cada objeto. */
+    public List<ObjetoGuardado> listarObjetos(String prefijo) {
         if (prefijo == null || prefijo.isBlank() || !props.isConfigured()) {
             return List.of();
         }
 
-        List<String> claves = new ArrayList<>();
+        List<ObjetoGuardado> claves = new ArrayList<>();
         String token = null;
         do {
             final String continuacion = token;
@@ -449,7 +458,8 @@ public class R2StorageService {
                     .prefix(prefijo)
                     .continuationToken(continuacion)
                     .build());
-            respuesta.contents().forEach(objeto -> claves.add(objeto.key()));
+            respuesta.contents().forEach(objeto -> claves.add(new ObjetoGuardado(objeto.key(),
+                    objeto.lastModified(), objeto.size() == null ? 0 : objeto.size())));
             token = Boolean.TRUE.equals(respuesta.isTruncated()) ? respuesta.nextContinuationToken() : null;
         } while (token != null);
 

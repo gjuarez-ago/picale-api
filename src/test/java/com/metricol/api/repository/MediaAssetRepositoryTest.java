@@ -388,4 +388,57 @@ class MediaAssetRepositoryTest {
             assertThat(mediaAssets.espacioUsado()).isEqualTo(conElVideo - video.getSizeBytes());
         });
     }
+
+    /** Una versión final de {@code original}, archivada hace {@code dias}. */
+    private MediaAsset versionArchivada(MediaAsset original, String nombre, int dias) {
+        MediaAsset v = subir(nombre);
+        v.setSourceAssetId(original.getId());
+        v.setThumbnailUrl("https://cdn.test/derivados/miniaturas/" + nombre + ".jpg");
+        v.setArchivedAt(LocalDateTime.now().minusDays(dias));
+        return mediaAssets.save(v);
+    }
+
+    private List<String> versionesViejas() {
+        return mediaAssets.findVersionesViejasSinUsar(LocalDateTime.now().minusDays(7), TOPE).stream()
+                .map(fila -> String.valueOf(fila[0]))
+                .toList();
+    }
+
+    @Test
+    @DisplayName("Limpieza semanal: la versión final vieja, archivada y sin usar, sale; la recién archivada no")
+    void versionesViejasSinUsar() {
+        enElWorkspace(() -> {
+            MediaAsset original = subir("charla.mp4");
+            MediaAsset vieja = versionArchivada(original, "charla-v1.mp4", 10);
+            MediaAsset reciente = versionArchivada(original, "charla-v2.mp4", 2);
+            MediaAsset archivadaOriginal = subir("original-archivado.mp4");
+            archivadaOriginal.setArchivedAt(LocalDateTime.now().minusDays(30));
+            mediaAssets.save(archivadaOriginal);
+
+            assertThat(versionesViejas()).contains(vieja.getId().toString())
+                    .doesNotContain(reciente.getId().toString(), archivadaOriginal.getId().toString(),
+                            original.getId().toString());
+        });
+    }
+
+    @Test
+    @DisplayName("Limpieza semanal: una versión vieja que sigue en algo publicado, o como portada, se queda")
+    void versionesViejasEnUso() {
+        enElWorkspace(() -> {
+            MediaAsset original = subir("taller.mp4");
+            MediaAsset publicada = versionArchivada(original, "taller-v1.mp4", 10);
+            MediaAsset dePortada = versionArchivada(original, "taller-v2.mp4", 10);
+            posts.save(Post.builder().caption("Ya salió")
+                    .mediaUrls(new ArrayList<>(List.of(publicada.getUrl())))
+                    .mediaType(MediaType.VIDEO).status(PostStatus.PUBLISHED)
+                    .publishedAt(LocalDateTime.now()).build());
+            posts.save(Post.builder().caption("Propuesta")
+                    .mediaUrls(new ArrayList<>(List.of(original.getUrl())))
+                    .thumbnailUrl(dePortada.getThumbnailUrl())
+                    .mediaType(MediaType.VIDEO).status(PostStatus.DRAFT).build());
+
+            assertThat(versionesViejas())
+                    .doesNotContain(publicada.getId().toString(), dePortada.getId().toString());
+        });
+    }
 }
