@@ -21,6 +21,7 @@ import com.metricol.api.config.TenantIdentifierResolver;
 import com.metricol.api.entity.MediaAsset;
 import com.metricol.api.entity.Post;
 import com.metricol.api.entity.Workspace;
+import com.metricol.api.enums.EtapaAgente;
 import com.metricol.api.enums.MediaAssetStatus;
 import com.metricol.api.enums.MediaType;
 import com.metricol.api.enums.PostStatus;
@@ -473,6 +474,32 @@ class MediaAssetRepositoryTest {
             MediaAsset final_ = mediaAssets.findById(video.getId()).orElseThrow();
             assertThat(final_.getThumbnailUrl()).endsWith("carrera.jpg");
             assertThat(final_.getTranscripcion()).contains("Hola");
+        });
+    }
+
+    @Test
+    @DisplayName("El agente guarda su etapa sin deshacer lo que otra tarea guardó mientras miraba el video")
+    void elAgenteNoPisaLoDeOtraTarea() {
+        enElWorkspace(() -> {
+            MediaAsset video = subir("agente-carrera.mp4");
+            // El agente lo lee y se pone a mirarlo (sin transacción, como en AgenteService)...
+            MediaAsset leidoPorElAgente = mediaAssets.findById(video.getId()).orElseThrow();
+
+            // ...mientras tanto se guarda la transcripción y lo archivan.
+            MediaAsset otro = mediaAssets.findById(video.getId()).orElseThrow();
+            otro.setTranscripcion("[{\"texto\":\"Hola\",\"inicio\":0.0,\"fin\":0.4}]");
+            otro.setArchivedAt(LocalDateTime.now());
+            mediaAssets.save(otro);
+
+            leidoPorElAgente.setAgenteEtapa(EtapaAgente.PROPUESTA);
+            leidoPorElAgente.setAgenteMotivo("Lo propuse.");
+            mediaAssets.guardarLoDelAgente(leidoPorElAgente);
+
+            MediaAsset final_ = mediaAssets.findById(video.getId()).orElseThrow();
+            assertThat(final_.getAgenteEtapa()).isEqualTo(EtapaAgente.PROPUESTA);
+            assertThat(final_.getAgenteMotivo()).isEqualTo("Lo propuse.");
+            assertThat(final_.getTranscripcion()).contains("Hola");
+            assertThat(final_.getArchivedAt()).isNotNull();
         });
     }
 }

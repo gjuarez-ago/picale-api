@@ -2355,7 +2355,7 @@ public class AgenteService {
 
         // Pendiente y no a medias: si algo falla de aquí en adelante, la vuelta la retoma.
         asset.setAgenteEtapa(EtapaAgente.PENDIENTE);
-        assets.save(asset);
+        assets.guardarLoDelAgente(asset);
         if (!tomar(asset)) {
             throw new IllegalStateException("Ya la estoy revisando; en un momento la ves.");
         }
@@ -2572,7 +2572,7 @@ public class AgenteService {
         }
         if (asset.getHuella() == null) {
             asset.setHuella(h);
-            assets.save(asset);
+            assets.guardarLoDelAgente(asset);
         }
         for (MediaAsset otra : assets.yaTrabajadasConHuella()) {
             // Foto con foto y video con video: el cuadro de un video puede parecerse a una foto suya.
@@ -2794,7 +2794,8 @@ public class AgenteService {
         }
         asset.setAgenteEtapa(etapa);
         asset.setAgenteMotivo(motivo == null || motivo.length() <= 500 ? motivo : motivo.substring(0, 500));
-        assets.save(asset);
+        // Solo lo suyo: lo leyó hace un rato y otras tareas pudieron guardar el mismo archivo.
+        assets.guardarLoDelAgente(asset);
     }
 
     /** Las fotos originales de una propuesta: las del carrusel, la de una foto, o lo que publica. */

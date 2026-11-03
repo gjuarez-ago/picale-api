@@ -543,6 +543,32 @@ public interface MediaAssetRepository extends JpaRepository<MediaAsset, UUID> {
     List<String> findClavesDeReels();
 
     /**
+     * Guarda lo que escribió el agente sin pisar lo demás.
+     *
+     * <p>El agente lee un archivo, lo mira y lo escucha durante un minuto o
+     * dos, y guardaba el objeto entero que había leído al empezar: si en ese
+     * rato otra tarea guardó la portada, la transcripción, el estado de los
+     * subtítulos o el archivado de una versión vieja, lo deshacía. Aquí se
+     * relee la fila y solo se le pasan los campos que son del agente.
+     */
+    default MediaAsset guardarLoDelAgente(MediaAsset leido) {
+        if (leido.getId() == null) {
+            return save(leido);
+        }
+        return findById(leido.getId()).map(fresco -> {
+            fresco.setAgenteEtapa(leido.getAgenteEtapa());
+            fresco.setAgenteMotivo(leido.getAgenteMotivo());
+            fresco.setAgenteIntentos(leido.getAgenteIntentos());
+            fresco.setAgenteAnalisis(leido.getAgenteAnalisis());
+            fresco.setAgenteTomadoEn(leido.getAgenteTomadoEn());
+            fresco.setAgenteRescatada(leido.getAgenteRescatada());
+            fresco.setDescripcionIa(leido.getDescripcionIa());
+            fresco.setHuella(leido.getHuella());
+            return save(fresco);
+        }).orElse(leido);
+    }
+
+    /**
      * Versiones finales viejas que ya no usa nadie.
      *
      * <p>Al terminar una versión final nueva, la anterior se archiva

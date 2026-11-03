@@ -275,7 +275,7 @@ public class AnalistaDeVideo {
     private void guardar(MediaAsset video, AnalisisDeVideo analisis) {
         try {
             video.setAgenteAnalisis(recortar(mapper.writeValueAsString(analisis), 8000));
-            assets.save(video);
+            assets.guardarLoDelAgente(video);
         } catch (Exception ex) {
             log.debug("No se guardó el análisis de {}: {}", video.getId(), ex.toString());
         }
