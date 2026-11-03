@@ -17,6 +17,7 @@ import com.metricol.api.entity.MediaAsset;
 import com.metricol.api.entity.Workspace;
 import com.metricol.api.repository.MediaAssetRepository;
 import com.metricol.api.repository.WorkspaceRepository;
+import com.metricol.api.service.ai.RevisorDeLogo;
 import com.metricol.api.service.reels.FfmpegReelRenderer;
 import com.metricol.api.service.reels.MusicaDeReels;
 import com.metricol.api.service.reels.ReelMusicCatalog;
@@ -69,6 +70,7 @@ public class SubtitulosAutomaticos {
     private final MusicaDeReels musicaDeCuenta;
     private final ReelMusicCatalog catalogo;
     private final RecorteAutomatico recortes;
+    private final RevisorDeLogo revisorDeLogo;
     /** Uno a la vez: transcribir y encargar es corto, pero no debe correr dos veces el mismo video. */
     private final ExecutorService hilo = Executors.newSingleThreadExecutor(r -> {
         Thread t = new Thread(r, "subtitulos-auto");
@@ -79,13 +81,19 @@ public class SubtitulosAutomaticos {
 
     public SubtitulosAutomaticos(MediaAssetRepository assets, WorkspaceRepository workspaces,
             SubtitulosService subtitulos, MusicaDeReels musicaDeCuenta, ReelMusicCatalog catalogo,
-            RecorteAutomatico recortes) {
+            RecorteAutomatico recortes, RevisorDeLogo revisorDeLogo) {
         this.assets = assets;
         this.workspaces = workspaces;
         this.subtitulos = subtitulos;
         this.musicaDeCuenta = musicaDeCuenta;
         this.catalogo = catalogo;
         this.recortes = recortes;
+        this.revisorDeLogo = revisorDeLogo;
+    }
+
+    /** El logo que se puede pegar, o nulo (sin logo, o es una foto). La primera vez lo revisa. */
+    private String logoUsable(Workspace espacio) {
+        return revisorDeLogo == null ? espacio.getLogoUrl() : revisorDeLogo.usable(espacio);
     }
 
     /**
@@ -95,15 +103,24 @@ public class SubtitulosAutomaticos {
      * @param color    nulo = al azar
      * @param recortes recorte automático de lo que sobra al principio y al final;
      *                 al guardar, nulo = dejarlo como estaba
+     * @param logo     el logo de la marca arriba en los videos; al guardar, nulo = como estaba
+     * @param hayLogo  solo de lectura: si la marca tiene un logo que se puede pegar
+     *                 (no lo tiene, o el "logo" es una foto de una persona o un lugar)
      */
-    public record Ajustes(boolean activo, EstiloSubtitulos estilo, SubtitulosService.Color color, Boolean recortes) {
+    public record Ajustes(boolean activo, EstiloSubtitulos estilo, SubtitulosService.Color color, Boolean recortes,
+            Boolean logo, Boolean hayLogo) {
+
+        public Ajustes(boolean activo, EstiloSubtitulos estilo, SubtitulosService.Color color, Boolean recortes) {
+            this(activo, estilo, color, recortes, null, null);
+        }
     }
 
     public Ajustes ajustes(UUID workspaceId) {
         Workspace espacio = workspaces.findById(workspaceId)
                 .orElseThrow(() -> new com.metricol.api.exception.ResourceNotFoundException("Ese negocio no existe."));
         return new Ajustes(Boolean.TRUE.equals(espacio.getSubtitulosAuto()), estiloDe(espacio), colorDe(espacio),
-                !Boolean.FALSE.equals(espacio.getRecorteAuto()));
+                !Boolean.FALSE.equals(espacio.getRecorteAuto()), Boolean.TRUE.equals(espacio.getLogoVideos()),
+                logoUsable(espacio) != null);
     }
 
     public Ajustes guardar(UUID workspaceId, Ajustes nuevos) {
@@ -114,6 +131,9 @@ public class SubtitulosAutomaticos {
         espacio.setSubtitulosColor(nuevos.color() == null ? null : nuevos.color().name());
         if (nuevos.recortes() != null) {
             espacio.setRecorteAuto(nuevos.recortes());
+        }
+        if (nuevos.logo() != null) {
+            espacio.setLogoVideos(nuevos.logo());
         }
         workspaces.save(espacio);
         return ajustes(workspaceId);
@@ -178,7 +198,8 @@ public class SubtitulosAutomaticos {
         // Un recorte hecho a mano no se vuelve a recortar: ya lo decidió la persona.
         boolean conRecorte = espacio != null && !Boolean.FALSE.equals(espacio.getRecorteAuto())
                 && video.getTrimEndSeconds() == null;
-        if (!conSubtitulos && !conMusica && !conRecorte) {
+        String logo = espacio != null && Boolean.TRUE.equals(espacio.getLogoVideos()) ? logoUsable(espacio) : null;
+        if (!conSubtitulos && !conMusica && !conRecorte && logo == null) {
             // Los apagaron mientras esperaba: se suelta tal cual.
             guardar(video, null, video.getSubtitulosIntentos());
             return;
@@ -207,7 +228,7 @@ public class SubtitulosAutomaticos {
             RecorteAutomatico.Recorte recorte = conRecorte && !palabras.isEmpty()
                     ? recortes.decidir(id, palabras, subtitulos.segundos(id, workspaceId))
                     : null;
-            if (!ponerSubtitulos && cancion == null && recorte == null) {
+            if (!ponerSubtitulos && cancion == null && recorte == null && logo == null) {
                 guardar(id, yaTenia ? YA_TENIA : SIN_SUBTITULOS, intentos, fondo);
                 return;
             }
@@ -217,7 +238,7 @@ public class SubtitulosAutomaticos {
             // no tomaba nunca el video.
             guardar(id, HACIENDO, intentos, fondo);
             subtitulos.pedirEdicion(id, workspaceId, estiloDe(espacio), colorDe(espacio), ponerSubtitulos, cancion,
-                    recorte);
+                    recorte, logo);
         } catch (IllegalArgumentException ex) {
             // Muy largo, no se abre: no es un fallo, no hay qué poner.
             log.info("Video {} sin edición automática: {}", id, ex.getMessage());

@@ -287,6 +287,13 @@ public class Workspace {
      */
     private Boolean recorteAuto;
 
+    /**
+     * El logo del negocio en una esquina de arriba de los videos que se suben;
+     * nulo o FALSE = no. Apagado de entrada (pedido de Gabriel, 2 nov 2026):
+     * a diferencia de la música, el logo en cada video no le gusta a todos.
+     */
+    private Boolean logoVideos;
+
     /** El último aviso al teléfono de "tengo publicaciones listas": entre uno y otro pasa al menos una hora. */
     private java.time.LocalDateTime agenteUltimoAviso;
 

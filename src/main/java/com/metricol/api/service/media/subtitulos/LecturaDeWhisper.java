@@ -16,11 +16,21 @@ import java.util.Map;
  * video quedarían pintadas encima de la música. Por eso se tira el segmento
  * que el propio modelo marca como "aquí no habla nadie", y el que es entero
  * una de esas frases conocidas.
+ *
+ * <p>"Aquí no habla nadie" es la regla del propio Whisper: probabilidad de
+ * silencio alta <em>y</em> poca seguridad en lo que escribió. Con la primera
+ * sola, la voz con música debajo se perdía: el 2 nov 2026 dos videos de 80 s
+ * salieron sin subtítulos en sus primeros 25 s porque Whisper marcó esos
+ * tramos con 0.64 de silencio aunque los transcribió seguro (avg_logprob
+ * −0.25) y bien.
  */
 public final class LecturaDeWhisper {
 
     /** Encima de esto, el modelo cree que en ese tramo no habla nadie. */
     static final double SIN_VOZ = 0.6;
+
+    /** Debajo de esto, Whisper no está seguro de lo que escribió. */
+    static final double POCA_SEGURIDAD = -1.0;
 
     /** Lo que Whisper escribe solo, sin que nadie lo diga. Normalizado: sin acentos ni signos. */
     private static final List<String> INVENTADAS = List.of(
@@ -72,11 +82,17 @@ public final class LecturaDeWhisper {
     }
 
     private static boolean inventado(Map<?, ?> segmento) {
-        if (numero(segmento.get("no_speech_prob")) > SIN_VOZ) {
+        if (numero(segmento.get("no_speech_prob")) > SIN_VOZ && !seguro(segmento)) {
             return true;
         }
         Object texto = segmento.get("text");
         return texto != null && INVENTADAS.contains(normalizar(String.valueOf(texto)));
+    }
+
+    /** Lo escribió seguro. Sin el dato no se sabe, y se trata como inseguro. */
+    private static boolean seguro(Map<?, ?> segmento) {
+        return segmento.get("avg_logprob") instanceof Number n && Double.isFinite(n.doubleValue())
+                && n.doubleValue() >= POCA_SEGURIDAD;
     }
 
     static String normalizar(String texto) {

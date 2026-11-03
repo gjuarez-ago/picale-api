@@ -74,6 +74,16 @@ public interface MediaAssetRepository extends JpaRepository<MediaAsset, UUID> {
     List<MediaAsset> mismoTamano(long tamano, com.metricol.api.enums.MediaType tipo,
             org.springframework.data.domain.Pageable pagina);
 
+    /** Lo de este espacio con la misma huella de contenido, lo más nuevo primero. */
+    @Query("""
+            select m from MediaAsset m
+            where m.status = com.metricol.api.enums.MediaAssetStatus.READY
+              and m.archivedAt is null
+              and m.huellaArchivo = :huella
+            order by m.createdAt desc
+            """)
+    List<MediaAsset> mismaHuella(String huella, org.springframework.data.domain.Pageable pagina);
+
     /** Los recortes hechos a mano de un video. */
     @Query("select m from MediaAsset m where m.sourceAssetId = :original and m.trimEndSeconds is not null")
     List<MediaAsset> recortesDe(UUID original);

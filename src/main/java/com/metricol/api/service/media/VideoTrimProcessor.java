@@ -16,6 +16,7 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import com.metricol.api.entity.MediaAsset;
 import com.metricol.api.enums.MediaAssetStatus;
 import com.metricol.api.repository.MediaAssetRepository;
+import com.metricol.api.service.campaign.LogoEnVideo;
 import com.metricol.api.service.storage.R2StorageService;
 import com.metricol.api.service.storage.StorageQuotaService;
 import com.metricol.api.service.media.subtitulos.SubtitulosAutomaticos;
@@ -35,10 +36,11 @@ public class VideoTrimProcessor {
     private final ObjectMapper json;
     private final ReelMusicCatalog musica;
     private final VersionesDeVideo versiones;
+    private final LogoEnVideo logos;
 
     public VideoTrimProcessor(MediaAssetRepository assets, R2StorageService storage,
             StorageQuotaService quota, FfmpegImagen ffmpeg, MiniaturasEnSegundoPlano thumbnails,
-            ObjectMapper json, ReelMusicCatalog musica, VersionesDeVideo versiones) {
+            ObjectMapper json, ReelMusicCatalog musica, VersionesDeVideo versiones, LogoEnVideo logos) {
         this.assets = assets;
         this.storage = storage;
         this.quota = quota;
@@ -47,6 +49,7 @@ public class VideoTrimProcessor {
         this.json = json;
         this.musica = musica;
         this.versiones = versiones;
+        this.logos = logos;
     }
 
     public void process(UUID jobId) {
@@ -137,7 +140,8 @@ public class VideoTrimProcessor {
                 }
                 pista = musica.materialize(elegida, carpeta);
             }
-            return ffmpeg.editarVideo(source.getUrl(), guion, pista,
+            Path capa = capaDelLogo(source, job, medidas, tramo, carpeta);
+            return ffmpeg.editarVideo(source.getUrl(), guion, pista, capa,
                     cancion == null ? 1 : cancion.volumen(),
                     tramo == null ? 0 : tramo.inicio(), tramo == null ? medidas.segundos() : tramo.fin(),
                     pista != null && ffmpeg.tieneSonido(source.getUrl()), output);
@@ -147,6 +151,29 @@ public class VideoTrimProcessor {
             }
             Files.deleteIfExists(carpeta);
         }
+    }
+
+    /**
+     * El logo arriba, del tamaño del video. La esquina se elige con un cuadro
+     * de en medio del tramo que se queda. Si no se puede (el logo ya no está),
+     * el video sale sin logo: no por eso se queda sin subtítulos ni música.
+     */
+    private Path capaDelLogo(MediaAsset source, MediaAsset job, FfmpegImagen.MedidasVideo medidas,
+            SubtitulosService.TramoDeCopia tramo, Path carpeta) throws IOException {
+        String logo = SubtitulosService.logo(json, job);
+        if (logo == null) {
+            return null;
+        }
+        double medio = tramo == null ? medidas.segundos() / 2 : (tramo.inicio() + tramo.fin()) / 2;
+        byte[] cuadro = ffmpeg.cuadro(source.getUrl(), medio, medidas.ancho(), 3);
+        byte[] capa = logos.capa(logo, cuadro, medidas.vertical());
+        if (capa == null) {
+            log.warn("El video {} sale sin logo: no se pudo preparar.", job.getId());
+            return null;
+        }
+        Path archivo = carpeta.resolve("logo.png");
+        Files.write(archivo, capa);
+        return archivo;
     }
 
     private void fail(MediaAsset job, String message) {

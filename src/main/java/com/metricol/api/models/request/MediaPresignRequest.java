@@ -46,4 +46,8 @@ public class MediaPresignRequest {
      * vez. Sin esto, uno con el mismo tipo y tamaño exacto se detiene.
      */
     private Boolean aunqueRepetido;
+
+    /** La huella del contenido (ver {@code MediaAsset.huellaArchivo}); opcional. */
+    @jakarta.validation.constraints.Pattern(regexp = "^[0-9a-f]{64}$")
+    private String huellaArchivo;
 }

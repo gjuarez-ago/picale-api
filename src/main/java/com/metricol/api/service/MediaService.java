@@ -340,6 +340,7 @@ public class MediaService {
                 .type(storage.tipoDe(key, contentType))
                 .sizeBytes(request.getSizeBytes())
                 .contentType(contentType)
+                .huellaArchivo(request.getHuellaArchivo())
                 .status(MediaAssetStatus.PENDING)
                 .build());
 
@@ -403,16 +404,58 @@ public class MediaService {
      * agente, y se pregunta. Se reconoce por el tipo y el tamaño exacto al
      * byte, que para un video o una foto real no coincide por casualidad.
      */
+    /**
+     * El mismo archivo ya está en Contenido: se pregunta antes de subirlo otra vez.
+     *
+     * <ul>
+     * <li>Con huella (la app la manda): es el mismo si la huella es igual, pese
+     * lo que pese. Dos archivos distintos con el mismo tamaño ya no se confunden.</li>
+     * <li>Contra lo subido sin huella (antes, o desde la web), sigue la regla
+     * del tamaño exacto al byte, desde 100 KB.</li>
+     * </ul>
+     *
+     * El aviso lleva el archivo que ya estaba, para que la pantalla lo señale.
+     */
     private void exigirQueNoEsteRepetido(MediaPresignRequest request, String contentType) {
-        if (Boolean.TRUE.equals(request.getAunqueRepetido()) || request.getSizeBytes() < REPETIDO_DESDE_BYTES) {
+        if (Boolean.TRUE.equals(request.getAunqueRepetido())) {
             return;
         }
-        MediaType tipo = contentType != null && contentType.startsWith("video/") ? MediaType.VIDEO : MediaType.IMAGE;
-        repository.mismoTamano(request.getSizeBytes(), tipo, org.springframework.data.domain.PageRequest.of(0, 1))
-                .stream().findFirst().ifPresent(igual -> {
-                    throw new ConflictoException("MEDIA_REPETIDO", "Ya subiste este archivo: «"
-                            + igual.getFileName() + "». ¿Lo subo otra vez?");
-                });
+        var uno = org.springframework.data.domain.PageRequest.of(0, 1);
+        String huella = request.getHuellaArchivo();
+        MediaAsset igual = huella == null ? null : repository.mismaHuella(huella, uno).stream().findFirst().orElse(null);
+        if (igual == null && request.getSizeBytes() >= REPETIDO_DESDE_BYTES) {
+            MediaType tipo = contentType != null && contentType.startsWith("video/") ? MediaType.VIDEO : MediaType.IMAGE;
+            igual = repository.mismoTamano(request.getSizeBytes(), tipo, org.springframework.data.domain.PageRequest.of(0, 5)).stream()
+                    // Uno con huella distinta es otro archivo que pesa lo mismo.
+                    .filter(a -> huella == null || a.getHuellaArchivo() == null)
+                    .findFirst().orElse(null);
+        }
+        if (igual != null) {
+            throw new ConflictoException("MEDIA_REPETIDO", avisoDeRepetido(igual, LocalDateTime.now()),
+                    java.util.Map.of("assetId", igual.getId().toString()));
+        }
+    }
+
+    /**
+     * Lo que se le dice a la persona: qué pasó y que no se repitió, en una
+     * frase que se entiende sola. Antes era una pregunta («¿Lo subo otra
+     * vez?»), y la app que no tiene botón para contestarla la enseñaba como
+     * si la subida hubiera fallado.
+     */
+    static String avisoDeRepetido(MediaAsset igual, LocalDateTime ahora) {
+        String cual = igual.getType() == MediaType.VIDEO ? "Este video" : "Esta foto";
+        String cuando = "";
+        if (igual.getCreatedAt() != null) {
+            java.time.LocalDate dia = igual.getCreatedAt().toLocalDate();
+            java.time.LocalDate hoy = ahora.toLocalDate();
+            cuando = dia.equals(hoy) ? " hoy"
+                    : dia.equals(hoy.minusDays(1)) ? " ayer"
+                    : " el " + dia.format(java.time.format.DateTimeFormatter.ofPattern(
+                            dia.getYear() == hoy.getYear() ? "d 'de' MMMM" : "d 'de' MMMM 'de' yyyy",
+                            java.util.Locale.forLanguageTag("es-MX")));
+        }
+        return cual + " ya está en tu Contenido: lo subiste" + cuando + " como «" + igual.getFileName()
+                + "». No lo subí otra vez para que no se repita.";
     }
 
     /** Renew the same pending upload; never create another asset or charge quota again. */
@@ -488,6 +531,7 @@ public class MediaService {
                 .type(storage.tipoDe(key, contentType))
                 .sizeBytes(request.getSizeBytes())
                 .contentType(contentType)
+                .huellaArchivo(request.getHuellaArchivo())
                 .status(MediaAssetStatus.PENDING)
                 .multipartUploadId(uploadId)
                 .multipartPartSize(tamanoParte)
@@ -1132,6 +1176,7 @@ public class MediaService {
                 .processingError(asset.getProcessingError())
                 .conSubtitulos(SubtitulosService.pintaSubtitulos(asset))
                 .copiaEditada(SubtitulosService.esDeSubtitulos(asset))
+                .conLogo(SubtitulosService.llevaLogo(asset))
                 .sourceAssetId(asset.getSourceAssetId())
                 .subtitulosEstado(asset.getSubtitulosEstado())
                 .musicaFondo(asset.getMusicaFondo())

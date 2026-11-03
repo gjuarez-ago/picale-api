@@ -159,7 +159,9 @@ public class GlobalExceptionHandler {
     @ExceptionHandler(ConflictoException.class)
     public ResponseEntity<ApiResponse<Void>> handleConflicto(ConflictoException ex) {
         log.warn("Conflicto ({}): {}", ex.getCode(), ex.getMessage());
-        return ResponseEntity.status(HttpStatus.CONFLICT).body(ApiResponse.error(ex.getCode(), ex.getMessage()));
+        return ResponseEntity.status(HttpStatus.CONFLICT).body(ex.getDetalles() == null
+                ? ApiResponse.error(ex.getCode(), ex.getMessage())
+                : ApiResponse.error(ex.getCode(), ex.getMessage(), ex.getDetalles()));
     }
 
     /** La marca incompleta es un conflicto reparable por la pantalla de onboarding. */

@@ -13,10 +13,21 @@ package com.metricol.api.exception;
 public class ConflictoException extends RuntimeException {
 
     private final String code;
+    private final java.util.Map<String, Object> detalles;
 
     public ConflictoException(String code, String message) {
+        this(code, message, null);
+    }
+
+    /** @param detalles lo que la pantalla necesita además del mensaje (el archivo que ya estaba…) */
+    public ConflictoException(String code, String message, java.util.Map<String, Object> detalles) {
         super(message);
         this.code = code;
+        this.detalles = detalles;
+    }
+
+    public java.util.Map<String, Object> getDetalles() {
+        return detalles;
     }
 
     public String getCode() {

@@ -1,5 +1,6 @@
 package com.metricol.api.service.campaign;
 
+import java.awt.AlphaComposite;
 import java.awt.Color;
 import java.awt.Graphics2D;
 import java.awt.Rectangle;
@@ -144,11 +145,11 @@ final class SelloDeLogo {
         BufferedImage original = leer(logo, "El logo no se puede leer: usa un archivo JPG o PNG.");
         // Primero, el logo como lo pondría un diseñador: sin placa. Un logo con fondo blanco
         // salía como un cuadro blanco pegado sobre el diseño —lo primero que se veía—.
-        Colocado sinPlaca = sinPlaca(base, original, pedida, ANCHO_MAX, ALTO_MAX, historia, true);
+        Colocado sinPlaca = sinPlaca(base, original, pedida, ANCHO_MAX, ALTO_MAX, historia, true, false);
         if (sinPlaca != null) {
             return sinPlaca;
         }
-        return conPlaca(base, original, pedida, historia);
+        return conPlaca(base, original, pedida, historia, false);
     }
 
     /** Preserva el archivo, incluyendo su fondo; separar el fondo requiere una preferencia explícita. */
@@ -157,8 +158,8 @@ final class SelloDeLogo {
         BufferedImage original = leer(logo, "El logo no se puede leer.");
         if (quitarFondo) {
             original = LogoBackgroundIsolation.removeSolid(original);
-            Colocado separated = sinPlaca(base, original, pedida, ANCHO_MAX, ALTO_MAX, historia, false);
-            return separated == null ? conPlaca(base, original, pedida, historia) : separated;
+            Colocado separated = sinPlaca(base, original, pedida, ANCHO_MAX, ALTO_MAX, historia, false, false);
+            return separated == null ? conPlaca(base, original, pedida, historia, false) : separated;
         }
         double scale = Math.min(ANCHO_MAX * base.getWidth() / original.getWidth(), ALTO_MAX * base.getHeight() / original.getHeight());
         int width = Math.max(1, (int) Math.round(original.getWidth() * scale));
@@ -179,7 +180,9 @@ final class SelloDeLogo {
      * que sin placa no se leería —un logo claro sobre un fondo claro— o un logo que no se puede
      * separar de su fondo.
      */
-    private static Colocado conPlaca(BufferedImage base, BufferedImage original, Posicion pedida, boolean historia) {
+    /** @param capa solo el sello, sobre transparente y en el rincón pedido (ver {@link #capaParaVideo}) */
+    private static Colocado conPlaca(BufferedImage base, BufferedImage original, Posicion pedida, boolean historia,
+            boolean capa) {
         Contenido contenido = recortarVacio(original);
         int ancho = base.getWidth();
         int alto = base.getHeight();
@@ -194,17 +197,17 @@ final class SelloDeLogo {
         int selloAncho = logoAncho + 2 * borde;
         int selloAlto = logoAlto + 2 * borde;
 
-        Posicion posicion = sitioLimpio(base, selloAncho, selloAlto, pedida, historia);
+        Posicion posicion = capa ? pedida : sitioLimpio(base, selloAncho, selloAlto, pedida, historia);
         Rectangle sitio = rectangulo(ancho, alto, selloAncho, selloAlto, posicion, historia);
         double radio = Math.min(selloAncho, selloAlto) * REDONDEO;
         Shape sello = new RoundRectangle2D.Double(sitio.x, sitio.y, selloAncho, selloAlto, radio, radio);
 
-        BufferedImage salida = new BufferedImage(ancho, alto, BufferedImage.TYPE_INT_RGB);
+        BufferedImage salida = lienzo(base, capa);
         Graphics2D g = salida.createGraphics();
         try {
             g.setRenderingHint(RenderingHints.KEY_ANTIALIASING, RenderingHints.VALUE_ANTIALIAS_ON);
             g.setRenderingHint(RenderingHints.KEY_INTERPOLATION, RenderingHints.VALUE_INTERPOLATION_BICUBIC);
-            g.drawImage(base, 0, 0, null);
+            fondo(g, base, capa);
 
             sombra(g, sitio, radio);
             g.setColor(contenido.fondo());
@@ -215,7 +218,7 @@ final class SelloDeLogo {
         } finally {
             g.dispose();
         }
-        return new Colocado(aJpeg(salida), posicion);
+        return new Colocado(capa ? aPng(salida) : aJpeg(salida), posicion);
     }
 
     /**
@@ -258,8 +261,8 @@ final class SelloDeLogo {
     static Colocado colocarSobreFoto(byte[] imagen, byte[] logo, Posicion zona, double anchoFoto, boolean historia) {
         BufferedImage base = leer(imagen, "La foto no se pudo leer.");
         BufferedImage original = leer(logo, "El logo no se puede leer: usa un archivo JPG o PNG.");
-        Colocado sinPlaca = sinPlaca(base, original, zona, anchoFoto, ALTO_MAX_FOTO, historia, false);
-        return sinPlaca != null ? sinPlaca : conPlaca(base, original, zona, historia);
+        Colocado sinPlaca = sinPlaca(base, original, zona, anchoFoto, ALTO_MAX_FOTO, historia, false, false);
+        return sinPlaca != null ? sinPlaca : conPlaca(base, original, zona, historia, false);
     }
 
     /**
@@ -280,7 +283,7 @@ final class SelloDeLogo {
      *                    respeta la zona del director salvo que esté llena de detalle
      */
     private static Colocado sinPlaca(BufferedImage base, BufferedImage original, Posicion zona, double anchoMax,
-            double altoMax, boolean historia, boolean buscarSitio) {
+            double altoMax, boolean historia, boolean buscarSitio, boolean capa) {
         // Siempre por el quitafondo: decide él si hay un cuadro blanco que quitar, aunque el
         // archivo ya traiga transparencia (ver AcabadoDeMarca.sinFondo).
         BufferedImage separado = AcabadoDeMarca.sinFondo(original);
@@ -296,7 +299,8 @@ final class SelloDeLogo {
         int logoAlto = Math.max(1, (int) Math.round(contenido.imagen().getHeight() * escala));
 
         Posicion posicion = zona;
-        if (buscarSitio || ocupacion(base, rectangulo(ancho, alto, logoAncho, logoAlto, zona, historia)) > MUY_OCUPADO) {
+        if (!capa && (buscarSitio
+                || ocupacion(base, rectangulo(ancho, alto, logoAncho, logoAlto, zona, historia)) > MUY_OCUPADO)) {
             posicion = sitioLimpio(base, logoAncho, logoAlto, zona, historia);
         }
         Rectangle sitio = rectangulo(ancho, alto, logoAncho, logoAlto, posicion, historia);
@@ -312,18 +316,70 @@ final class SelloDeLogo {
             chico = paraFondoOscuro(chico);
         }
 
-        BufferedImage salida = new BufferedImage(ancho, alto, BufferedImage.TYPE_INT_RGB);
+        BufferedImage salida = lienzo(base, capa);
         Graphics2D g = salida.createGraphics();
         try {
             g.setRenderingHint(RenderingHints.KEY_ANTIALIASING, RenderingHints.VALUE_ANTIALIAS_ON);
             g.setRenderingHint(RenderingHints.KEY_INTERPOLATION, RenderingHints.VALUE_INTERPOLATION_BICUBIC);
-            g.drawImage(base, 0, 0, null);
+            fondo(g, base, capa);
             sombraDelDibujo(g, chico, sitio.x, sitio.y, Math.max(1, ancho / 600), luzDelDibujo(chico) > FONDO_OSCURO);
             g.drawImage(chico, sitio.x, sitio.y, null);
         } finally {
             g.dispose();
         }
-        return new Colocado(aJpeg(salida), posicion);
+        return new Colocado(capa ? aPng(salida) : aJpeg(salida), posicion);
+    }
+
+    /** Lo más ancho que puede ser el logo en un video: más chico que en un diseño, no es el protagonista. */
+    private static final double ANCHO_MAX_VIDEO = 0.20;
+    private static final double ALTO_MAX_VIDEO = 0.055;
+    /** Apenas transparente: se lee como marca de la casa, no como un parche encima. */
+    private static final float OPACIDAD_VIDEO = 0.92f;
+
+    /**
+     * El logo para pegar encima de un video: un PNG transparente del tamaño
+     * del video, con el sello en una esquina de ARRIBA. Abajo van los
+     * subtítulos y los botones de Instagram y TikTok, así que nunca baja; de
+     * las dos de arriba se queda la más limpia del cuadro de muestra. Se decide
+     * igual que en una foto: sin placa si se lee directo, con placa si no.
+     *
+     * @param cuadro un cuadro del video, ya al tamaño del video (JPEG, PNG…)
+     * @param logo el archivo del logo tal como está en Contenido
+     * @param vertical un video vertical (reel): se deja el aire de las historias
+     */
+    static byte[] capaParaVideo(byte[] cuadro, byte[] logo, boolean vertical) {
+        BufferedImage base = leer(cuadro, "El cuadro del video no se pudo leer.");
+        BufferedImage original = leer(logo, "El logo no se puede leer: usa un archivo JPG o PNG.");
+        Posicion esquina = esquinaDeArriba(base, original, vertical);
+        Colocado sinPlaca = sinPlaca(base, original, esquina, ANCHO_MAX_VIDEO, ALTO_MAX_VIDEO, vertical, false, true);
+        return (sinPlaca != null ? sinPlaca : conPlaca(base, original, esquina, vertical, true)).imagen();
+    }
+
+    /** De las dos esquinas de arriba, la que tiene menos debajo; empatadas, la derecha. */
+    static Posicion esquinaDeArriba(BufferedImage base, BufferedImage logo, boolean vertical) {
+        double escala = Math.min(ANCHO_MAX_VIDEO * base.getWidth() / logo.getWidth(),
+                ALTO_MAX_VIDEO * base.getHeight() / logo.getHeight());
+        int ancho = Math.max(1, (int) Math.round(logo.getWidth() * escala));
+        int alto = Math.max(1, (int) Math.round(logo.getHeight() * escala));
+        double derecha = ocupacion(base, rectangulo(base.getWidth(), base.getHeight(), ancho, alto,
+                Posicion.TOP_RIGHT, vertical));
+        double izquierda = ocupacion(base, rectangulo(base.getWidth(), base.getHeight(), ancho, alto,
+                Posicion.TOP_LEFT, vertical));
+        return izquierda + 1 < derecha ? Posicion.TOP_LEFT : Posicion.TOP_RIGHT;
+    }
+
+    /** Sobre la imagen, o (para un video) transparente: el video va debajo después. */
+    private static BufferedImage lienzo(BufferedImage base, boolean capa) {
+        return new BufferedImage(base.getWidth(), base.getHeight(),
+                capa ? BufferedImage.TYPE_INT_ARGB : BufferedImage.TYPE_INT_RGB);
+    }
+
+    private static void fondo(Graphics2D g, BufferedImage base, boolean capa) {
+        if (capa) {
+            g.setComposite(AlphaComposite.getInstance(AlphaComposite.SRC_OVER, OPACIDAD_VIDEO));
+        } else {
+            g.drawImage(base, 0, 0, null);
+        }
     }
 
     static boolean conTransparencia(BufferedImage logo) {
@@ -651,6 +707,15 @@ final class SelloDeLogo {
             return imagen;
         } catch (IOException ex) {
             throw new IllegalArgumentException(mensaje, ex);
+        }
+    }
+
+    static byte[] aPng(BufferedImage imagen) {
+        try (ByteArrayOutputStream bytes = new ByteArrayOutputStream()) {
+            ImageIO.write(imagen, "png", bytes);
+            return bytes.toByteArray();
+        } catch (IOException ex) {
+            throw new IllegalStateException("No se pudo guardar el logo del video.", ex);
         }
     }
 

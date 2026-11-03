@@ -156,4 +156,22 @@ class SubtitulosServiceTest {
         assertThat(ass).contains("PlayResX: 720").contains("&H0000D4FF&");
         verify(ia, never()).transcribirConTiempos(any(), anyString());
     }
+
+    @Test
+    @DisplayName("Una copia con solo el logo se encarga, se llama con-logo y la biblioteca sabe que lo lleva")
+    void soloLogo() {
+        service.pedirEdicion(video.getId(), WS, null, null, false, null, null, "https://cdn/logo.png");
+        ArgumentCaptor<MediaAsset> guardado = ArgumentCaptor.forClass(MediaAsset.class);
+        verify(assets).save(guardado.capture());
+        MediaAsset copia = guardado.getValue();
+        assertThat(copia.getFileName()).isEqualTo("reel-con-logo.mp4");
+        assertThat(SubtitulosService.logo(json, copia)).isEqualTo("https://cdn/logo.png");
+        assertThat(SubtitulosService.llevaLogo(copia)).isTrue();
+        assertThat(SubtitulosService.pintaSubtitulos(copia)).isFalse();
+
+        service.pedir(video.getId(), WS, null, null, List.of(new Frase(0, 1, "Hola", List.of())));
+        verify(assets, times(2)).save(guardado.capture());
+        assertThat(SubtitulosService.llevaLogo(guardado.getValue())).isFalse();
+        assertThat(SubtitulosService.logo(json, guardado.getValue())).isNull();
+    }
 }

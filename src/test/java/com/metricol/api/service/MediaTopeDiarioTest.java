@@ -92,7 +92,8 @@ class MediaTopeDiarioTest {
             otra.setSizeBytes(tamano);
             assertThatThrownBy(() -> media.presign(otra, ws))
                     .isInstanceOf(com.metricol.api.exception.ConflictoException.class)
-                    .hasMessageContaining("Ya subiste este archivo: «video-1.mp4»");
+                    .hasMessageContaining("Este video ya está en tu Contenido: lo subiste hoy como «video-1.mp4»")
+                    .hasMessageContaining("No lo subí otra vez");
             otra.setAunqueRepetido(true);
             assertThat(media.presign(otra, ws).getAssetId()).isNotNull();
 
@@ -112,6 +113,38 @@ class MediaTopeDiarioTest {
             assertThat(media.presign(suyo, otroNegocio).getAssetId()).isNotNull();
         });
         sql.update("delete from media_assets where tenant_id = :t", Map.of("t", otroNegocio.toString()));
+    }
+
+    @Test
+    @org.junit.jupiter.api.DisplayName("Con huella: el mismo contenido se reconoce aunque pese poco; dos distintos del mismo tamaño no se confunden")
+    void repetidoPorHuella() {
+        String h1 = "a".repeat(64);
+        String h2 = "b".repeat(64);
+        TenantIdentifierResolver.comoTenant(ws.toString(), () -> {
+            com.metricol.api.entity.MediaAsset ya = assets.save(com.metricol.api.entity.MediaAsset.builder()
+                    .fileName("logo.png").url("https://cdn.test/l").storageKey("media/" + ws + "/l.png")
+                    .type(MediaType.IMAGE).contentType("image/png").sizeBytes(20_000L).huellaArchivo(h1)
+                    .status(MediaAssetStatus.READY).build());
+            MediaPresignRequest chico = new MediaPresignRequest();
+            chico.setFileName("otra-vez.png");
+            chico.setContentType("image/png");
+            chico.setSizeBytes(20_000);
+            chico.setHuellaArchivo(h1);
+            // Debajo de 100 KB el tamaño solo no avisaba; la huella sí.
+            assertThatThrownBy(() -> media.presign(chico, ws))
+                    .isInstanceOfSatisfying(com.metricol.api.exception.ConflictoException.class,
+                            ex -> assertThat(ex.getDetalles()).containsEntry("assetId", ya.getId().toString()));
+
+            assets.save(com.metricol.api.entity.MediaAsset.builder().fileName("a.mp4").url("https://cdn.test/a")
+                    .storageKey("media/" + ws + "/a.mp4").type(MediaType.VIDEO).contentType("video/mp4")
+                    .sizeBytes(5_000_000L).huellaArchivo(h1).status(MediaAssetStatus.READY).build());
+            MediaPresignRequest mismoPeso = new MediaPresignRequest();
+            mismoPeso.setFileName("b.mp4");
+            mismoPeso.setContentType("video/mp4");
+            mismoPeso.setSizeBytes(5_000_000);
+            mismoPeso.setHuellaArchivo(h2);
+            assertThat(media.presign(mismoPeso, ws).getAssetId()).isNotNull();
+        });
     }
 
     @Test

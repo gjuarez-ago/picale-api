@@ -521,11 +521,17 @@ public class FfmpegImagen {
      */
     public boolean editarVideo(String fuente, Path guion, Path musica, double volumen, double inicio, double fin,
             boolean conSonido, Path destino) {
+        return editarVideo(fuente, guion, musica, null, volumen, inicio, fin, conSonido, destino);
+    }
+
+    /** @param logo PNG transparente del tamaño del video con el logo puesto; nulo = sin logo */
+    public boolean editarVideo(String fuente, Path guion, Path musica, Path logo, double volumen, double inicio,
+            double fin, boolean conSonido, Path destino) {
         boolean recorta = inicio > 0.05;
-        if (guion == null && musica == null && !recorta && fin <= 0) {
+        if (guion == null && musica == null && logo == null && !recorta && fin <= 0) {
             return false;
         }
-        String salida = ejecutar(comandoEditar(fuente, guion, musica, volumen, inicio, fin, conSonido, destino),
+        String salida = ejecutar(comandoEditar(fuente, guion, musica, logo, volumen, inicio, fin, conSonido, destino),
                 "ffmpeg-editar-video", 1800);
         try {
             return salida != null && Files.size(destino) > 0;
@@ -541,6 +547,11 @@ public class FfmpegImagen {
 
     List<String> comandoEditar(String fuente, Path guion, Path musica, double volumen, double inicio, double fin,
             boolean conSonido, Path destino) {
+        return comandoEditar(fuente, guion, musica, null, volumen, inicio, fin, conSonido, destino);
+    }
+
+    List<String> comandoEditar(String fuente, Path guion, Path musica, Path logo, double volumen, double inicio,
+            double fin, boolean conSonido, Path destino) {
         double largo = Math.max(fin - inicio, 1);
         boolean recorta = inicio > 0.05;
         List<String> comando = new ArrayList<>(List.of(
@@ -552,6 +563,8 @@ public class FfmpegImagen {
             comando.addAll(List.of("-ss", decimal(inicio)));
         }
         comando.addAll(List.of("-i", fuente));
+        List<String> filtros = new ArrayList<>();
+        List<String> salidas = new ArrayList<>();
         if (musica != null) {
             String pista = "[1:a]atrim=duration=" + decimal(largo)
                     + ",asetpts=PTS-STARTPTS,loudnorm=I=-14:TP=-2:LRA=11,volume=" + decimal(volumen)
@@ -567,15 +580,30 @@ public class FfmpegImagen {
                     ? pista + "[m];[0:a]" + voz + "aresample=48000,aformat=sample_fmts=fltp:channel_layouts=stereo[v];"
                             + "[v][m]amix=inputs=2:duration=first:normalize=0,alimiter=limit=0.95[a]"
                     : pista + "[a]";
-            comando.addAll(List.of("-stream_loop", "-1", "-i", musica.toString(),
-                    "-filter_complex", filtro, "-map", "0:v:0", "-map", "[a]"));
-        } else {
-            comando.addAll(List.of("-map", "0:v:0", "-map", "0:a?"));
+            comando.addAll(List.of("-stream_loop", "-1", "-i", musica.toString()));
+            filtros.add(filtro);
         }
-        if (guion != null) {
+        if (logo != null) {
+            // Primero el logo y encima los subtítulos: si alguna vez se cruzan, se lee lo que se dice.
+            // Una sola imagen basta: overlay repite su último cuadro todo el video.
+            comando.addAll(List.of("-i", logo.toString()));
+            String video = "[0:v][" + (musica != null ? 2 : 1) + ":v]overlay=0:0:format=auto";
+            filtros.add(guion != null
+                    ? video + ",subtitles=filename=" + rutaParaFiltro(guion) + "[vf]"
+                    : video + "[vf]");
+            salidas.addAll(List.of("-map", "[vf]"));
+        } else {
+            salidas.addAll(List.of("-map", "0:v:0"));
+        }
+        salidas.addAll(musica != null ? List.of("-map", "[a]") : List.of("-map", "0:a?"));
+        if (!filtros.isEmpty()) {
+            comando.addAll(List.of("-filter_complex", String.join(";", filtros)));
+        }
+        comando.addAll(salidas);
+        if (guion != null && logo == null) {
             comando.addAll(List.of("-vf", "subtitles=filename=" + rutaParaFiltro(guion)));
         }
-        if (guion != null || recorta) {
+        if (guion != null || logo != null || recorta) {
             comando.addAll(List.of("-c:v", "libx264", "-preset", "veryfast", "-crf", "20", "-pix_fmt", "yuv420p"));
         } else {
             comando.addAll(List.of("-c:v", "copy"));

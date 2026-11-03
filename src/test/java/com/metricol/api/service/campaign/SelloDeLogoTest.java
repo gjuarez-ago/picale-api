@@ -378,4 +378,45 @@ class SelloDeLogoTest {
         assertThat(azules(salida, H / 2, H).cuantos()).isGreaterThan(500);
         assertThat(blancos(salida, 0, H).cuantos()).as("sin rastro de la tarjeta").isZero();
     }
+
+    @Test
+    @DisplayName("Para un video: PNG transparente del tamaño del cuadro, con el logo solo arriba")
+    void capaParaVideo() throws Exception {
+        BufferedImage capa = leer(SelloDeLogo.capaParaVideo(fondoGris(1080, 1920), logoConAire(), true));
+        assertThat(capa.getWidth()).isEqualTo(1080);
+        assertThat(capa.getHeight()).isEqualTo(1920);
+        assertThat(capa.getColorModel().hasAlpha()).isTrue();
+        int arriba = 0;
+        for (int y = 0; y < capa.getHeight(); y += 4) {
+            for (int x = 0; x < capa.getWidth(); x += 4) {
+                if (((capa.getRGB(x, y) >>> 24) & 0xFF) > 0) {
+                    // Nada en la mitad de abajo: ahí van los subtítulos y los botones de la red.
+                    assertThat(y).isLessThan(capa.getHeight() / 3);
+                    arriba++;
+                }
+            }
+        }
+        assertThat(arriba).isPositive();
+        // El centro, donde pasa lo importante del video, queda limpio.
+        assertThat((capa.getRGB(540, 960) >>> 24) & 0xFF).isZero();
+    }
+
+    @Test
+    @DisplayName("Para un video: si arriba a la derecha hay letras, el logo se va a la izquierda")
+    void capaParaVideoBuscaLaEsquinaLimpia() throws Exception {
+        BufferedImage cuadro = gris(1080, 1920);
+        letras(cuadro, 600, 200, 1080, 520);
+        BufferedImage capa = leer(SelloDeLogo.capaParaVideo(png(cuadro), logoConAire(), true));
+        int izquierda = 0;
+        int derecha = 0;
+        for (int y = 0; y < 700; y += 4) {
+            for (int x = 0; x < 1080; x += 4) {
+                if (((capa.getRGB(x, y) >>> 24) & 0xFF) > 0) {
+                    if (x < 540) izquierda++; else derecha++;
+                }
+            }
+        }
+        assertThat(izquierda).isPositive();
+        assertThat(derecha).isZero();
+    }
 }

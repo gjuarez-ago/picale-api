@@ -49,7 +49,7 @@ class SubtitulosAutomaticosTest {
         ReelMusicCatalog catalogo = new ReelMusicCatalog(new ReelsProperties(), mock(R2StorageService.class),
                 new ObjectMapper());
         automaticos = new SubtitulosAutomaticos(assets, workspaces, subtitulos,
-                new MusicaDeReels(workspaces, catalogo), catalogo, recortes);
+                new MusicaDeReels(workspaces, catalogo), catalogo, recortes, null);
         espacio = new Workspace();
         espacio.setSubtitulosAuto(true);
         espacio.setSubtitulosEstilo("REBOTE");
@@ -71,7 +71,7 @@ class SubtitulosAutomaticosTest {
     void encargaConElEstiloDeLaCuenta() {
         automaticos.procesar(video.getId());
         verify(subtitulos).pedirEdicion(eq(video.getId()), eq(WS), eq(EstiloSubtitulos.REBOTE), eq(null), eq(true),
-                eq(null), eq(null));
+                eq(null), eq(null), eq(null));
         verify(subtitulos, never()).yaTraeMusica(any(), any(), any());
         assertThat(video.getSubtitulosEstado()).isEqualTo(SubtitulosAutomaticos.HACIENDO);
         assertThat(video.getSubtitulosIntentos()).isEqualTo(1);
@@ -83,7 +83,7 @@ class SubtitulosAutomaticosTest {
         when(subtitulos.yaTraeSubtitulos(video.getId(), WS)).thenReturn(true);
         automaticos.procesar(video.getId());
         assertThat(video.getSubtitulosEstado()).isEqualTo(SubtitulosAutomaticos.YA_TENIA);
-        verify(subtitulos, never()).pedirEdicion(any(), any(), any(), any(), org.mockito.ArgumentMatchers.anyBoolean(), any(), any());
+        verify(subtitulos, never()).pedirEdicion(any(), any(), any(), any(), org.mockito.ArgumentMatchers.anyBoolean(), any(), any(), any());
     }
 
     @Test
@@ -92,7 +92,7 @@ class SubtitulosAutomaticosTest {
         when(subtitulos.palabras(video.getId(), WS)).thenReturn(java.util.List.of());
         automaticos.procesar(video.getId());
         assertThat(video.getSubtitulosEstado()).isEqualTo(SubtitulosAutomaticos.SIN_SUBTITULOS);
-        verify(subtitulos, never()).pedirEdicion(any(), any(), any(), any(), org.mockito.ArgumentMatchers.anyBoolean(), any(), any());
+        verify(subtitulos, never()).pedirEdicion(any(), any(), any(), any(), org.mockito.ArgumentMatchers.anyBoolean(), any(), any(), any());
     }
 
     @Test
@@ -143,7 +143,7 @@ class SubtitulosAutomaticosTest {
     @DisplayName("Si la copia termina mientras se encarga, gana el listo: el video no se queda haciendo")
     void carreraConLaCola() {
         // La cola termina la copia dentro de pedir(), antes de que vuelva.
-        when(subtitulos.pedirEdicion(any(), any(), any(), any(), org.mockito.ArgumentMatchers.anyBoolean(), any(), any())).thenAnswer(i -> {
+        when(subtitulos.pedirEdicion(any(), any(), any(), any(), org.mockito.ArgumentMatchers.anyBoolean(), any(), any(), any())).thenAnswer(i -> {
             SubtitulosAutomaticos.copiaTerminada(assets, video.getId(), true);
             return null;
         });
@@ -155,7 +155,7 @@ class SubtitulosAutomaticosTest {
     @DisplayName("Con la cola llena espera su turno sin gastar un intento")
     void colaLlena() {
         doThrow(new SubtitulosService.ColaLlena()).when(subtitulos).pedirEdicion(any(), any(), any(), any(),
-                org.mockito.ArgumentMatchers.anyBoolean(), any(), any());
+                org.mockito.ArgumentMatchers.anyBoolean(), any(), any(), any());
         automaticos.procesar(video.getId());
         assertThat(video.getSubtitulosEstado()).isEqualTo(SubtitulosAutomaticos.ESPERANDO);
         assertThat(video.getSubtitulosIntentos()).isZero();
@@ -185,7 +185,7 @@ class SubtitulosAutomaticosTest {
         org.mockito.ArgumentCaptor<SubtitulosService.MusicaDeCopia> cancion =
                 org.mockito.ArgumentCaptor.forClass(SubtitulosService.MusicaDeCopia.class);
         verify(subtitulos).pedirEdicion(eq(video.getId()), eq(WS), eq(EstiloSubtitulos.REBOTE), eq(null), eq(true),
-                cancion.capture(), eq(null));
+                cancion.capture(), eq(null), eq(null));
         assertThat(cancion.getValue().volumen()).isEqualTo(FfmpegReelRenderer.MUSICA_BAJO_VOZ);
         assertThat(video.getMusicaFondo()).isEqualTo(SubtitulosAutomaticos.MUSICA_PUESTA);
         assertThat(video.getSubtitulosEstado()).isEqualTo(SubtitulosAutomaticos.HACIENDO);
@@ -209,7 +209,7 @@ class SubtitulosAutomaticosTest {
         automaticos.procesar(video.getId());
         org.mockito.ArgumentCaptor<SubtitulosService.MusicaDeCopia> cancion =
                 org.mockito.ArgumentCaptor.forClass(SubtitulosService.MusicaDeCopia.class);
-        verify(subtitulos).pedirEdicion(eq(video.getId()), eq(WS), any(), any(), eq(false), cancion.capture(), eq(null));
+        verify(subtitulos).pedirEdicion(eq(video.getId()), eq(WS), any(), any(), eq(false), cancion.capture(), eq(null), eq(null));
         assertThat(cancion.getValue().volumen()).isEqualTo(FfmpegReelRenderer.MUSICA_SOLA);
         verify(subtitulos, never()).yaTraeSubtitulos(any(), any());
     }
@@ -220,7 +220,7 @@ class SubtitulosAutomaticosTest {
         espacio.setMusicaVideos(true);
         when(subtitulos.yaTraeMusica(video.getId(), WS, HABLA)).thenReturn(true);
         automaticos.procesar(video.getId());
-        verify(subtitulos).pedirEdicion(eq(video.getId()), eq(WS), any(), any(), eq(true), eq(null), eq(null));
+        verify(subtitulos).pedirEdicion(eq(video.getId()), eq(WS), any(), any(), eq(true), eq(null), eq(null), eq(null));
         assertThat(video.getMusicaFondo()).isEqualTo(SubtitulosAutomaticos.YA_TENIA);
 
         video.setSubtitulosEstado(SubtitulosAutomaticos.ESPERANDO);
@@ -255,7 +255,7 @@ class SubtitulosAutomaticosTest {
         when(subtitulos.segundos(video.getId(), WS)).thenReturn(10.0);
         when(recortes.decidir(video.getId(), HABLA, 10.0)).thenReturn(r);
         automaticos.procesar(video.getId());
-        verify(subtitulos).pedirEdicion(eq(video.getId()), eq(WS), any(), any(), eq(false), eq(null), eq(r));
+        verify(subtitulos).pedirEdicion(eq(video.getId()), eq(WS), any(), any(), eq(false), eq(null), eq(r), eq(null));
         assertThat(video.getSubtitulosEstado()).isEqualTo(SubtitulosAutomaticos.HACIENDO);
 
         video.setSubtitulosEstado(SubtitulosAutomaticos.ESPERANDO);
@@ -264,5 +264,38 @@ class SubtitulosAutomaticosTest {
         org.mockito.Mockito.clearInvocations(recortes);
         automaticos.procesar(video.getId());
         verify(recortes, never()).decidir(any(), any(), org.mockito.ArgumentMatchers.anyDouble());
+    }
+
+    @Test
+    @DisplayName("El logo va apagado de entrada; encendido, la copia lo lleva aunque no haya nada más que poner")
+    void logo() {
+        espacio.setSubtitulosAuto(false);
+        espacio.setRecorteAuto(false);
+        espacio.setLogoUrl("https://cdn/logo.png");
+        automaticos.procesar(video.getId());
+        // Apagado: sin subtítulos, música ni recorte, el video se suelta tal cual.
+        verify(subtitulos, never()).pedirEdicion(any(), any(), any(), any(), org.mockito.ArgumentMatchers.anyBoolean(),
+                any(), any(), any());
+        assertThat(automaticos.ajustes(WS).logo()).isFalse();
+        assertThat(automaticos.ajustes(WS).hayLogo()).isTrue();
+
+        video.setSubtitulosEstado(SubtitulosAutomaticos.ESPERANDO);
+        automaticos.guardar(WS, new SubtitulosAutomaticos.Ajustes(false, null, null, null, true, null));
+        assertThat(espacio.getRecorteAuto()).isFalse();
+        automaticos.procesar(video.getId());
+        verify(subtitulos).pedirEdicion(eq(video.getId()), eq(WS), any(), any(), eq(false), eq(null), eq(null),
+                eq("https://cdn/logo.png"));
+    }
+
+    @Test
+    @DisplayName("Sin logo en la marca, el ajuste encendido no hace nada y la ventana lo dice")
+    void sinLogo() {
+        espacio.setSubtitulosAuto(false);
+        espacio.setRecorteAuto(false);
+        espacio.setLogoVideos(true);
+        automaticos.procesar(video.getId());
+        verify(subtitulos, never()).pedirEdicion(any(), any(), any(), any(), org.mockito.ArgumentMatchers.anyBoolean(),
+                any(), any(), any());
+        assertThat(automaticos.ajustes(WS).hayLogo()).isFalse();
     }
 }

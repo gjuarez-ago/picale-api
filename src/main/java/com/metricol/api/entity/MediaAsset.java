@@ -152,6 +152,15 @@ public class MediaAsset {
     private String recorteNota;
 
     /**
+     * La huella del contenido que calcula la app al subir (SHA-256 de tamaño,
+     * principio, medio y final del archivo). Reconoce el mismo archivo aunque
+     * se llame distinto, y no confunde dos distintos que pesan lo mismo.
+     * Nulo en lo subido antes de la huella o desde la web.
+     */
+    @Column(length = 64)
+    private String huellaArchivo;
+
+    /**
      * Lo que la IA vio en este archivo, en una frase.
      *
      * <p>Vive aquí y no en una cache en memoria porque así se analiza UNA vez

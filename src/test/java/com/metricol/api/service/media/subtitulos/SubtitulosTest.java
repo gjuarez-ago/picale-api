@@ -47,6 +47,22 @@ class SubtitulosTest {
     }
 
     @Test
+    @DisplayName("Voz con música debajo: 'quizá no habla nadie' pero lo escribió seguro, se queda")
+    void vozConMusicaSeQueda() {
+        // Los números reales del video 10 (2 nov 2026): perdía sus primeros 25 s de subtítulos.
+        Map<String, Object> respuesta = Map.of(
+                "segments", List.of(
+                        Map.of("start", 1.5, "end", 6.4, "text", " Pierdes clientes", "no_speech_prob", 0.64,
+                                "avg_logprob", -0.25),
+                        Map.of("start", 8.0, "end", 9.0, "text", " Mmm", "no_speech_prob", 0.64,
+                                "avg_logprob", -1.4)),
+                "words", List.of(palabra("Pierdes", 1.5, 2.0), palabra("clientes", 2.0, 2.6),
+                        palabra("Mmm", 8.2, 8.6)));
+        assertThat(LecturaDeWhisper.palabras(respuesta)).extracting(Palabra::texto)
+                .containsExactly("Pierdes", "clientes");
+    }
+
+    @Test
     @DisplayName("Las frases cortan en las pausas y en lo que se lee de un vistazo")
     void agrupaEnFrases() {
         List<Palabra> palabras = List.of(new Palabra("Hola", 0, 0.3), new Palabra("amigos", 0.3, 0.8),

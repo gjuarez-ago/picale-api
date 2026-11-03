@@ -96,6 +96,37 @@ class EditarVideoTest {
     }
 
     @Test
+    @DisplayName("Con logo: se pega arriba en una sola pasada con subtítulos y música; donde no hay logo, el video no cambia")
+    void conLogo() throws Exception {
+        java.awt.image.BufferedImage capa = new java.awt.image.BufferedImage(320, 240,
+                java.awt.image.BufferedImage.TYPE_INT_ARGB);
+        java.awt.Graphics2D g = capa.createGraphics();
+        g.setColor(java.awt.Color.GREEN);
+        g.fillRect(250, 10, 60, 40);
+        g.dispose();
+        Path logo = carpeta.resolve("logo.png");
+        javax.imageio.ImageIO.write(capa, "png", logo.toFile());
+        Path sinLogo = carpeta.resolve("sin-logo.mp4");
+        Path salida = carpeta.resolve("con-logo.mp4");
+        assertThat(ffmpeg.editarVideo(video(true).toString(), null, cancion(), null, 0.25, 0, 6, true, sinLogo))
+                .isTrue();
+        assertThat(ffmpeg.editarVideo(video(true).toString(), null, cancion(), logo, 0.25, 0, 6, true, salida))
+                .isTrue();
+        assertThat(ffmpeg.tieneSonido(salida.toString())).isTrue();
+        assertThat(ffmpeg.medirVideo(salida.toString()).segundos()).isBetween(5.5, 6.5);
+        java.awt.image.BufferedImage cuadro = javax.imageio.ImageIO.read(
+                new java.io.ByteArrayInputStream(ffmpeg.cuadro(salida.toString(), 3, 320, 2)));
+        java.awt.image.BufferedImage antes = javax.imageio.ImageIO.read(
+                new java.io.ByteArrayInputStream(ffmpeg.cuadro(sinLogo.toString(), 3, 320, 2)));
+        int verde = cuadro.getRGB(280, 30);
+        assertThat((verde >> 8) & 0xFF).isGreaterThan(180);
+        assertThat((verde >> 16) & 0xFF).isLessThan(90);
+        int abajo = cuadro.getRGB(160, 200);
+        int abajoAntes = antes.getRGB(160, 200);
+        assertThat(Math.abs(((abajo >> 8) & 0xFF) - ((abajoAntes >> 8) & 0xFF))).isLessThan(40);
+    }
+
+    @Test
     @DisplayName("Los niveles salen cada décima: un tono suena, el silencio no")
     void niveles() throws Exception {
         double[] tono = ffmpeg.nivelesDeAudio(video(true).toString(), 600);

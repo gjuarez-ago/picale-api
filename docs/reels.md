@@ -263,6 +263,22 @@ subtítulos y en una sola pasada de ffmpeg (`FfmpegImagen.editarVideo`):
 - El original nunca se toca; `musicaFondo` dice en el original si se le puso
   (PUESTA) o si ya la traía (YA_TENIA).
 
+## Logo en los videos que se suben
+
+`Workspace.logoVideos` (apagado de entrada; se enciende en Contenido → ajustes,
+junto a Recortes). Va en la misma copia y la misma pasada de ffmpeg que los
+subtítulos y la música:
+
+- `LogoEnVideo` arma un PNG transparente del tamaño del video con el sello de
+  `SelloDeLogo.capaParaVideo`: solo en las esquinas de arriba (abajo van los
+  subtítulos y los botones de la red), la más limpia de un cuadro de en medio;
+  sin placa si se lee directo, con placa si no; 92% de opacidad.
+- ffmpeg lo pega con `overlay` antes de los subtítulos, así que si se cruzan
+  se lee lo que se dice.
+- Sin logo, o si el «logo» es una foto (`RevisorDeLogo`), no se pone nada y la
+  ventana de ajustes pide subirlo. Si al hacer la copia no se puede preparar,
+  el video sale sin logo pero con lo demás.
+
 ## Riesgos y decisiones pendientes
 
 - La memoria pico local fue mayor de lo anticipado. No aumentar workers sin
