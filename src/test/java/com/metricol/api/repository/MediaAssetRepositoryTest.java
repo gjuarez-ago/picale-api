@@ -13,6 +13,9 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.test.context.ActiveProfiles;
 import org.springframework.test.context.TestPropertySource;
+import org.springframework.transaction.PlatformTransactionManager;
+import org.springframework.transaction.TransactionDefinition;
+import org.springframework.transaction.support.TransactionTemplate;
 
 import com.metricol.api.config.TenantIdentifierResolver;
 import com.metricol.api.entity.MediaAsset;
@@ -68,6 +71,9 @@ class MediaAssetRepositoryTest {
 
     @Autowired
     private WorkspaceRepository workspaces;
+
+    @Autowired
+    private PlatformTransactionManager transacciones;
 
     /** Todo lo de esta prueba pasa dentro del workspace de arriba. */
     private void enElWorkspace(Runnable accion) {
@@ -439,6 +445,34 @@ class MediaAssetRepositoryTest {
 
             assertThat(versionesViejas())
                     .doesNotContain(publicada.getId().toString(), dePortada.getId().toString());
+        });
+    }
+
+    @Test
+    @DisplayName("Dos tareas en el mismo video: la que guarda al final no borra lo que la otra escribió")
+    void guardarNoPisaLoDeOtraTarea() {
+        enElWorkspace(() -> {
+            MediaAsset video = subir("carrera.mp4");
+            TransactionTemplate portada = new TransactionTemplate(transacciones);
+            TransactionTemplate aparte = new TransactionTemplate(transacciones);
+            aparte.setPropagationBehavior(TransactionDefinition.PROPAGATION_REQUIRES_NEW);
+
+            // Como MiniaturaDeVideo: lee el video, tarda, y guarda su portada. Mientras
+            // tanto los subtítulos guardan la transcripción (3 nov 2026, video 114023).
+            portada.executeWithoutResult(t -> {
+                MediaAsset leido = mediaAssets.findById(video.getId()).orElseThrow();
+                aparte.executeWithoutResult(t2 -> {
+                    MediaAsset otro = mediaAssets.findById(video.getId()).orElseThrow();
+                    otro.setTranscripcion("[{\"texto\":\"Hola\",\"inicio\":0.0,\"fin\":0.4}]");
+                    mediaAssets.save(otro);
+                });
+                leido.setThumbnailUrl("https://cdn.test/derivados/miniaturas/carrera.jpg");
+                mediaAssets.save(leido);
+            });
+
+            MediaAsset final_ = mediaAssets.findById(video.getId()).orElseThrow();
+            assertThat(final_.getThumbnailUrl()).endsWith("carrera.jpg");
+            assertThat(final_.getTranscripcion()).contains("Hola");
         });
     }
 }

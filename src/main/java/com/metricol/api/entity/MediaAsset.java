@@ -4,6 +4,7 @@ import java.time.LocalDateTime;
 import java.util.UUID;
 
 import org.hibernate.annotations.CreationTimestamp;
+import org.hibernate.annotations.DynamicUpdate;
 import org.hibernate.annotations.TenantId;
 
 import com.metricol.api.enums.EtapaAgente;
@@ -24,6 +25,11 @@ import lombok.Getter;
 import lombok.NoArgsConstructor;
 import lombok.Setter;
 
+// Cada guardado escribe solo lo que cambio. Varias tareas trabajan el mismo video a la vez
+// (portada, transcripcion, recorte, agente) y sin esto la que guardaba al final reescribia
+// la fila entera con lo que habia leido al empezar: el 3 nov 2026 la portada borro la
+// transcripcion de un video recien sacada y salio sin subtitulos ni musica.
+@DynamicUpdate
 @Entity
 @Table(name = "media_assets", indexes = @jakarta.persistence.Index(name = "ix_media_generation_job", columnList = "generation_job_id,tenant_id"))
 @Getter
