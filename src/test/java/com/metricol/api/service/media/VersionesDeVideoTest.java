@@ -123,4 +123,23 @@ class VersionesDeVideoTest {
             assertThat(assets.findById(nueva.getId())).get().extracting(MediaAsset::getArchivedAt).isNull();
         });
     }
+
+    @Test
+    @DisplayName("Si la versión nueva aún no tiene portada, la propuesta no se queda con la de la vieja")
+    void versionNuevaSinPortadaTodavia() {
+        TenantIdentifierResolver.comoTenant(WS, () -> {
+            MediaAsset original = video("taller.mp4", null, false, null);
+            MediaAsset vieja = video("taller-vieja.mp4", original.getId(), true, null);
+            Post pendiente = propuesta(vieja, PostStatus.DRAFT);
+            pendiente.setThumbnailUrl(vieja.getThumbnailUrl());
+            posts.save(pendiente);
+            MediaAsset nueva = video("taller-nueva.mp4", original.getId(), true, null);
+            nueva.setThumbnailUrl(null);
+            assets.save(nueva);
+
+            versiones.alTerminarVersionFinal(nueva);
+
+            assertThat(posts.findById(pendiente.getId())).get().extracting(Post::getThumbnailUrl).isNull();
+        });
+    }
 }

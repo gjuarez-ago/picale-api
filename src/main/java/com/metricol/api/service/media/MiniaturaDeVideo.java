@@ -11,8 +11,10 @@ import org.springframework.transaction.annotation.Transactional;
 
 import com.metricol.api.config.MediaAdaptProperties;
 import com.metricol.api.entity.MediaAsset;
+import com.metricol.api.entity.Post;
 import com.metricol.api.enums.MediaType;
 import com.metricol.api.repository.MediaAssetRepository;
+import com.metricol.api.repository.PostRepository;
 import com.metricol.api.service.storage.R2StorageService;
 
 /**
@@ -73,18 +75,21 @@ public class MiniaturaDeVideo {
     private final R2StorageService storage;
     private final MediaAssetRepository repository;
     private final MejorCuadroDeVideo mejorCuadro;
+    private final PostRepository posts;
 
     public MiniaturaDeVideo(
             MediaAdaptProperties props,
             FfmpegImagen ffmpeg,
             R2StorageService storage,
             MediaAssetRepository repository,
-            MejorCuadroDeVideo mejorCuadro) {
+            MejorCuadroDeVideo mejorCuadro,
+            PostRepository posts) {
         this.props = props;
         this.ffmpeg = ffmpeg;
         this.storage = storage;
         this.repository = repository;
         this.mejorCuadro = mejorCuadro;
+        this.posts = posts;
     }
 
     /**
@@ -167,12 +172,30 @@ public class MiniaturaDeVideo {
             String clave = claveDe(asset.getStorageKey());
             asset.setThumbnailUrl(storage.subirBytes(clave, imagen, "image/jpeg"));
             repository.save(asset);
+            ponerEnPublicacionesSinPortada(asset);
 
             log.info("Miniatura lista para el video {} ({} bytes)", assetId, imagen.length);
         } catch (Exception ex) {
             log.warn("No se pudo sacar la miniatura del video {}: {}", assetId, ex.toString());
         } finally {
             FfmpegImagen.borrar(video);
+        }
+    }
+
+    /**
+     * Las publicaciones que ya usan este video y se quedaron sin portada: la
+     * del agente pasa a la versión final en cuanto termina, antes de que exista
+     * su miniatura.
+     */
+    private void ponerEnPublicacionesSinPortada(MediaAsset asset) {
+        if (asset.getUrl() == null) {
+            return;
+        }
+        for (Post p : posts.findQueUsan(asset.getUrl())) {
+            if (p.getThumbnailUrl() == null || p.getThumbnailUrl().isBlank()) {
+                p.setThumbnailUrl(asset.getThumbnailUrl());
+                posts.save(p);
+            }
         }
     }
 }

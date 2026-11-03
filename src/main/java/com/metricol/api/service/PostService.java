@@ -365,14 +365,18 @@ public class PostService {
         return pendientes.size();
     }
 
-    /** Cambia el archivo de las propuestas pendientes del agente: la versión nueva en lugar de la vieja. */
+    /**
+     * Cambia el archivo de las propuestas pendientes del agente: la versión nueva en lugar de la vieja.
+     *
+     * <p>La portada va con el video. Si la nueva aún no tiene (se saca unos segundos después de
+     * terminarla), la propuesta se queda sin portada hasta que {@code MiniaturaDeVideo} se la
+     * ponga: la de la versión vieja enseñaba otro video (2 nov 2026).
+     */
     public int cambiarArchivoDePropuestas(String viejo, String nuevo, String miniatura) {
         List<Post> pendientes = propuestasPendientesQueUsan(viejo);
         for (Post p : pendientes) {
             p.getMediaUrls().replaceAll(u -> viejo.equals(u) ? nuevo : u);
-            if (miniatura != null) {
-                p.setThumbnailUrl(miniatura);
-            }
+            p.setThumbnailUrl(miniatura);
             postRepository.save(p);
         }
         return pendientes.size();
