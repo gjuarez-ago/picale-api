@@ -174,4 +174,23 @@ class SubtitulosServiceTest {
         assertThat(SubtitulosService.llevaLogo(guardado.getValue())).isFalse();
         assertThat(SubtitulosService.logo(json, guardado.getValue())).isNull();
     }
+
+    @Test
+    @DisplayName("Si otra tarea borró la transcripción, la copia automática sale igual con subtítulos y se vuelve a poner")
+    void transcripcionBorradaEnMedio() {
+        // El 114023: Whisper ya lo escuchó, pero la fila llega sin transcripción.
+        List<Palabra> escuchadas = List.of(new Palabra("Hola", 0.1, 0.4), new Palabra("amigos", 0.4, 0.9));
+        assertThat(video.getTranscripcion()).isNull();
+
+        service.encargarEdicion(video.getId(), WS, EstiloSubtitulos.REBOTE, null, escuchadas, null, null, null);
+
+        ArgumentCaptor<MediaAsset> guardado = ArgumentCaptor.forClass(MediaAsset.class);
+        verify(assets).save(guardado.capture());
+        MediaAsset copia = guardado.getValue();
+        assertThat(copia.getFileName()).isEqualTo("reel-subtitulado.mp4");
+        assertThat(SubtitulosService.pintaSubtitulos(copia)).isTrue();
+        assertThat(copia.getSubtitulos()).contains("amigos");
+        verify(assets).ponerTranscripcionSiFalta(org.mockito.ArgumentMatchers.eq(video.getId()),
+                org.mockito.ArgumentMatchers.contains("amigos"));
+    }
 }

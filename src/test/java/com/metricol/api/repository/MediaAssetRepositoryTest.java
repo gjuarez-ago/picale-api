@@ -502,4 +502,17 @@ class MediaAssetRepositoryTest {
             assertThat(final_.getArchivedAt()).isNotNull();
         });
     }
+
+    @Test
+    @DisplayName("La transcripción borrada se vuelve a poner; una que ya está no se toca")
+    void transcripcionSoloSiFalta() {
+        enElWorkspace(() -> {
+            MediaAsset video = subir("sin-texto.mp4");
+            assertThat(mediaAssets.ponerTranscripcionSiFalta(video.getId(), "[\"vuelta\"]")).isEqualTo(1);
+            assertThat(mediaAssets.findById(video.getId()).orElseThrow().getTranscripcion()).isEqualTo("[\"vuelta\"]");
+
+            assertThat(mediaAssets.ponerTranscripcionSiFalta(video.getId(), "[\"otra\"]")).isZero();
+            assertThat(mediaAssets.findById(video.getId()).orElseThrow().getTranscripcion()).isEqualTo("[\"vuelta\"]");
+        });
+    }
 }

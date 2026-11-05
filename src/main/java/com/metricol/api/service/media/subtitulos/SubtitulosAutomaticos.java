@@ -237,8 +237,10 @@ public class SubtitulosAutomaticos {
             // no al revés. Al revés, esta marca pisaba el "listo" y el agente
             // no tomaba nunca el video.
             guardar(id, HACIENDO, intentos, fondo);
-            subtitulos.pedirEdicion(id, workspaceId, estiloDe(espacio), colorDe(espacio), ponerSubtitulos, cancion,
-                    recorte, logo);
+            // Las palabras de aquí, no las de la fila: si otra tarea la pisó
+            // mientras tanto, el video igual sale con sus subtítulos.
+            subtitulos.encargarEdicion(id, workspaceId, estiloDe(espacio), colorDe(espacio),
+                    ponerSubtitulos ? palabras : List.of(), cancion, recorte, logo);
         } catch (IllegalArgumentException ex) {
             // Muy largo, no se abre: no es un fallo, no hay qué poner.
             log.info("Video {} sin edición automática: {}", id, ex.getMessage());

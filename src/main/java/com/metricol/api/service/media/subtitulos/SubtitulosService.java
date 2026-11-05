@@ -198,6 +198,32 @@ public class SubtitulosService {
         if (conSubtitulos && palabras.isEmpty()) {
             throw new IllegalArgumentException("Primero saca el texto del video.");
         }
+        return editar(video, workspaceId, estilo, color, palabras, musica, recorte, logo);
+    }
+
+    /**
+     * La copia automática, con las palabras que se acaban de escuchar y no
+     * con las que haya en la fila en este momento. El 3 nov 2026 otra tarea
+     * borró la transcripción del 114023 entre la escucha y este paso; al
+     * releerla vacía, el video se soltó sin subtítulos ni música aunque
+     * Whisper sí lo había escuchado. Si falta en la fila, se vuelve a poner.
+     *
+     * @param subtitulos las palabras a pintar; vacía = sin subtítulos
+     */
+    public MediaAssetResponse encargarEdicion(UUID videoId, UUID workspaceId, EstiloSubtitulos estilo, Color color,
+            List<Palabra> subtitulos, MusicaDeCopia musica, RecorteAutomatico.Recorte recorte, String logo) {
+        MediaAsset video = videoDe(videoId, workspaceId);
+        List<Palabra> palabras = subtitulos == null ? List.of() : subtitulos;
+        if (!palabras.isEmpty() && leer(video.getTranscripcion()).isEmpty()
+                && assets.ponerTranscripcionSiFalta(video.getId(), escribir(palabras)) > 0) {
+            log.warn("La transcripción del video {} se había borrado: se volvió a poner.", video.getId());
+        }
+        return editar(video, workspaceId, estilo, color, palabras, musica, recorte, logo);
+    }
+
+    private MediaAssetResponse editar(MediaAsset video, UUID workspaceId, EstiloSubtitulos estilo, Color color,
+            List<Palabra> palabras, MusicaDeCopia musica, RecorteAutomatico.Recorte recorte, String logo) {
+        boolean conSubtitulos = !palabras.isEmpty();
         if (palabras.isEmpty() && musica == null && recorte == null && logo == null) {
             throw new IllegalArgumentException("No hay nada que ponerle a este video.");
         }

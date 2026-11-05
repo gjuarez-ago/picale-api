@@ -21,6 +21,16 @@ public interface MediaAssetRepository extends JpaRepository<MediaAsset, UUID> {
             + " and (m.processingStartedAt is null or m.processingStartedAt < :stale)")
     int claimVideoTrim(UUID id, LocalDateTime now, LocalDateTime stale);
 
+    /**
+     * Vuelve a poner la transcripción solo si alguien la borró; toca esa
+     * columna y nada más (ver {@code SubtitulosService.encargarEdicion}).
+     */
+    @Modifying
+    @Transactional
+    @Query(value = "update media_assets set transcripcion = :transcripcion"
+            + " where id = :id and (transcripcion is null or transcripcion = '')", nativeQuery = true)
+    int ponerTranscripcionSiFalta(UUID id, String transcripcion);
+
     /** Trabajos sin tomar o abandonados tras un reinicio, de todos los espacios. */
     @Query(value = """
             select cast(id as varchar), tenant_id
