@@ -28,6 +28,14 @@ public interface PostRepository extends JpaRepository<Post, UUID> {
      */
     List<Post> findByDeletedAtIsNullOrderByScheduledAtAscCreatedAtDesc();
 
+    /** Los últimos textos del espacio, el más nuevo primero: para que el siguiente no les repita la forma. */
+    @Query("""
+            select p.caption from Post p
+            where p.deletedAt is null and p.caption is not null and p.caption <> ''
+            order by p.createdAt desc
+            """)
+    List<String> ultimosTextos(org.springframework.data.domain.Pageable pagina);
+
     /** Las propuestas del agente que esperan aprobación, en el orden en que saldrían. */
     @Query("""
             select p from Post p

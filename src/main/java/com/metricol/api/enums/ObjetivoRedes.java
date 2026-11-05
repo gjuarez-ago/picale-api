@@ -17,7 +17,10 @@ public enum ObjetivoRedes {
 
     MAS_CLIENTES(
             "Conseguir mas clientes",
-            "atraer clientes nuevos: cierra invitando a escribir, visitar o preguntar"),
+            // "Cierra invitando a escribir" a secas hacía que TODAS cerraran con
+            // la misma fórmula de WhatsApp (4 nov 2026): se lee como robot.
+            "atraer clientes nuevos: que se entienda que se puede contratar; invitar a escribir solo"
+                    + " cuando el texto lo pide, con palabras propias y distintas cada vez, nunca como formula fija"),
 
     VENDER_MAS(
             "Vender mas",

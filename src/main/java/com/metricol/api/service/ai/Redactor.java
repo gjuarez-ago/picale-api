@@ -221,6 +221,22 @@ public class Redactor {
             Prueba antes de entregar: si quitas una frase y la publicacion
             sigue diciendo lo mismo, esa frase sobraba. Quitala.
 
+            QUE NO SUENE A PLANTILLA. Sus seguidores leen varias publicaciones
+            seguidas; si todas tienen la misma forma, se nota que las escribe
+            una maquina:
+            - No abras presentando la foto: nada de "Muestra nuestra...",
+              "Mira nuestra...", "Este montaje es un ejemplo...", "Ejemplo
+              de...", "Asi preparamos...", "Un vistazo a...". Abre con lo que
+              tiene de interesante.
+            - El llamado a escribir, cotizar o pedir NO va en todas. Cuando va,
+              una frase con palabras propias, no la formula "pide tu cotizacion
+              por WhatsApp" de siempre. El numero, una vez y solo si invitas.
+            - La ciudad no va en cada texto: solo cuando aporta algo.
+            - Nada de etiquetas al inicio de linea como "Consejo practico:" o
+              "Dato:": dilo como lo diria una persona.
+            - Si te pasan sus ultimos textos, el tuyo tiene que abrir y cerrar
+              distinto que todos ellos.
+
             Reglas que no se rompen:
             - Respeta el limite de caracteres de cada red. Es un limite duro.
             - Adaptar por red es cambiar el largo y la forma, no el fondo. En TikTok
@@ -307,17 +323,29 @@ public class Redactor {
              * pocas líneas: para que quien revisa no vuelva a dudar de esos temas.
              * Nulo si nunca rescató nada.
              */
-            String loQueSiVa) {
+            String loQueSiVa,
+            /**
+             * Sus últimos textos publicados o propuestos, para no repetirles la
+             * forma. Nulo si no hay. Sin esto cada publicación se escribía a
+             * ciegas y catorce seguidas salían con la misma apertura, la misma
+             * ciudad y el mismo "pide cotización por WhatsApp" (4 nov 2026).
+             */
+            List<String> recientes) {
 
         /** Sin lo rescatado: el que escribe no lo necesita. */
         public Negocio(String nombre, String giro, String ciudad, String descripcion, ObjetivoRedes objetivo,
                 MarcaDelNegocio marca, String aprendido) {
-            this(nombre, giro, ciudad, descripcion, objetivo, marca, aprendido, null);
+            this(nombre, giro, ciudad, descripcion, objetivo, marca, aprendido, null, null);
         }
 
         /** El mismo negocio con lo que el dueño ya dijo que sí va. */
         public Negocio conLoQueSiVa(String siVa) {
-            return new Negocio(nombre, giro, ciudad, descripcion, objetivo, marca, aprendido, siVa);
+            return new Negocio(nombre, giro, ciudad, descripcion, objetivo, marca, aprendido, siVa, recientes);
+        }
+
+        /** El mismo negocio con sus últimos textos, para no repetirles la forma. */
+        public Negocio conRecientes(List<String> textos) {
+            return new Negocio(nombre, giro, ciudad, descripcion, objetivo, marca, aprendido, loQueSiVa, textos);
         }
 
         /** Sin perfil de marca: lo que se sabía antes de que existiera. */
@@ -574,7 +602,7 @@ public class Redactor {
 
     /** Las etiquetas de estructura que el modelo a veces escribe al inicio de una linea. */
     private static final java.util.regex.Pattern ETIQUETA = java.util.regex.Pattern.compile(
-            "^(?:gancho|cuerpo|cierre|remate|hook|cta|llamado a la acci[oó]n|lo concreto|tip(?: pr[aá]ctico)?)\\s*:\\s*",
+            "^(?:gancho|cuerpo|cierre|remate|hook|cta|llamado a la acci[oó]n|lo concreto|tip(?: pr[aá]ctico)?|consejo(?: pr[aá]ctico)?|dato(?: curioso)?)\\s*:\\s*",
             java.util.regex.Pattern.CASE_INSENSITIVE | java.util.regex.Pattern.UNICODE_CASE);
 
     /** Un guion que habla DE la publicacion en lugar de ser la publicacion. */
@@ -708,6 +736,15 @@ public class Redactor {
         }
         // Sale de cómo les fue a sus publicaciones, no de una suposición: pesa más que la intuición.
         agregar(sb, "Lo que le ha funcionado en sus redes", negocio.aprendido());
+        if (negocio.recientes() != null && !negocio.recientes().isEmpty()) {
+            sb.append("- Sus ultimos textos (los mismos seguidores los leyeron; NO repitas su forma: ni como")
+                    .append(" abren, ni como cierran, ni el mismo llamado a escribir, ni la ciudad otra vez):\n");
+            for (String t : negocio.recientes()) {
+                if (t == null || t.isBlank()) continue;
+                String una = t.strip().replaceAll("\\s+", " ");
+                sb.append("  · ").append(una.length() > 220 ? una.substring(0, 220) + "…" : una).append('\n');
+            }
+        }
         return sb.toString();
     }
 

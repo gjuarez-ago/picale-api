@@ -251,6 +251,26 @@ class RedactorTest {
     }
 
     @Test
+    @DisplayName("Sus ultimos textos llegan al prompt para no repetirles la forma; 'Consejo practico:' se quita")
+    void noRepiteLaForma() {
+        // Las Delicias, 4 nov 2026: catorce seguidas con la misma apertura y el mismo cierre.
+        when(client.completeJson(any(), anyString(), anyString())).thenReturn(
+                "{\"guion\": \"x\", \"textos\": {\"INSTAGRAM\": \"Las salsas van aparte.\\n\\nConsejo práctico: así no se aguada.\"}}");
+
+        Redactor.Borrador b = redactor.redactar("haz una publicacion con esta foto", List.of(),
+                List.of(Platform.INSTAGRAM),
+                new Redactor.Negocio("Las Delicias", "Banquetes", "Manzanillo", null, ObjetivoRedes.MAS_CLIENTES)
+                        .conRecientes(List.of("Muestra nuestra taquiza en cazuelas.\nPide tu cotización por WhatsApp.")));
+
+        ArgumentCaptor<String> prompt = ArgumentCaptor.forClass(String.class);
+        verify(client).completeJson(any(), anyString(), prompt.capture());
+        assertThat(prompt.getValue())
+                .contains("Sus ultimos textos")
+                .contains("Muestra nuestra taquiza en cazuelas. Pide tu cotización por WhatsApp.");
+        assertThat(b.textos().get(Platform.INSTAGRAM)).isEqualTo("Las salsas van aparte.\n\nAsí no se aguada.");
+    }
+
+    @Test
     @DisplayName("Sin datos del negocio no se cuela una cabecera vacia")
     void sinNegocioNoHayCabecera() {
         when(client.completeJson(any(), anyString(), anyString()))

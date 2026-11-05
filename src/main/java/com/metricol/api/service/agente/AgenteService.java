@@ -2740,8 +2740,12 @@ public class AgenteService {
     private Redactor.Negocio negocio(Workspace w) {
         return new Redactor.Negocio(w.getName(), w.getGiro(), w.getCiudad(), w.getDescripcion(), w.getObjetivo(),
                 MarcaDelNegocio.delEspacio(w),
-                com.metricol.api.service.metricas.LoQueFunciona.paraElRedactor(loQueFunciona.de(w.getId())));
+                com.metricol.api.service.metricas.LoQueFunciona.paraElRedactor(loQueFunciona.de(w.getId())))
+                .conRecientes(posts.ultimosTextos(PageRequest.of(0, TEXTOS_RECIENTES)));
     }
+
+    /** Cuántos de sus últimos textos ve quien escribe: los que un seguidor alcanza a leer seguidos. */
+    private static final int TEXTOS_RECIENTES = 6;
 
     /** Lo que se le encarga a quien escribe: un objetivo, no un texto que mejorar. */
     static String encargo(RevisorDeMarca.Revision r) {
