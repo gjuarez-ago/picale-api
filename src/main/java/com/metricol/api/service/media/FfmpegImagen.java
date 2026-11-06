@@ -574,12 +574,22 @@ public class FfmpegImagen {
             // normalize=0: amix no le baja el volumen a la voz por sumar otra pista.
             // Bajo una voz, la voz también se iguala (-14 LUFS): la música va a un
             // nivel fijo, y un video de WhatsApp grabado bajito (-26) la tenía tan
-            // fuerte como la voz. Así queda siempre unos 18 dB por debajo.
-            String voz = volumen < 1 ? "loudnorm=I=-14:TP=-1.5:LRA=11," : "";
-            String filtro = conSonido
-                    ? pista + "[m];[0:a]" + voz + "aresample=48000,aformat=sample_fmts=fltp:channel_layouts=stereo[v];"
-                            + "[v][m]amix=inputs=2:duration=first:normalize=0,alimiter=limit=0.95[a]"
-                    : pista + "[a]";
+            // fuerte como la voz.
+            boolean bajoVoz = volumen < 1;
+            String voz = bajoVoz ? "loudnorm=I=-14:TP=-1.5:LRA=11," : "";
+            String sonido = "[0:a]" + voz + "aresample=48000,aformat=sample_fmts=fltp:channel_layouts=stereo";
+            // Bajo una voz la música se agacha sola mientras se habla y vuelve en
+            // las pausas, como lo mezcla un editor: a nivel fijo, o tapaba la voz
+            // o en las pausas no se oía (6 nov 2026). Medido con el volumen de
+            // MUSICA_QUE_SE_AGACHA: ~17 dB bajo la voz al hablar, ~8 dB en pausas.
+            String filtro = !conSonido
+                    ? pista + "[a]"
+                    : bajoVoz
+                            ? pista + "[m];" + sonido + ",asplit=2[v][k];[k]highpass=f=120[kk];"
+                                    + "[m][kk]sidechaincompress=threshold=0.03:ratio=4:attack=40:release=700:knee=3[md];"
+                                    + "[v][md]amix=inputs=2:duration=first:normalize=0,alimiter=limit=0.95[a]"
+                            : pista + "[m];" + sonido + "[v];"
+                                    + "[v][m]amix=inputs=2:duration=first:normalize=0,alimiter=limit=0.95[a]";
             comando.addAll(List.of("-stream_loop", "-1", "-i", musica.toString()));
             filtros.add(filtro);
         }

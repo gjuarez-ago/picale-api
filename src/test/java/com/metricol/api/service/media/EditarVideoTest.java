@@ -136,14 +136,14 @@ class EditarVideoTest {
     }
 
     @Test
-    @DisplayName("Bajo una voz, la voz se iguala antes de mezclar; sin voz, el sonido original va tal cual")
+    @DisplayName("Bajo una voz, la voz se iguala y la música se agacha mientras se habla; sin voz, va tal cual")
     void igualaLaVoz() {
         java.nio.file.Path m = carpeta.resolve("m.mp3");
         java.nio.file.Path d = carpeta.resolve("d.mp4");
         String conVoz = String.join(" ", ffmpeg.comandoEditar("v.mp4", null, m, 0.25, 10, true, d));
-        assertThat(conVoz).contains("[0:a]loudnorm=I=-14");
+        assertThat(conVoz).contains("[0:a]loudnorm=I=-14", "sidechaincompress");
         String sinVoz = String.join(" ", ffmpeg.comandoEditar("v.mp4", null, m, 1, 10, true, d));
-        assertThat(sinVoz).doesNotContain("[0:a]loudnorm");
+        assertThat(sinVoz).doesNotContain("[0:a]loudnorm", "sidechaincompress");
     }
 
     @Test

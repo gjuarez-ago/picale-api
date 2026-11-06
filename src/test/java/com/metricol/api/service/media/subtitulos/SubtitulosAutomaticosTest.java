@@ -186,7 +186,7 @@ class SubtitulosAutomaticosTest {
                 org.mockito.ArgumentCaptor.forClass(SubtitulosService.MusicaDeCopia.class);
         verify(subtitulos).encargarEdicion(eq(video.getId()), eq(WS), eq(EstiloSubtitulos.REBOTE), eq(null), eq(HABLA),
                 cancion.capture(), eq(null), eq(null));
-        assertThat(cancion.getValue().volumen()).isEqualTo(FfmpegReelRenderer.MUSICA_BAJO_VOZ);
+        assertThat(cancion.getValue().volumen()).isEqualTo(FfmpegReelRenderer.MUSICA_QUE_SE_AGACHA);
         assertThat(video.getMusicaFondo()).isEqualTo(SubtitulosAutomaticos.MUSICA_PUESTA);
         assertThat(video.getSubtitulosEstado()).isEqualTo(SubtitulosAutomaticos.HACIENDO);
     }

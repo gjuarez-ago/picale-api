@@ -263,7 +263,7 @@ public class SubtitulosAutomaticos {
         ReelMusicCatalog.Selection elegida = catalogo.select(espacio.getGiro(), null, null, conVoz,
                 videoId + (ambiente == null ? "" : "|" + ambiente), ambiente);
         return elegida == null ? null : new SubtitulosService.MusicaDeCopia(elegida.track().id(),
-                conVoz ? FfmpegReelRenderer.MUSICA_BAJO_VOZ : FfmpegReelRenderer.MUSICA_SOLA);
+                conVoz ? FfmpegReelRenderer.MUSICA_QUE_SE_AGACHA : FfmpegReelRenderer.MUSICA_SOLA);
     }
 
     private void soltarSiNoHayCopia(MediaAsset video) {

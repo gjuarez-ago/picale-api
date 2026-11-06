@@ -32,6 +32,11 @@ public class FfmpegReelRenderer implements ReelRenderer {
      */
     public static final double MUSICA_SOLA = 1.0;
     public static final double MUSICA_BAJO_VOZ = 0.12;
+    /**
+     * En los videos que la gente sube, la música bajo la voz no va fija: se
+     * agacha sola mientras se habla (ver FfmpegImagen). Este es su nivel en las pausas.
+     */
+    public static final double MUSICA_QUE_SE_AGACHA = 0.40;
     static final int FPS = 30;
     private static final int TITLE_SECONDS = 3;
 
