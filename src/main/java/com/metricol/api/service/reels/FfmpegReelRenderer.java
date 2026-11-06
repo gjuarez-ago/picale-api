@@ -27,10 +27,11 @@ public class FfmpegReelRenderer implements ReelRenderer {
     /**
      * Volumen de la canción después de igualarla a -14 LUFS, lo que usan las
      * redes. Sin voz la música es todo el sonido y va completa; antes iba al
-     * 18% y en el teléfono casi no se oía. Con voz queda de fondo (~-26 LUFS).
+     * 18% y en el teléfono casi no se oía. Con voz queda de fondo (~-32 LUFS):
+     * al 25% (~-26) se sentía encima de la voz con canciones movidas (5 nov 2026).
      */
     public static final double MUSICA_SOLA = 1.0;
-    public static final double MUSICA_BAJO_VOZ = 0.25;
+    public static final double MUSICA_BAJO_VOZ = 0.12;
     static final int FPS = 30;
     private static final int TITLE_SECONDS = 3;
 

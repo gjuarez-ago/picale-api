@@ -574,7 +574,7 @@ public class FfmpegImagen {
             // normalize=0: amix no le baja el volumen a la voz por sumar otra pista.
             // Bajo una voz, la voz también se iguala (-14 LUFS): la música va a un
             // nivel fijo, y un video de WhatsApp grabado bajito (-26) la tenía tan
-            // fuerte como la voz. Así queda siempre unos 12 dB por debajo.
+            // fuerte como la voz. Así queda siempre unos 18 dB por debajo.
             String voz = volumen < 1 ? "loudnorm=I=-14:TP=-1.5:LRA=11," : "";
             String filtro = conSonido
                     ? pista + "[m];[0:a]" + voz + "aresample=48000,aformat=sample_fmts=fltp:channel_layouts=stereo[v];"

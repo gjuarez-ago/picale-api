@@ -863,6 +863,11 @@ public class MediaService {
         if (tipo == null || !tipo.startsWith("image/")) {
             throw new IllegalArgumentException("El logotipo tiene que ser una imagen.");
         }
+        // Un SVG se guardaba como si fuera foto y ni los videos ni los diseños
+        // lo saben leer: el logo nunca salía (5 nov 2026).
+        if (tipo.contains("svg")) {
+            throw new IllegalArgumentException("Sube tu logotipo en PNG o JPG. Ese formato no se puede poner en tus fotos ni videos.");
+        }
         return upload(file, workspaceId, R2StorageService.CARPETA_LOGOS);
     }
 

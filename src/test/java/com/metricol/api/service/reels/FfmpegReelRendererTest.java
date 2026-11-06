@@ -49,7 +49,7 @@ class FfmpegReelRendererTest {
                 List.of(temp.resolve("a.jpg")), 20, null, temp, temp.resolve("reel.mp4"),
                 temp.resolve("music.mp3"), FfmpegReelRenderer.MUSICA_BAJO_VOZ);
 
-        assertThat(String.join(" ", command)).contains("loudnorm=I=-14", "volume=0.250000");
+        assertThat(String.join(" ", command)).contains("loudnorm=I=-14", "volume=0.120000");
     }
 
     @Test

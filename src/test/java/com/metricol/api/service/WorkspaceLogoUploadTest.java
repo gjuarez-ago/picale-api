@@ -4,6 +4,8 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.eq;
+import static org.mockito.Mockito.never;
+import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
 import java.util.ArrayList;
@@ -195,5 +197,21 @@ class WorkspaceLogoUploadTest {
         assertThatThrownBy(() -> membresias.subirLogo(intruso, gimnasio.id(),
                 new MockMultipartFile("file", "logo.png", "image/png", new byte[] { 1 })))
                 .isInstanceOf(RuntimeException.class);
+    }
+
+    @Test
+    @DisplayName("un SVG no se acepta como logotipo: no se puede poner en fotos ni videos")
+    void svgNoSeAcepta() {
+        Workspace taqueria = workspace("Taqueria A");
+        User agencia = usuario(taqueria);
+        MiWorkspaceResponse gimnasio = membresias.crear(agencia, "Gimnasio B");
+        workspacesCreados.add(gimnasio.id());
+
+        comoSesionDe(agencia);
+        assertThatThrownBy(() -> membresias.subirLogo(agencia, gimnasio.id(),
+                new MockMultipartFile("file", "logo.svg", "image/svg+xml", "<svg/>".getBytes())))
+                .isInstanceOf(IllegalArgumentException.class)
+                .hasMessageContaining("PNG o JPG");
+        verify(storage, never()).upload(any(), any(), any());
     }
 }
