@@ -69,6 +69,9 @@ public enum AiOperacion {
     /** Comparar la foto mejorada con la original: que no se haya inventado nada. */
     AGENTE_VERIFICAR_FOTO,
 
+    /** Confirmar si dos fotos que la huella da por parecidas son de verdad la misma. */
+    AGENTE_COMPARAR,
+
     /** Deducir cómo trabaja el negocio (sus rasgos), una vez por espacio. */
     AGENTE_PERFILAR,
 

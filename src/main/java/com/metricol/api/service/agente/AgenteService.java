@@ -118,6 +118,7 @@ public class AgenteService {
     private final AiQuotaGuard cupoIa;
     private final LogoSobreFoto logo;
     private final HuellaDeImagen huellas;
+    private final ComparadorDeFotos comparador;
     private final CampaignImageService generador;
     private final CreditService creditos;
     private final RetoqueDeFoto retoque;
@@ -200,7 +201,9 @@ public class AgenteService {
             com.metricol.api.service.ai.PerfiladorDelNegocio perfilador,
             com.metricol.api.service.ai.RevisorDeLogo revisorDeLogo,
             ReelRenderService reels, ReelRenderJobRepository reelJobs,
-            RendimientoPorRed rendimientoPorRed, DecisionesDeRuteo decisionesDeRuteo) {
+            RendimientoPorRed rendimientoPorRed, DecisionesDeRuteo decisionesDeRuteo,
+            ComparadorDeFotos comparador) {
+        this.comparador = comparador;
         this.revisorDeLogo = revisorDeLogo;
         this.presupuesto = presupuesto;
         this.perfilador = perfilador;
@@ -2574,14 +2577,34 @@ public class AgenteService {
             asset.setHuella(h);
             assets.guardarLoDelAgente(asset);
         }
+        int comparadas = 0;
         for (MediaAsset otra : assets.yaTrabajadasConHuella()) {
             // Foto con foto y video con video: el cuadro de un video puede parecerse a una foto suya.
-            if (!otra.getId().equals(asset.getId()) && otra.getType() == asset.getType()
-                    && HuellaDeImagen.parecidas(h, otra.getHuella())) {
+            if (otra.getId().equals(asset.getId()) || otra.getType() != asset.getType()
+                    || !HuellaDeImagen.parecidas(h, otra.getHuella())) {
+                continue;
+            }
+            if (mismoArchivo(asset, otra) || asset.getType() != com.metricol.api.enums.MediaType.IMAGE) {
+                return otra;
+            }
+            // La huella no lee texto: los flyers de una plantilla (otro paquete,
+            // otro precio) le salen iguales. Que lo confirme quien sí lee.
+            if (comparadas++ >= MAX_COMPARACIONES) {
+                return null;
+            }
+            if (comparador.misma(asset.getUrl(), otra.getUrl())) {
                 return otra;
             }
         }
         return null;
+    }
+
+    /** Cuántas parecidas se le enseñan a la IA por foto: una tanda de flyers no gasta sin fin. */
+    private static final int MAX_COMPARACIONES = 6;
+
+    /** El mismo archivo, byte por byte: la huella del contenido que manda quien sube. */
+    private static boolean mismoArchivo(MediaAsset a, MediaAsset b) {
+        return a.getHuellaArchivo() != null && a.getHuellaArchivo().equals(b.getHuellaArchivo());
     }
 
     /** Cuántas rescatadas se le cuentan al revisor: las últimas, que es lo que el dueño tiene en mente. */

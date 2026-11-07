@@ -107,6 +107,10 @@ class AgenteServiceTest {
     @MockitoBean
     private com.metricol.api.service.media.HuellaDeImagen huellas;
 
+    /** Por defecto (false) dos parecidas son distintas: cada prueba de repetidas dice que sí. */
+    @MockitoBean
+    private ComparadorDeFotos comparador;
+
     @MockitoBean
     private com.metricol.api.service.campaign.CampaignImageService generador;
 
@@ -701,6 +705,7 @@ class AgenteServiceTest {
             MediaAsset primera = foto("toma-1.jpg");
             MediaAsset segunda = foto("toma-2.jpg");
             when(huellas.de(any(MediaAsset.class))).thenReturn(0x0F0F0F0F0F0F0F0FL);
+            when(comparador.misma(anyString(), anyString())).thenReturn(true);
             revisaComo(RevisorDeMarca.Veredicto.VA, "va");
 
             agente.vuelta(ws.getId());
@@ -784,6 +789,52 @@ class AgenteServiceTest {
             agente.vuelta(ws.getId());
 
             assertThat(posts.propuestasDelAgente()).hasSize(2);
+        });
+    }
+
+    @Test
+    @DisplayName("flyers de una plantilla con la misma huella: si la vista dice que son distintos, ninguno se descarta")
+    void flyersConLaMismaHuella() {
+        enElWorkspace(() -> {
+            conInstagram();
+            agente.encender(ws.getId(), true);
+            MediaAsset pollo = foto("paquete-pollo.jpg");
+            MediaAsset lasagna = foto("paquete-lasagna.jpg");
+            // A 9×8 píxeles el texto no se ve: misma plantilla, misma huella.
+            when(huellas.de(any(MediaAsset.class))).thenReturn(0x0F0F0F0F0F0F0F0FL);
+            when(comparador.misma(anyString(), anyString())).thenReturn(false);
+            revisaComo(RevisorDeMarca.Veredicto.VA, "va");
+
+            agente.vuelta(ws.getId());
+
+            assertThat(List.of(pollo, lasagna)).allSatisfy(original ->
+                    assertThat(assets.findById(original.getId())).get()
+                            .extracting(MediaAsset::getAgenteEtapa).isNotEqualTo(EtapaAgente.DESCARTADA));
+            org.mockito.Mockito.verify(comparador, org.mockito.Mockito.atLeastOnce()).misma(anyString(), anyString());
+        });
+    }
+
+    @Test
+    @DisplayName("el mismo archivo subido dos veces se descarta sin preguntarle a la IA")
+    void mismoArchivoSinComparar() {
+        enElWorkspace(() -> {
+            conInstagram();
+            agente.encender(ws.getId(), true);
+            MediaAsset uno = foto("pegada-1.png");
+            MediaAsset dos = foto("pegada-2.png");
+            for (MediaAsset a : List.of(uno, dos)) {
+                a.setHuellaArchivo("abc123");
+                assets.save(a);
+            }
+            when(huellas.de(any(MediaAsset.class))).thenReturn(0x0F0F0F0F0F0F0F0FL);
+            revisaComo(RevisorDeMarca.Veredicto.VA, "va");
+
+            agente.vuelta(ws.getId());
+
+            assertThat(List.of(assets.findById(uno.getId()).orElseThrow(), assets.findById(dos.getId()).orElseThrow()))
+                    .extracting(MediaAsset::getAgenteEtapa)
+                    .containsExactlyInAnyOrder(EtapaAgente.PROPUESTA, EtapaAgente.DESCARTADA);
+            org.mockito.Mockito.verify(comparador, org.mockito.Mockito.never()).misma(anyString(), anyString());
         });
     }
 
