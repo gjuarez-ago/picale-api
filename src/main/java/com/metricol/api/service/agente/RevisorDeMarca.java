@@ -219,8 +219,13 @@ public class RevisorDeMarca {
               aspecto de su campo distinto a lo que mas vende no es motivo.
             - Derechos de autor: marca de agua de un banco de imagenes o foto
               que parece bajada de internet.
-            - Privacidad: menores de edad identificables, telefonos, chats,
-              placas de coche, domicilios particulares.
+            - Privacidad: menores de edad identificables, telefonos o datos de
+              personas (en chats, capturas, conversaciones), placas de coche,
+              domicilios particulares.
+            Lo que el negocio pone de si mismo en su propia publicidad NO es
+            motivo de Observacion: su telefono o WhatsApp para pedidos o
+            reservaciones, su direccion, su pagina, sus precios y paquetes.
+            Un flyer con eso es justo lo que el negocio quiere que se vea: VA.
             - Contenido regulado: alcohol, medicamentos, "antes y despues" de
               salud o estetica, promesas de rendimiento o de inversion.
             - Una promocion con fecha que ya paso.
@@ -229,7 +234,9 @@ public class RevisorDeMarca {
             competencia, o es algo que la marca pide evitar.
 
             Si la marca dice poco de si misma, nunca DESCARTADA: usa OBSERVACION.
-            No inventes datos. El motivo habla de tu a tu con el dueno.
+            No inventes datos ni reglas: lo que la marca pide evitar es solo lo
+            que dice "Lo que pide evitar"; si no aparece, no pide evitar nada.
+            El motivo habla de tu a tu con el dueno.
             """;
 
     private final OpenAiClient client;
@@ -272,6 +279,10 @@ public class RevisorDeMarca {
         linea(t, "Como trabaja", m.comoTrabajaEs());
         linea(t, "Su historia", m.historia());
         linea(t, "De que quiere hablar en redes", m.pilaresEs());
+        // Para reconocer sus propios datos en un flyer y no tomarlos por privados.
+        linea(t, "Su WhatsApp o telefono", m.whatsapp());
+        linea(t, "Su pagina", m.web());
+        linea(t, "Su direccion", m.direccion());
         if (m.conVidaPersonal()) {
             t.append("El dueno quiere contar su historia y motivar: una foto suya (un viaje, un logro, un momento ")
                     .append("personal) VA aunque no salga el negocio; con ella se publica una reflexion o una frase ")
