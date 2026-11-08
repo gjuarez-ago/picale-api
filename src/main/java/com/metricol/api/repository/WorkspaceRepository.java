@@ -11,6 +11,16 @@ import com.metricol.api.entity.Workspace;
 
 public interface WorkspaceRepository extends JpaRepository<Workspace, UUID> {
 
+    /**
+     * Quita el CHECK viejo de {@code workspaces.objetivo}: la base lo creó con los
+     * cinco objetivos de entonces y {@code ddl-auto=update} no lo actualiza, así
+     * que guardar uno nuevo fallaría solo en producción. Quien valida es el enum.
+     */
+    @org.springframework.data.jpa.repository.Modifying
+    @org.springframework.transaction.annotation.Transactional
+    @Query(value = "alter table workspaces drop constraint if exists workspaces_objetivo_check", nativeQuery = true)
+    void quitarCheckDeObjetivo();
+
     @org.springframework.data.jpa.repository.Lock(jakarta.persistence.LockModeType.PESSIMISTIC_WRITE)
     @Query("select w from Workspace w where w.id = :id")
     java.util.Optional<Workspace> findLockedById(@Param("id") UUID id);

@@ -116,9 +116,7 @@ public class BrandService {
         if (pedido.getDescripcion() != null) {
             w.setDescripcion(obligatorio(pedido.getDescripcion(), 500, "La descripción del negocio"));
         }
-        if (pedido.getObjetivo() != null) {
-            w.setObjetivo(pedido.getObjetivo());
-        }
+        w.ponerObjetivosDe(pedido.getObjetivos(), pedido.getObjetivo());
 
         BrandProfile antes = w.getBrandProfile() == null ? BrandProfile.VACIO : w.getBrandProfile();
         BrandProfile perfil = new BrandProfile(
@@ -172,7 +170,8 @@ public class BrandService {
 
     private static BrandResponse respuesta(Workspace w) {
         BrandProfile p = w.getBrandProfile() == null ? BrandProfile.VACIO : w.getBrandProfile();
-        return new BrandResponse(w.getGiro(), w.getCiudad(), w.getDescripcion(), w.getObjetivo(), p.queVende(),
+        return new BrandResponse(w.getGiro(), w.getCiudad(), w.getDescripcion(),
+                w.getObjetivo() == null ? null : w.getObjetivo().getLegado(), p.queVende(),
                 p.publico(), p.tono() == null ? List.of() : p.tono(), p.evitar(), p.whatsapp(), p.web(), p.direccion(),
                 completitud(w),
                 w.rasgos() == null ? null : w.rasgos().stream().map(Enum::name).toList(),
@@ -180,7 +179,8 @@ public class BrandService {
                 p.historia(), p.valores(), p.frases(), p.pilares() == null ? List.of() : p.pilares(),
                 Boolean.TRUE.equals(w.getLogoEsFoto()),
                 w.getMarcaColores() == null || w.getMarcaColores().isBlank() ? List.of()
-                        : List.of(w.getMarcaColores().split(",")));
+                        : List.of(w.getMarcaColores().split(",")),
+                w.objetivos());
     }
 
     // ------------------------------------------------------------------ limpieza

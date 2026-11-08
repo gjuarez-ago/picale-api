@@ -198,7 +198,8 @@ public class WorkspaceMembershipService {
                 .giro(limpio(datos.getGiro()))
                 .ciudad(limpio(datos.getCiudad()))
                 .descripcion(limpio(datos.getDescripcion()))
-                .objetivo(datos.getObjetivo())
+                .objetivo(com.metricol.api.enums.ObjetivoRedes.principal(com.metricol.api.enums.ObjetivoRedes.elegidos(datos.getObjetivos(), datos.getObjetivo())))
+                .objetivosElegidos(com.metricol.api.enums.ObjetivoRedes.escribir(com.metricol.api.enums.ObjetivoRedes.elegidos(datos.getObjetivos(), datos.getObjetivo())))
                 .organization(organizacion)
                 .build());
         // La membresía del creador, aunque administre la organización y ya
@@ -230,7 +231,8 @@ public class WorkspaceMembershipService {
                 .giro(limpio(datos.getGiro()))
                 .ciudad(limpio(datos.getCiudad()))
                 .descripcion(limpio(datos.getDescripcion()))
-                .objetivo(datos.getObjetivo())
+                .objetivo(com.metricol.api.enums.ObjetivoRedes.principal(com.metricol.api.enums.ObjetivoRedes.elegidos(datos.getObjetivos(), datos.getObjetivo())))
+                .objetivosElegidos(com.metricol.api.enums.ObjetivoRedes.escribir(com.metricol.api.enums.ObjetivoRedes.elegidos(datos.getObjetivos(), datos.getObjetivo())))
                 .organization(organizacion)
                 .build());
         miembros.save(WorkspaceMember.de(comprador, nuevo, Role.ADMIN));

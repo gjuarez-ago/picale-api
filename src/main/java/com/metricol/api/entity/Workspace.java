@@ -91,9 +91,47 @@ public class Workspace {
     @Column(length = 500)
     private String descripcion;
 
-    /** Que busca conseguir. Ver {@link ObjetivoRedes}. */
+    /** Que busca conseguir: el principal. Ver {@link ObjetivoRedes}. */
     @Enumerated(EnumType.STRING)
     private ObjetivoRedes objetivo;
+
+    /**
+     * Todos los que eligió, en orden ("A,B,C"); el primero es {@link #objetivo}.
+     * Nulo en lo de antes, que solo tenía uno. Se escribe con
+     * {@link #ponerObjetivos(java.util.Collection)} y se lee con {@link #objetivos()}.
+     */
+    @Column(length = 200)
+    private String objetivosElegidos;
+
+    /** Los objetivos en orden, el principal primero. Vacío si no eligió ninguno. */
+    public java.util.List<ObjetivoRedes> objetivos() {
+        java.util.List<ObjetivoRedes> todos = ObjetivoRedes.leer(objetivosElegidos);
+        if (!todos.isEmpty()) {
+            return todos;
+        }
+        return objetivo == null ? java.util.List.of() : java.util.List.of(objetivo);
+    }
+
+    /** Pone los objetivos y deja el principal como el primero. Vacío o nulo los quita. */
+    public void ponerObjetivos(java.util.Collection<ObjetivoRedes> elegidos) {
+        java.util.List<ObjetivoRedes> limpios = ObjetivoRedes.limpiar(elegidos);
+        this.objetivosElegidos = ObjetivoRedes.escribir(limpios);
+        this.objetivo = limpios.isEmpty() ? null : limpios.get(0);
+    }
+
+    /**
+     * Lo que llegó de una pantalla: la lista nueva, o el objetivo único de la
+     * app ya instalada. A esa app se le contesta el {@link ObjetivoRedes#getLegado()
+     * legado} del principal; si lo devuelve tal cual al guardar otra cosa, no
+     * es que haya cambiado de objetivo, y se conserva lo que eligió en la web.
+     */
+    public void ponerObjetivosDe(java.util.List<ObjetivoRedes> lista, ObjetivoRedes unico) {
+        if (lista != null && !lista.isEmpty()) {
+            ponerObjetivos(lista);
+        } else if (unico != null && (objetivo == null || objetivo.getLegado() != unico)) {
+            ponerObjetivos(java.util.List.of(unico));
+        }
+    }
 
     /**
      * El resto de lo que la IA debe saber de la marca: qué vende, a quién le

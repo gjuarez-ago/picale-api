@@ -93,7 +93,8 @@ public class AuthService {
                         .giro(request.getGiro())
                         .ciudad(request.getCiudad())
                         .descripcion(request.getDescripcion())
-                        .objetivo(request.getObjetivo())
+                        .objetivo(com.metricol.api.enums.ObjetivoRedes.principal(com.metricol.api.enums.ObjetivoRedes.elegidos(request.getObjetivos(), request.getObjetivo())))
+                        .objetivosElegidos(com.metricol.api.enums.ObjetivoRedes.escribir(com.metricol.api.enums.ObjetivoRedes.elegidos(request.getObjetivos(), request.getObjetivo())))
                         .build());
 
         User user = User.builder()

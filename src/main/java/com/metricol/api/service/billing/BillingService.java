@@ -156,8 +156,10 @@ public class BillingService {
         poner(compra, "giro", datos.getGiro());
         poner(compra, "ciudad", datos.getCiudad());
         poner(compra, "descripcion", datos.getDescripcion());
-        if (datos.getObjetivo() != null) {
-            compra.put("objetivo", datos.getObjetivo().name());
+        var objetivos = com.metricol.api.enums.ObjetivoRedes.elegidos(datos.getObjetivos(), datos.getObjetivo());
+        if (!objetivos.isEmpty()) {
+            compra.put("objetivo", objetivos.get(0).name());
+            compra.put("objetivos", com.metricol.api.enums.ObjetivoRedes.escribir(objetivos));
         }
         boolean adicional = esAdicional(organizacion.getId(), null);
         compra.put("tier", adicional ? "extra" : "base");

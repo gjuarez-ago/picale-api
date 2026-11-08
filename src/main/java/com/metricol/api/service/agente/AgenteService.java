@@ -2764,6 +2764,7 @@ public class AgenteService {
         return new Redactor.Negocio(w.getName(), w.getGiro(), w.getCiudad(), w.getDescripcion(), w.getObjetivo(),
                 MarcaDelNegocio.delEspacio(w),
                 com.metricol.api.service.metricas.LoQueFunciona.paraElRedactor(loQueFunciona.de(w.getId())))
+                .conObjetivos(w.objetivos())
                 .conRecientes(posts.ultimosTextos(PageRequest.of(0, TEXTOS_RECIENTES)));
     }
 

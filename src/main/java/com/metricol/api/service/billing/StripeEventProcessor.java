@@ -200,6 +200,7 @@ public class StripeEventProcessor {
         peticion.setCiudad(vacioANulo(datos.path("ciudad").asText("")));
         peticion.setDescripcion(vacioANulo(datos.path("descripcion").asText("")));
         peticion.setObjetivo(objetivo(datos.path("objetivo").asText("")));
+        peticion.setObjetivos(ObjetivoRedes.leer(datos.path("objetivos").asText("")));
 
         Workspace nuevo = membresias.crearParaLicencia(organizacionId, compradorId, peticion);
         activar(License.builder().organizationId(organizacionId).workspaceId(nuevo.getId())

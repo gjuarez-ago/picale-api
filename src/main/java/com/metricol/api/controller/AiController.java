@@ -219,6 +219,7 @@ public class AiController {
                 workspace.getDescripcion(),
                 workspace.getObjetivo(),
                 MarcaDelNegocio.delEspacio(workspace),
-                com.metricol.api.service.metricas.LoQueFunciona.paraElRedactor(loQueFunciona.de(workspace.getId())));
+                com.metricol.api.service.metricas.LoQueFunciona.paraElRedactor(loQueFunciona.de(workspace.getId())))
+                .conObjetivos(workspace.objetivos());
     }
 }

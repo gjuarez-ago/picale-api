@@ -330,7 +330,33 @@ public class Redactor {
              * ciegas y catorce seguidas salían con la misma apertura, la misma
              * ciudad y el mismo "pide cotización por WhatsApp" (4 nov 2026).
              */
-            List<String> recientes) {
+            List<String> recientes,
+            /**
+             * Todos los que busca, en orden: el primero es {@code objetivo}. Si no
+             * viene, el único que haya.
+             */
+            List<ObjetivoRedes> objetivos) {
+
+        public Negocio {
+            if (objetivos == null || objetivos.isEmpty()) {
+                objetivos = objetivo == null ? List.of() : List.of(objetivo);
+            }
+        }
+
+        /** Sin la lista de objetivos: solo el principal. */
+        public Negocio(String nombre, String giro, String ciudad, String descripcion, ObjetivoRedes objetivo,
+                MarcaDelNegocio marca, String aprendido, String loQueSiVa, List<String> recientes) {
+            this(nombre, giro, ciudad, descripcion, objetivo, marca, aprendido, loQueSiVa, recientes, null);
+        }
+
+        /** El mismo negocio con todos sus objetivos; el principal pasa a ser el primero. */
+        public Negocio conObjetivos(List<ObjetivoRedes> todos) {
+            if (todos == null || todos.isEmpty()) {
+                return this;
+            }
+            return new Negocio(nombre, giro, ciudad, descripcion, todos.get(0), marca, aprendido, loQueSiVa, recientes,
+                    todos);
+        }
 
         /** Sin lo rescatado: el que escribe no lo necesita. */
         public Negocio(String nombre, String giro, String ciudad, String descripcion, ObjetivoRedes objetivo,
@@ -340,12 +366,12 @@ public class Redactor {
 
         /** El mismo negocio con lo que el dueño ya dijo que sí va. */
         public Negocio conLoQueSiVa(String siVa) {
-            return new Negocio(nombre, giro, ciudad, descripcion, objetivo, marca, aprendido, siVa, recientes);
+            return new Negocio(nombre, giro, ciudad, descripcion, objetivo, marca, aprendido, siVa, recientes, objetivos);
         }
 
         /** El mismo negocio con sus últimos textos, para no repetirles la forma. */
         public Negocio conRecientes(List<String> textos) {
-            return new Negocio(nombre, giro, ciudad, descripcion, objetivo, marca, aprendido, loQueSiVa, textos);
+            return new Negocio(nombre, giro, ciudad, descripcion, objetivo, marca, aprendido, loQueSiVa, textos, objetivos);
         }
 
         /** Sin perfil de marca: lo que se sabía antes de que existiera. */
@@ -698,10 +724,17 @@ public class Redactor {
         agregar(sb, "Giro", negocio.giro());
         agregar(sb, "Ciudad", negocio.ciudad());
         agregar(sb, "A que se dedica", negocio.descripcion());
-        if (negocio.objetivo() != null) {
-            sb.append("- Lo que busca con sus redes: ")
-                    .append(negocio.objetivo().getInstruccion())
-                    .append('\n');
+        List<ObjetivoRedes> objetivos = negocio.objetivos();
+        if (objetivos.size() == 1) {
+            sb.append("- Lo que busca con sus redes: ").append(objetivos.get(0).getInstruccion()).append('\n');
+        } else if (objetivos.size() > 1) {
+            // Varios: cada publicacion sirve a uno, el que mejor le va a lo que se
+            // ve. Meterlos todos en un texto lo vuelve un folleto que no pide nada.
+            sb.append("- Lo que busca con sus redes, del mas importante al menos (cada publicacion sirve a")
+                    .append(" uno, el que mejor le quede; no los mezcles todos en un texto):\n");
+            for (int i = 0; i < objetivos.size(); i++) {
+                sb.append("  ").append(i + 1).append(". ").append(objetivos.get(i).getInstruccion()).append('\n');
+            }
         }
 
         MarcaDelNegocio marca = negocio.marca() == null ? MarcaDelNegocio.VACIA : negocio.marca();

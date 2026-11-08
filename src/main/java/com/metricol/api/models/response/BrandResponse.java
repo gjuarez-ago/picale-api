@@ -9,6 +9,7 @@ public record BrandResponse(
         String giro,
         String ciudad,
         String descripcion,
+        /** El principal, como lo entiende la app ya instalada (ver ObjetivoRedes#getLegado). */
         ObjetivoRedes objetivo,
         String queVende,
         String publico,
@@ -29,7 +30,9 @@ public record BrandResponse(
         /** Lo subido como logo es una foto: no se pega en las publicaciones. */
         boolean logoEsFoto,
         /** Los colores de la marca, sacados del logotipo ("#1A3A6B"…). */
-        List<String> colores) {
+        List<String> colores,
+        /** Todos los que eligió, en orden: el primero es el principal. */
+        List<ObjetivoRedes> objetivos) {
 
     /**
      * @param percent 0 a 100

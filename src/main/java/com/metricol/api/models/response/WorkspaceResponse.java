@@ -26,7 +26,11 @@ public class WorkspaceResponse {
 
     private String descripcion;
 
+    /** El principal, como lo entiende la app ya instalada (ver ObjetivoRedes#getLegado). */
     private ObjetivoRedes objetivo;
+
+    /** Todos los que eligió, en orden: el primero es el principal. */
+    private java.util.List<ObjetivoRedes> objetivos;
 
     /**
      * ¿Está completo el perfil obligatorio del negocio (nombre, giro,

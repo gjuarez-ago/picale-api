@@ -271,6 +271,26 @@ class RedactorTest {
     }
 
     @Test
+    @DisplayName("con varios objetivos, el prompt los lista en orden y pide uno por publicacion")
+    void variosObjetivos() {
+        when(client.completeJson(any(), anyString(), anyString()))
+                .thenReturn("{\"guion\": \"x\", \"textos\": {\"INSTAGRAM\": \"hola\"}}");
+
+        redactor.redactar("algo", List.of(), List.of(Platform.INSTAGRAM),
+                new Redactor.Negocio("Las Delicias", "Banquetes", "Manzanillo", null, ObjetivoRedes.MAS_CLIENTES)
+                        .conObjetivos(List.of(ObjetivoRedes.PEDIDOS, ObjetivoRedes.QUE_REGRESEN))
+                        .conRecientes(List.of("uno")));
+
+        ArgumentCaptor<String> prompt = ArgumentCaptor.forClass(String.class);
+        verify(client).completeJson(any(), anyString(), prompt.capture());
+        assertThat(prompt.getValue())
+                .contains("del mas importante al menos")
+                .contains("1. " + ObjetivoRedes.PEDIDOS.getInstruccion())
+                .contains("2. " + ObjetivoRedes.QUE_REGRESEN.getInstruccion())
+                .doesNotContain(ObjetivoRedes.MAS_CLIENTES.getInstruccion());
+    }
+
+    @Test
     @DisplayName("Sin datos del negocio no se cuela una cabecera vacia")
     void sinNegocioNoHayCabecera() {
         when(client.completeJson(any(), anyString(), anyString()))

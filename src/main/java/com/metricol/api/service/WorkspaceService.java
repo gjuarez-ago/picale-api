@@ -51,9 +51,7 @@ public class WorkspaceService {
         if (request.getDescripcion() != null) {
             workspace.setDescripcion(limpio(request.getDescripcion()));
         }
-        if (request.getObjetivo() != null) {
-            workspace.setObjetivo(request.getObjetivo());
-        }
+        workspace.ponerObjetivosDe(request.getObjetivos(), request.getObjetivo());
         return toResponse(repository.save(workspace));
     }
 
@@ -71,7 +69,8 @@ public class WorkspaceService {
                 .giro(workspace.getGiro())
                 .ciudad(workspace.getCiudad())
                 .descripcion(workspace.getDescripcion())
-                .objetivo(workspace.getObjetivo())
+                .objetivo(workspace.getObjetivo() == null ? null : workspace.getObjetivo().getLegado())
+                .objetivos(workspace.objetivos())
                 .profileComplete(workspace.perfilCompleto())
                 .build();
     }

@@ -27,7 +27,11 @@ public class BrandRequest {
     @Size(max = 500)
     private String descripcion;
 
+    /** El único de antes: la app ya instalada solo manda este. Ver {@code objetivos}. */
     private ObjetivoRedes objetivo;
+
+    /** Los que eligió, en orden; el primero es el principal. Si viene, manda sobre {@code objetivo}. */
+    private java.util.List<ObjetivoRedes> objetivos;
 
     @Size(max = 400)
     private String queVende;
