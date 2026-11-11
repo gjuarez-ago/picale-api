@@ -68,6 +68,15 @@ public class MediaOrphanWorker {
     @Value("${app.media.orphan-after-minutes:60}")
     private long plazoMinutos;
 
+    /**
+     * Lo mismo para las subidas en segundo plano del teléfono (las que traen clave): Android las
+     * corre cuando puede, y la app no vuelve a dar señales hasta que alguien la abre. Un día, por
+     * encima de las 12 horas que vale su firma. Antes de esto se descartaban a la hora y la subida
+     * que Android terminaba después ya no tenía dónde confirmarse.
+     */
+    @Value("${app.media.orphan-background-after-minutes:1440}")
+    private long plazoEnFondoMinutos;
+
     @Value("${app.media.orphan-batch-size:100}")
     private int tope;
 
@@ -99,7 +108,12 @@ public class MediaOrphanWorker {
             if (tenant == null || String.valueOf(tenant).isBlank()) continue;
             try {
                 UUID id = UUID.fromString(String.valueOf(fila[0]));
-                TenantIdentifierResolver.comoTenant(String.valueOf(tenant), () -> media.confirm(id));
+                String espacio = String.valueOf(tenant);
+                // Las que van por partes se unen primero; completarPorPartes no hace nada si falta
+                // alguna (lanza y se mira en la siguiente vuelta) y confirma si ya estaba unida.
+                // Así una subida en segundo plano termina aunque la app no vuelva a abrirse.
+                TenantIdentifierResolver.comoTenant(espacio,
+                        () -> media.completarOConfirmar(id, UUID.fromString(espacio)));
                 rescatadas++;
             } catch (Exception ex) {
                 // Todavia subiendo o incompleta: se vuelve a mirar en la siguiente vuelta.
@@ -115,8 +129,9 @@ public class MediaOrphanWorker {
     public void revisarPendientes() {
         List<Object[]> pendientes;
         try {
+            LocalDateTime ahora = LocalDateTime.now();
             pendientes = repository.findPrefirmadosViejos(
-                    LocalDateTime.now().minusMinutes(plazoMinutos), tope);
+                    ahora.minusMinutes(plazoMinutos), ahora.minusMinutes(plazoEnFondoMinutos), tope);
         } catch (Exception ex) {
             // Un fallo aquí no debe matar la tarea: fixedDelay deja de
             // reprogramarse si el metodo lanza, y esta limpieza quedaria

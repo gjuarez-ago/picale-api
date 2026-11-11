@@ -97,6 +97,18 @@ public class MediaController {
         return ResponseEntity.ok(ApiResponse.success(service.confirm(id)));
     }
 
+    /**
+     * En qué quedó una subida en segundo plano, por la clave que le puso el teléfono. Si ya llegó
+     * entera y nadie la confirmó, la confirma. Ver {@code docs/goal-subidas-moviles-segundo-plano.md}.
+     */
+    @GetMapping("/subidas/{clientUploadId}")
+    public ResponseEntity<ApiResponse<com.metricol.api.models.response.SubidaEstadoResponse>> estadoDeSubida(
+            @AuthenticationPrincipal User currentUser, @PathVariable String clientUploadId) {
+        permisos.exigir(currentUser, Permission.POST_CREATE);
+        return ResponseEntity.ok(ApiResponse.success(
+                service.estadoDeSubida(clientUploadId, currentUser.getWorkspace().getId())));
+    }
+
     @PostMapping("/{id}/presign")
     public ResponseEntity<ApiResponse<MediaPresignResponse>> renewUpload(
             @AuthenticationPrincipal User currentUser, @PathVariable UUID id) {

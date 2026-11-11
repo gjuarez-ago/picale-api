@@ -19,6 +19,9 @@ import com.metricol.api.service.MediaService;
 /** La app se cae a media tanda: lo que ya llegó completo aparece en minutos, no en una hora. */
 class RescateDeSubidasTest {
 
+    private static final String WS = "77777777-7777-7777-7777-777777777777";
+    private static final UUID WS_ID = UUID.fromString(WS);
+
     @Test
     @DisplayName("confirma con la confirmación normal lo que llegó, y sigue aunque uno aún no esté completo")
     void rescataLasCompletas() {
@@ -27,9 +30,9 @@ class RescateDeSubidasTest {
         MediaAssetRepository repo = mock(MediaAssetRepository.class);
         MediaService media = mock(MediaService.class);
         when(repo.findPrefirmadosViejos(any(), anyInt())).thenReturn(List.of(
-                new Object[] {subiendo.toString(), "ws-1"},
-                new Object[] {completa.toString(), "ws-1"}));
-        when(media.confirm(subiendo)).thenThrow(new IllegalStateException("El archivo no llegó a subirse."));
+                new Object[] {subiendo.toString(), WS},
+                new Object[] {completa.toString(), WS}));
+        when(media.completarOConfirmar(subiendo, WS_ID)).thenThrow(new IllegalStateException("El archivo no llegó a subirse."));
 
         MediaOrphanWorker worker = new MediaOrphanWorker(repo, mock(MediaAssetReconciler.class));
         worker.setMedia(media);
@@ -38,7 +41,7 @@ class RescateDeSubidasTest {
 
         worker.rescatarCompletas();
 
-        verify(media).confirm(subiendo);
-        verify(media).confirm(completa);
+        verify(media).completarOConfirmar(subiendo, WS_ID);
+        verify(media).completarOConfirmar(completa, WS_ID);
     }
 }

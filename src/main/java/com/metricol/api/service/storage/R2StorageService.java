@@ -136,6 +136,11 @@ public class R2StorageService {
      * {@link #consultar(String)}, que sí es a prueba de todo.
      */
     public String firmarSubida(String key, String contentType) {
+        return firmarSubida(key, contentType, ttlSegundos);
+    }
+
+    /** Igual, con otra vigencia: la subida en segundo plano puede esperar horas a que Android la corra. */
+    public String firmarSubida(String key, String contentType, long segundos) {
         exigirConfiguracion();
 
         PutObjectRequest put = PutObjectRequest.builder()
@@ -145,7 +150,7 @@ public class R2StorageService {
                 .build();
 
         return presigner.presignPutObject(PutObjectPresignRequest.builder()
-                .signatureDuration(Duration.ofSeconds(ttlSegundos))
+                .signatureDuration(Duration.ofSeconds(segundos))
                 .putObjectRequest(put)
                 .build())
                 .url()

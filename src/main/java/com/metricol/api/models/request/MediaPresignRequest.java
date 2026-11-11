@@ -47,6 +47,13 @@ public class MediaPresignRequest {
      */
     private Boolean aunqueRepetido;
 
+    /**
+     * Clave de la subida en segundo plano, creada por el teléfono antes de esta petición (ver
+     * {@code MediaAsset.clientUploadId}). Opcional: sin ella todo sigue como antes.
+     */
+    @jakarta.validation.constraints.Pattern(regexp = "^[A-Za-z0-9_-]{8,64}$")
+    private String clientUploadId;
+
     /** La huella del contenido (ver {@code MediaAsset.huellaArchivo}); opcional. */
     @jakarta.validation.constraints.Pattern(regexp = "^[0-9a-f]{64}$")
     private String huellaArchivo;

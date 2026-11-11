@@ -44,4 +44,12 @@ public class StorageUsageResponse {
      * desplegar la web ni la app.
      */
     private Long multipartFromBytes;
+
+    /**
+     * Versión de la subida en segundo plano que entiende este servidor: 1 = acepta
+     * {@code clientUploadId}, firma por horas, guarda la subida un día y contesta
+     * {@code GET /media/subidas/{clientUploadId}}. Ausente en un servidor viejo: la app nueva
+     * entonces sube como antes, con la app abierta.
+     */
+    private int subidaEnFondo;
 }

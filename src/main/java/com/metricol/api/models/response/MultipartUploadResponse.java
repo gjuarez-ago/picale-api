@@ -34,4 +34,8 @@ public class MultipartUploadResponse {
 
     /** Dónde quedará el archivo. No vale nada hasta que se complete. */
     private String url;
+
+    /** PENDING, o READY si esta misma subida ({@code clientUploadId}) ya terminó. */
+    @Builder.Default
+    private String estado = "PENDING";
 }

@@ -94,6 +94,9 @@ public interface MediaAssetRepository extends JpaRepository<MediaAsset, UUID> {
             """)
     List<MediaAsset> mismaHuella(String huella, org.springframework.data.domain.Pageable pagina);
 
+    /** La subida con esta clave del teléfono, en el negocio actual (lo filtra el tenant). */
+    java.util.Optional<MediaAsset> findByClientUploadId(String clientUploadId);
+
     /** Los recortes hechos a mano de un video. */
     @Query("select m from MediaAsset m where m.sourceAssetId = :original and m.trimEndSeconds is not null")
     List<MediaAsset> recortesDe(UUID original);
@@ -307,11 +310,18 @@ public interface MediaAssetRepository extends JpaRepository<MediaAsset, UUID> {
             select cast(m.id as varchar), m.tenant_id, m.storage_key
             from media_assets m
             where m.status = 'PENDING'
-              and coalesce(m.upload_renewed_at, m.created_at) < :limite
+              and coalesce(m.upload_renewed_at, m.created_at) <
+                  (case when m.client_upload_id is null then cast(:limite as timestamp)
+                        else cast(:limiteEnFondo as timestamp) end)
             order by m.created_at asc
             limit :tope
             """, nativeQuery = true)
-    List<Object[]> findPrefirmadosViejos(LocalDateTime limite, int tope);
+    List<Object[]> findPrefirmadosViejos(LocalDateTime limite, LocalDateTime limiteEnFondo, int tope);
+
+    /** Igual, con el mismo plazo para todas (el rescate de lo completo no distingue). */
+    default List<Object[]> findPrefirmadosViejos(LocalDateTime limite, int tope) {
+        return findPrefirmadosViejos(limite, limite, tope);
+    }
 
     /**
      * Los archivos ya subidos que ninguna publicación usa, de TODOS los

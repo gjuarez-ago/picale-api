@@ -39,4 +39,11 @@ public class MediaPresignResponse {
     private long expiresInSeconds;
 
     private String url;
+
+    /**
+     * PENDING: hay que subir. READY: esta subida (misma {@code clientUploadId}) ya llegó y está
+     * confirmada, y {@code uploadUrl} viene nula: no hay nada que volver a mandar.
+     */
+    @Builder.Default
+    private String estado = "PENDING";
 }

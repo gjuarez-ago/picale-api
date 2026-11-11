@@ -32,6 +32,7 @@ import com.metricol.api.models.response.MediaPresignResponse;
 import com.metricol.api.models.response.MultipartPartsResponse;
 import com.metricol.api.models.response.MultipartUploadResponse;
 import com.metricol.api.models.response.StorageUsageResponse;
+import com.metricol.api.models.response.SubidaEstadoResponse;
 import com.metricol.api.models.response.VideoTrimSuggestionResponse;
 import com.metricol.api.repository.MediaAssetRepository;
 import com.metricol.api.repository.WorkspaceRepository;
@@ -323,6 +324,10 @@ public class MediaService {
         storage.exigirConfiguracion();
 
         String contentType = normalizar(request.getContentType());
+        MediaAsset previa = laMismaSubida(request, contentType, false);
+        if (previa != null) {
+            return permisoDeNuevo(previa);
+        }
         exigirTipoDeMedio(contentType);
         exigirTopeDiario();
         exigirQueNoEsteRepetido(request, contentType);
@@ -341,17 +346,84 @@ public class MediaService {
                 .sizeBytes(request.getSizeBytes())
                 .contentType(contentType)
                 .huellaArchivo(request.getHuellaArchivo())
+                .clientUploadId(request.getClientUploadId())
                 .status(MediaAssetStatus.PENDING)
                 .build());
 
+        long vigencia = vigenciaDeFirma(asset);
         return MediaPresignResponse.builder()
                 .assetId(asset.getId())
-                .uploadUrl(storage.firmarSubida(key, contentType))
+                .uploadUrl(storage.firmarSubida(key, contentType, vigencia))
                 .method("PUT")
                 .contentType(contentType)
-                .expiresInSeconds(storage.ttlSegundos())
+                .expiresInSeconds(vigencia)
                 .url(url)
                 .build();
+    }
+
+    /**
+     * Cuánto vale la firma de una subida en segundo plano: horas, no minutos. Android corre el
+     * trabajo cuando puede (sin red, con ahorro de batería, con el teléfono dormido), y una firma
+     * de 30 minutos vencería antes de empezar. La app vieja sigue con la de siempre.
+     */
+    static final long FIRMA_EN_FONDO_SEGUNDOS = 12 * 60 * 60;
+
+    private long vigenciaDeFirma(MediaAsset asset) {
+        return asset.getClientUploadId() != null ? FIRMA_EN_FONDO_SEGUNDOS : storage.ttlSegundos();
+    }
+
+    /**
+     * La subida que el teléfono ya había pedido con esta misma clave, o {@code null} si es nueva.
+     *
+     * <p>Es lo que hace segura la subida en segundo plano: si la respuesta de la primera petición
+     * se perdió (se fue la red, Android mató la app), pedir otra vez no aparta el espacio dos
+     * veces ni cuenta dos subidas del día. Va ANTES del aviso de repetido: la subida que se repite
+     * a sí misma no es un archivo repetido. Una clave reutilizada con otro archivo es un error del
+     * cliente y se dice, en vez de devolverle la subida de otro archivo.
+     */
+    private MediaAsset laMismaSubida(MediaPresignRequest request, String contentType, boolean porPartes) {
+        String clave = request.getClientUploadId();
+        if (clave == null) {
+            return null;
+        }
+        MediaAsset previa = repository.findByClientUploadId(clave).orElse(null);
+        if (previa == null) {
+            return null;
+        }
+        boolean mismoArchivo = previa.getSizeBytes() != null
+                && previa.getSizeBytes() == request.getSizeBytes()
+                && java.util.Objects.equals(previa.getContentType(), contentType)
+                && (request.getHuellaArchivo() == null || previa.getHuellaArchivo() == null
+                        || request.getHuellaArchivo().equals(previa.getHuellaArchivo()));
+        // Confirmada, el tamaño ya es el real (una foto reparada cambia): ahí basta la huella.
+        if (previa.getStatus() == MediaAssetStatus.READY && request.getHuellaArchivo() != null
+                && request.getHuellaArchivo().equals(previa.getHuellaArchivo())) {
+            mismoArchivo = true;
+        }
+        if (!mismoArchivo) {
+            throw new ConflictoException("UPLOAD_ID_CONFLICT",
+                    "Esta subida ya se había pedido con otro archivo. Vuelve a elegirlo.");
+        }
+        if (previa.getStatus() == MediaAssetStatus.PENDING && (previa.getMultipartUploadId() != null) != porPartes) {
+            throw new ConflictoException("UPLOAD_ID_CONFLICT",
+                    porPartes ? "Esta subida va entera, no por partes." : "Esta subida va por partes.");
+        }
+        return previa;
+    }
+
+    /** El permiso de una subida que ya existía: firma nueva si sigue pendiente, nada si ya llegó. */
+    private MediaPresignResponse permisoDeNuevo(MediaAsset asset) {
+        if (asset.getStatus() == MediaAssetStatus.READY) {
+            return MediaPresignResponse.builder().assetId(asset.getId()).method("PUT")
+                    .contentType(asset.getContentType()).url(asset.getUrl()).estado("READY").build();
+        }
+        asset.setUploadRenewedAt(LocalDateTime.now());
+        repository.save(asset);
+        long vigencia = vigenciaDeFirma(asset);
+        return MediaPresignResponse.builder().assetId(asset.getId())
+                .uploadUrl(storage.firmarSubida(asset.getStorageKey(), asset.getContentType(), vigencia))
+                .method("PUT").contentType(asset.getContentType())
+                .expiresInSeconds(vigencia).url(asset.getUrl()).build();
     }
 
     /**
@@ -473,12 +545,41 @@ public class MediaService {
             // Un PUT entero encima de una subida por partes la pisaría a medias.
             throw new IllegalArgumentException("Esta subida va por partes: sigue con las partes que faltan.");
         }
-        asset.setUploadRenewedAt(LocalDateTime.now());
-        repository.save(asset);
-        return MediaPresignResponse.builder().assetId(asset.getId())
-                .uploadUrl(storage.firmarSubida(asset.getStorageKey(), asset.getContentType()))
-                .method("PUT").contentType(asset.getContentType())
-                .expiresInSeconds(storage.ttlSegundos()).url(asset.getUrl()).build();
+        return permisoDeNuevo(asset);
+    }
+
+    /**
+     * En qué quedó la subida en segundo plano con esta clave. Es lo que pregunta la app al volver,
+     * horas después, sin saber si Android terminó, si alguien confirmó o si se descartó.
+     *
+     * <p>Si el archivo ya está completo en R2 y nadie lo confirmó, se confirma aquí mismo (por
+     * partes: se unen): la persona lo ve listo al abrir la app, sin esperar al rescate del servidor.
+     * Si todavía no está completo, se contesta PENDING con lo que lleva, sin error.
+     */
+    public SubidaEstadoResponse estadoDeSubida(String clientUploadId, UUID workspaceId) {
+        MediaAsset asset = repository.findByClientUploadId(clientUploadId).orElse(null);
+        if (asset == null || !workspaceId.toString().equals(asset.getTenantId())) {
+            return SubidaEstadoResponse.builder().clientUploadId(clientUploadId).estado("NO_EXISTE").build();
+        }
+        if (asset.getStatus() == MediaAssetStatus.PENDING) {
+            try {
+                MediaAssetResponse lista = asset.getMultipartUploadId() != null
+                        ? completarPorPartes(asset.getId(), workspaceId)
+                        : (storage.consultar(asset.getStorageKey()) != null ? confirm(asset.getId()) : null);
+                if (lista != null) {
+                    return SubidaEstadoResponse.builder().clientUploadId(clientUploadId).assetId(asset.getId())
+                            .estado("READY").media(lista).build();
+                }
+            } catch (IllegalStateException | IllegalArgumentException ex) {
+                // Todavía no está completa (o el archivo no sirve: eso lo dirá confirmar al terminar).
+                log.debug("Subida {} aún no se puede cerrar: {}", asset.getId(), ex.getMessage());
+            }
+            return SubidaEstadoResponse.builder().clientUploadId(clientUploadId).assetId(asset.getId())
+                    .estado("PENDING").build();
+        }
+        return SubidaEstadoResponse.builder().clientUploadId(clientUploadId).assetId(asset.getId())
+                .estado(asset.getStatus() == MediaAssetStatus.READY ? "READY" : "NO_EXISTE")
+                .media(asset.getStatus() == MediaAssetStatus.READY ? toResponse(asset) : null).build();
     }
 
     // ------------------------------------------------------------------ subida por partes
@@ -513,6 +614,19 @@ public class MediaService {
         }
 
         String contentType = normalizar(request.getContentType());
+        MediaAsset previa = laMismaSubida(request, contentType, true);
+        if (previa != null) {
+            if (previa.getStatus() == MediaAssetStatus.PENDING) {
+                previa.setUploadRenewedAt(LocalDateTime.now());
+                repository.save(previa);
+            }
+            return MultipartUploadResponse.builder().assetId(previa.getId())
+                    .sizeBytes(previa.getSizeBytes() == null ? 0 : previa.getSizeBytes())
+                    .partSizeBytes(previa.getMultipartPartSize() == null ? 0 : previa.getMultipartPartSize())
+                    .partCount(totalPartes(previa.getSizeBytes(), previa.getMultipartPartSize()))
+                    .contentType(previa.getContentType()).url(previa.getUrl())
+                    .estado(previa.getStatus() == MediaAssetStatus.READY ? "READY" : "PENDING").build();
+        }
         exigirTipoDeMedio(contentType);
         exigirTopeDiario();
         exigirQueNoEsteRepetido(request, contentType);
@@ -532,6 +646,7 @@ public class MediaService {
                 .sizeBytes(request.getSizeBytes())
                 .contentType(contentType)
                 .huellaArchivo(request.getHuellaArchivo())
+                .clientUploadId(request.getClientUploadId())
                 .status(MediaAssetStatus.PENDING)
                 .multipartUploadId(uploadId)
                 .multipartPartSize(tamanoParte)
@@ -633,8 +748,13 @@ public class MediaService {
         try {
             storage.completarPorPartes(asset.getStorageKey(), asset.getMultipartUploadId(), llegaron);
         } catch (software.amazon.awssdk.services.s3.model.S3Exception ex) {
-            log.warn("R2 no unió las partes de {}: {}", assetId, ex.getMessage());
-            throw new IllegalStateException("No se pudo terminar la subida. Intenta de nuevo en un momento.");
+            // La app y el rescate del servidor pueden unir a la vez: el segundo recibe NoSuchUpload
+            // aunque el archivo ya esté entero. Si el archivo está, la subida terminó bien.
+            if (storage.consultar(asset.getStorageKey()) == null) {
+                log.warn("R2 no unió las partes de {}: {}", assetId, ex.getMessage());
+                throw new IllegalStateException("No se pudo terminar la subida. Intenta de nuevo en un momento.");
+            }
+            log.info("Las partes de {} ya estaban unidas (otro proceso las cerró)", assetId);
         }
         transaccion.executeWithoutResult(estado -> repository.findById(assetId).ifPresent(a -> {
             a.setMultipartUploadId(null);
@@ -643,6 +763,13 @@ public class MediaService {
         log.info("Subida por partes completada: {} ({} partes, {})", assetId, total,
                 MediaLimitsProperties.legible(suma));
         return confirm(assetId);
+    }
+
+    /** Lo que hace el rescate del servidor con una subida pendiente: unir si va por partes, y confirmar. */
+    public MediaAssetResponse completarOConfirmar(UUID assetId, UUID workspaceId) {
+        MediaAsset asset = repository.findById(assetId)
+                .orElseThrow(() -> new ResourceNotFoundException("Esa subida no existe."));
+        return asset.getMultipartUploadId() != null ? completarPorPartes(assetId, workspaceId) : confirm(assetId);
     }
 
     /** Cancela una subida a medias: libera lo que ya ocupaba en R2 y la cuota que tenía apartada. */
@@ -927,6 +1054,7 @@ public class MediaService {
                 .maxSubidasPorDia(limites.getMaxSubidasPorDia())
                 .subidasHoy(subidasHoy())
                 .multipartFromBytes(multipartDesde())
+                .subidaEnFondo(1)
                 .build();
     }
 

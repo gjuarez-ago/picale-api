@@ -31,7 +31,12 @@ import lombok.Setter;
 // transcripcion de un video recien sacada y salio sin subtitulos ni musica.
 @DynamicUpdate
 @Entity
-@Table(name = "media_assets", indexes = @jakarta.persistence.Index(name = "ix_media_generation_job", columnList = "generation_job_id,tenant_id"))
+@Table(name = "media_assets",
+        indexes = @jakarta.persistence.Index(name = "ix_media_generation_job", columnList = "generation_job_id,tenant_id"),
+        // La misma subida pedida dos veces (se perdió la respuesta, Android repitió el trabajo)
+        // es UNA fila: lo garantiza la base, no un chequeo previo que dos peticiones pasan juntas.
+        uniqueConstraints = @jakarta.persistence.UniqueConstraint(name = "ux_media_client_upload",
+                columnNames = { "tenant_id", "client_upload_id" }))
 @Getter
 @Setter
 @NoArgsConstructor
@@ -52,6 +57,14 @@ public class MediaAsset {
     private UUID uploadBatchId;
     private Integer uploadBatchIndex;
     private LocalDateTime uploadRenewedAt;
+
+    /**
+     * La clave que el teléfono le pone a una subida en segundo plano ANTES de pedir permiso. Con
+     * ella, pedir otra vez devuelve la misma subida (sin apartar espacio dos veces), y la app que
+     * vuelve horas después pregunta en qué quedó. Nula en la web y en las versiones viejas de la app.
+     */
+    @Column(name = "client_upload_id", length = 64)
+    private String clientUploadId;
 
     /** Vincula la pieza pagada al trabajo incluso si cae antes de guardar el checkpoint. */
     private UUID generationJobId;
