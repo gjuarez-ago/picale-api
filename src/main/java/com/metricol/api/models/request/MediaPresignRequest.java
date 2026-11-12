@@ -20,6 +20,9 @@ import lombok.Setter;
 @Getter
 @Setter
 public class MediaPresignRequest {
+    @jakarta.validation.constraints.Min(1)
+    @jakarta.validation.constraints.Max(2)
+    private Integer uploadProtocolVersion;
 
     private java.util.UUID uploadBatchId;
 

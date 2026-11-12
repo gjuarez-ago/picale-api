@@ -36,6 +36,8 @@ public class MultipartPartsResponse {
 
     /** Segundos que valen los permisos de {@code signed}. */
     private long expiresInSeconds;
+    private java.time.Instant expiresAt;
+    private java.time.Instant signedExpiresAt;
 
     @Getter
     @AllArgsConstructor
@@ -51,5 +53,7 @@ public class MultipartPartsResponse {
     public static class SignedPart {
         private int partNumber;
         private String url;
+        private java.time.Instant expiresAt;
+        public SignedPart(int partNumber, String url) { this(partNumber, url, null); }
     }
 }

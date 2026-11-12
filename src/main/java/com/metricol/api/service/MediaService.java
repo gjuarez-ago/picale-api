@@ -22,6 +22,7 @@ import com.metricol.api.entity.Workspace;
 import com.metricol.api.enums.MediaAssetStatus;
 import com.metricol.api.enums.MediaType;
 import com.metricol.api.enums.PostStatus;
+import com.metricol.api.enums.UploadDecision;
 import com.metricol.api.exception.ConflictoException;
 import com.metricol.api.exception.QuotaExceededException;
 import com.metricol.api.exception.ResourceNotFoundException;
@@ -42,6 +43,10 @@ import com.metricol.api.service.media.MiniaturasEnSegundoPlano;
 import com.metricol.api.service.media.VideoTrimDispatcher;
 import com.metricol.api.service.storage.R2StorageService;
 import com.metricol.api.service.storage.StorageQuotaService;
+import com.metricol.api.service.storage.CoordinadorDeSubidas;
+import com.metricol.api.service.storage.IdentidadDeSubida;
+import com.metricol.api.service.storage.AdmisionDeSubidas;
+import com.metricol.api.service.storage.AperturaDeSubidas;
 import com.metricol.api.service.media.subtitulos.SubtitulosAutomaticos;
 import com.metricol.api.service.media.subtitulos.SubtitulosService;
 
@@ -69,6 +74,19 @@ public class MediaService {
     private final FfmpegImagen ffmpeg;
     private final TransactionTemplate transaccion;
     private final VideoTrimDispatcher videoTrims;
+    private CoordinadorDeSubidas coordinador;
+    private AdmisionDeSubidas admisiones;
+    private AperturaDeSubidas aperturas;
+    @org.springframework.beans.factory.annotation.Autowired
+    void setAdmisiones(AdmisionDeSubidas admisiones, AperturaDeSubidas aperturas) {
+        this.admisiones = admisiones; this.aperturas = aperturas;
+    }
+
+    @org.springframework.beans.factory.annotation.Autowired
+    void setCoordinador(@org.springframework.context.annotation.Lazy
+            CoordinadorDeSubidas coordinador) {
+        this.coordinador = coordinador;
+    }
 
     public MediaService(
             MediaAssetRepository repository,
@@ -319,12 +337,17 @@ public class MediaService {
      * y ya cuenta para el espacio usado, que es lo que impide que seis firmas
      * seguidas se pasen del límite entre todas.
      */
-    @Transactional
+    @Transactional(propagation = org.springframework.transaction.annotation.Propagation.NOT_SUPPORTED)
     public MediaPresignResponse presign(MediaPresignRequest request, UUID workspaceId) {
+        IdentidadDeSubida.version(request, workspaceId, false);
+        return admisiones.ejecutar(workspaceId, () -> reservarSimple(request, workspaceId));
+    }
+
+    private MediaPresignResponse reservarSimple(MediaPresignRequest request, UUID workspaceId) {
         storage.exigirConfiguracion();
 
         String contentType = normalizar(request.getContentType());
-        MediaAsset previa = laMismaSubida(request, contentType, false);
+        MediaAsset previa = laMismaSubida(request, contentType, false, workspaceId);
         if (previa != null) {
             return permisoDeNuevo(previa);
         }
@@ -336,7 +359,7 @@ public class MediaService {
         String key = storage.claveNueva(workspaceId, request.getFileName(), contentType);
         String url = storage.urlDe(key);
 
-        MediaAsset asset = repository.save(MediaAsset.builder()
+        MediaAsset nueva = MediaAsset.builder()
                 .fileName(nombreODefecto(request.getFileName(), key))
                 .uploadBatchId(request.getUploadBatchId())
                 .uploadBatchIndex(request.getUploadBatchIndex())
@@ -348,7 +371,9 @@ public class MediaService {
                 .huellaArchivo(request.getHuellaArchivo())
                 .clientUploadId(request.getClientUploadId())
                 .status(MediaAssetStatus.PENDING)
-                .build());
+                .build();
+        IdentidadDeSubida.guardar(nueva, request, workspaceId, false, contentType);
+        MediaAsset asset = repository.save(nueva);
 
         long vigencia = vigenciaDeFirma(asset);
         return MediaPresignResponse.builder()
@@ -381,7 +406,7 @@ public class MediaService {
      * a sí misma no es un archivo repetido. Una clave reutilizada con otro archivo es un error del
      * cliente y se dice, en vez de devolverle la subida de otro archivo.
      */
-    private MediaAsset laMismaSubida(MediaPresignRequest request, String contentType, boolean porPartes) {
+    private MediaAsset laMismaSubida(MediaPresignRequest request, String contentType, boolean porPartes, UUID workspace) {
         String clave = request.getClientUploadId();
         if (clave == null) {
             return null;
@@ -390,6 +415,13 @@ public class MediaService {
         if (previa == null) {
             return null;
         }
+        previa = repository.findForUploadUpdate(previa.getId()).orElseThrow();
+        IdentidadDeSubida.comparar(previa, request, workspace, porPartes, contentType);
+        if (previa.getUploadDecision() == UploadDecision.CANCELLED
+                || previa.getUploadDecision() == UploadDecision.EXPIRED) {
+            throw new ConflictoException("UPLOAD_TERMINAL", "Esta subida fue cancelada o venció. Elige el archivo de nuevo.");
+        }
+        if (previa.getUploadIdentityHash() != null) return previa;
         boolean mismoArchivo = previa.getSizeBytes() != null
                 && previa.getSizeBytes() == request.getSizeBytes()
                 && java.util.Objects.equals(previa.getContentType(), contentType)
@@ -438,6 +470,29 @@ public class MediaService {
     public MediaAssetResponse confirm(UUID assetId) {
         MediaAsset asset = repository.findById(assetId)
                 .orElseThrow(() -> new ResourceNotFoundException("Esa subida no existe."));
+        IdentidadDeSubida.acceso(asset, UUID.fromString(asset.getTenantId()));
+        if (asset.getMultipartPartSize() != null && asset.getStatus() != MediaAssetStatus.READY) {
+            return completarPorPartes(assetId, UUID.fromString(asset.getTenantId()));
+        }
+        return confirmarInterno(assetId, null);
+    }
+
+    public MediaAssetResponse respuestaDeSubidaLista(UUID assetId) {
+        MediaAsset asset = repository.findById(assetId)
+                .orElseThrow(() -> new ResourceNotFoundException("Esa subida no existe."));
+        IdentidadDeSubida.acceso(asset, UUID.fromString(asset.getTenantId()));
+        if (asset.getStatus() != MediaAssetStatus.READY) throw new IllegalStateException("La subida no está lista.");
+        return toResponse(asset);
+    }
+
+    /** Entrada interna con token, nunca expuesta como endpoint. */
+    public MediaAssetResponse confirmarSesionCoordinada(UUID assetId, UUID token) {
+        return confirmarInterno(assetId, token);
+    }
+
+    private MediaAssetResponse confirmarInterno(UUID assetId, UUID token) {
+        MediaAsset asset = repository.findById(assetId)
+                .orElseThrow(() -> new ResourceNotFoundException("Esa subida no existe."));
 
         if (asset.getStatus() == MediaAssetStatus.READY) {
             // Reintento del cliente: ya estaba confirmada y no hay nada que
@@ -446,6 +501,9 @@ public class MediaService {
             return toResponse(asset);
         }
 
+        if (asset.getMultipartPartSize() != null) {
+            CoordinadorDeSubidas.exigirCompletar(asset, token);
+        }
         R2StorageService.Consulta enR2 = storage.consultar(asset.getStorageKey());
         if (enR2 == null) {
             throw new IllegalStateException(
@@ -464,7 +522,7 @@ public class MediaService {
         enR2 = sanearSiHaceFalta(asset, enR2);
 
         R2StorageService.Consulta real = enR2;
-        return transaccion.execute(estado -> cerrarConfirmacion(assetId, real));
+        return transaccion.execute(estado -> cerrarConfirmacion(assetId, real, token));
     }
 
     /** Menos que esto no se compara: un ícono o una foto chica coinciden de tamaño por casualidad. */
@@ -538,6 +596,7 @@ public class MediaService {
         if (!workspaceId.toString().equals(asset.getTenantId())) {
             throw new ResourceNotFoundException("Esa subida no existe en este negocio.");
         }
+        IdentidadDeSubida.acceso(asset, workspaceId);
         if (asset.getStatus() != MediaAssetStatus.PENDING) {
             throw new IllegalStateException("El archivo ya está confirmado. Revisa Contenido.");
         }
@@ -561,25 +620,47 @@ public class MediaService {
         if (asset == null || !workspaceId.toString().equals(asset.getTenantId())) {
             return SubidaEstadoResponse.builder().clientUploadId(clientUploadId).estado("NO_EXISTE").build();
         }
+        IdentidadDeSubida.acceso(asset, workspaceId);
+        if ("SENT".equals(asset.getUploadOpeningState()) || "RESERVED".equals(asset.getUploadOpeningState())) {
+            asset = aperturas.resolver(asset.getId(), workspaceId);
+            if ("SENT".equals(asset.getUploadOpeningState()) || "RESERVED".equals(asset.getUploadOpeningState())) {
+                return respuestaEstado(asset, clientUploadId, estadoSesion(asset), null);
+            }
+        }
+        if (asset.getUploadDecision() == UploadDecision.CANCELLED
+                || asset.getUploadDecision() == UploadDecision.EXPIRED
+                || asset.getUploadDecision() == UploadDecision.CANCELLING
+                || asset.getUploadDecision() == UploadDecision.EXPIRING) {
+            return respuestaEstado(asset, clientUploadId, asset.getUploadDecision().name(), null);
+        }
         if (asset.getStatus() == MediaAssetStatus.PENDING) {
             try {
                 MediaAssetResponse lista = asset.getMultipartUploadId() != null
                         ? completarPorPartes(asset.getId(), workspaceId)
                         : (storage.consultar(asset.getStorageKey()) != null ? confirm(asset.getId()) : null);
                 if (lista != null) {
-                    return SubidaEstadoResponse.builder().clientUploadId(clientUploadId).assetId(asset.getId())
-                            .estado("READY").media(lista).build();
+                    return respuestaEstado(asset, clientUploadId, "READY", lista);
                 }
-            } catch (IllegalStateException | IllegalArgumentException ex) {
+            } catch (IllegalStateException | IllegalArgumentException | ConflictoException ex) {
                 // Todavía no está completa (o el archivo no sirve: eso lo dirá confirmar al terminar).
                 log.debug("Subida {} aún no se puede cerrar: {}", asset.getId(), ex.getMessage());
             }
-            return SubidaEstadoResponse.builder().clientUploadId(clientUploadId).assetId(asset.getId())
-                    .estado("PENDING").build();
+            return respuestaEstado(asset, clientUploadId, "PENDING", null);
         }
-        return SubidaEstadoResponse.builder().clientUploadId(clientUploadId).assetId(asset.getId())
-                .estado(asset.getStatus() == MediaAssetStatus.READY ? "READY" : "NO_EXISTE")
-                .media(asset.getStatus() == MediaAssetStatus.READY ? toResponse(asset) : null).build();
+        return respuestaEstado(asset, clientUploadId, estadoSesion(asset),
+                asset.getStatus() == MediaAssetStatus.READY ? toResponse(asset) : null);
+    }
+
+    private SubidaEstadoResponse respuestaEstado(MediaAsset a, String clave, String estado, MediaAssetResponse media) {
+        Long bytes = a.getUploadDeclaredBytes() != null ? a.getUploadDeclaredBytes() : a.getSizeBytes();
+        return SubidaEstadoResponse.builder().clientUploadId(clave).assetId(a.getId()).estado(estado).media(media)
+                .protocolVersion(a.getUploadProtocolVersion() == null ? 1 : a.getUploadProtocolVersion())
+                .expiresAt(a.getUploadExpiresAt()).nextCheckAt("READY".equals(estado) ? null : a.getUploadNextAttemptAt())
+                .mode(a.getMultipartPartSize() == null ? "simple" : "multipart").sizeBytes(bytes)
+                .contentType(a.getContentType()).fileName(a.getFileName())
+                .uploadBatchId(a.getUploadBatchId()).uploadBatchIndex(a.getUploadBatchIndex())
+                .partSizeBytes(a.getMultipartPartSize())
+                .partCount(a.getMultipartPartSize() == null ? null : totalPartes(bytes, a.getMultipartPartSize())).build();
     }
 
     // ------------------------------------------------------------------ subida por partes
@@ -605,27 +686,31 @@ public class MediaService {
      * <p>Si R2 abre la subida y la base falla al guardar, la subida queda huérfana en R2: no ocupa
      * nada hasta que se suben partes, y la regla del bucket la aborta a los 7 días.
      */
-    @Transactional
+    @Transactional(propagation = org.springframework.transaction.annotation.Propagation.NOT_SUPPORTED)
     public MultipartUploadResponse iniciarPorPartes(MediaPresignRequest request, UUID workspaceId) {
-        storage.exigirConfiguracion();
-        if (multipartDesde() == null) {
-            throw new IllegalStateException(
-                    "La subida por partes no está activa en este negocio. Sube el archivo de la forma normal.");
+        IdentidadDeSubida.version(request, workspaceId, true);
+        MediaAsset asset = admisiones.ejecutar(workspaceId, () -> reservarMultipart(request, workspaceId));
+        if ("RESERVED".equals(asset.getUploadOpeningState()) || "SENT".equals(asset.getUploadOpeningState())) {
+            asset = aperturas.resolver(asset.getId(), workspaceId);
         }
+        return aperturaRespuesta(asset);
+    }
 
+    private MediaAsset reservarMultipart(MediaPresignRequest request, UUID workspaceId) {
+        storage.exigirConfiguracion();
         String contentType = normalizar(request.getContentType());
-        MediaAsset previa = laMismaSubida(request, contentType, true);
+        MediaAsset previa = laMismaSubida(request, contentType, true, workspaceId);
         if (previa != null) {
-            if (previa.getStatus() == MediaAssetStatus.PENDING) {
+            if (previa.getStatus() == MediaAssetStatus.PENDING && previa.getUploadDecision() == null) {
                 previa.setUploadRenewedAt(LocalDateTime.now());
                 repository.save(previa);
             }
-            return MultipartUploadResponse.builder().assetId(previa.getId())
-                    .sizeBytes(previa.getSizeBytes() == null ? 0 : previa.getSizeBytes())
-                    .partSizeBytes(previa.getMultipartPartSize() == null ? 0 : previa.getMultipartPartSize())
-                    .partCount(totalPartes(previa.getSizeBytes(), previa.getMultipartPartSize()))
-                    .contentType(previa.getContentType()).url(previa.getUrl())
-                    .estado(previa.getStatus() == MediaAssetStatus.READY ? "READY" : "PENDING").build();
+            return previa;
+        }
+        // Apagar nuevas aperturas no invalida sesiones que ya reservaron espacio.
+        if (multipartDesde() == null) {
+            throw new IllegalStateException(
+                    "La subida por partes no está activa en este negocio. Sube el archivo de la forma normal.");
         }
         exigirTipoDeMedio(contentType);
         exigirTopeDiario();
@@ -634,9 +719,7 @@ public class MediaService {
 
         long tamanoParte = tamanoDeParte(request.getSizeBytes(), limites.getMultipart().getTamanoParteBytes());
         String key = storage.claveNueva(workspaceId, request.getFileName(), contentType);
-        String uploadId = storage.iniciarPorPartes(key, contentType);
-
-        MediaAsset asset = repository.save(MediaAsset.builder()
+        MediaAsset nueva = MediaAsset.builder()
                 .fileName(nombreODefecto(request.getFileName(), key))
                 .uploadBatchId(request.getUploadBatchId())
                 .uploadBatchIndex(request.getUploadBatchIndex())
@@ -648,30 +731,49 @@ public class MediaService {
                 .huellaArchivo(request.getHuellaArchivo())
                 .clientUploadId(request.getClientUploadId())
                 .status(MediaAssetStatus.PENDING)
-                .multipartUploadId(uploadId)
+                .uploadOpeningState("RESERVED")
                 .multipartPartSize(tamanoParte)
-                .build());
+                .uploadExpiresAt(java.time.Instant.now().plus(CoordinadorDeSubidas.RETENCION))
+                .uploadNextAttemptAt(java.time.Instant.now().plusSeconds(180))
+                .build();
+        IdentidadDeSubida.guardar(nueva, request, workspaceId, true, contentType);
+        MediaAsset asset = repository.save(nueva);
 
         int partes = totalPartes(request.getSizeBytes(), tamanoParte);
         log.info("Subida por partes abierta: {} ({}, {} partes de {})", asset.getId(),
                 MediaLimitsProperties.legible(request.getSizeBytes()), partes, MediaLimitsProperties.legible(tamanoParte));
-        return MultipartUploadResponse.builder()
-                .assetId(asset.getId())
-                .sizeBytes(request.getSizeBytes())
-                .partSizeBytes(tamanoParte)
-                .partCount(partes)
-                .contentType(contentType)
-                .url(asset.getUrl())
-                .build();
+        return asset;
+    }
+
+    private MultipartUploadResponse aperturaRespuesta(MediaAsset a) {
+        long bytes = a.getUploadDeclaredBytes() != null ? a.getUploadDeclaredBytes() : a.getSizeBytes() == null ? 0 : a.getSizeBytes();
+        return MultipartUploadResponse.builder().assetId(a.getId()).sizeBytes(bytes)
+                .partSizeBytes(a.getMultipartPartSize() == null ? 0 : a.getMultipartPartSize())
+                .partCount(totalPartes(bytes, a.getMultipartPartSize())).contentType(a.getContentType()).url(a.getUrl())
+                .estado(estadoSesion(a)).protocolVersion(a.getUploadProtocolVersion() == null ? 1 : a.getUploadProtocolVersion())
+                .expiresAt(a.getUploadExpiresAt()).nextCheckAt(a.getUploadNextAttemptAt()).build();
+    }
+
+    private static String estadoSesion(MediaAsset a) {
+        if (a.getStatus() == MediaAssetStatus.READY) return "READY";
+        if (a.getUploadDecision() == UploadDecision.CANCELLING || a.getUploadDecision() == UploadDecision.EXPIRING
+                || a.getUploadDecision() == UploadDecision.CANCELLED || a.getUploadDecision() == UploadDecision.EXPIRED) return a.getUploadDecision().name();
+        if ("SENT".equals(a.getUploadOpeningState()) || "RESERVED".equals(a.getUploadOpeningState())) return "OPENING";
+        return a.getStatus() == MediaAssetStatus.PENDING ? "PENDING" : "NO_EXISTE";
     }
 
     /**
-     * Firma un lote de partes. Cada lote cuenta como señal de vida: la subida no se da por
-     * abandonada mientras siga pidiendo permisos, aunque tarde horas.
+     * Firma un lote bajo bloqueo corto y persiste protección hasta firma + margen.
+     * La firma se acota al plazo absoluto; no necesita heartbeats del cliente.
      */
     @Transactional
     public MultipartPartsResponse firmarPartes(UUID assetId, UUID workspaceId, List<Integer> numeros) {
-        MediaAsset asset = subidaPorPartesEnCurso(assetId, workspaceId);
+        MediaAsset asset = repository.findForUploadUpdate(assetId)
+                .filter(a -> workspaceId.toString().equals(a.getTenantId()))
+                .orElseThrow(() -> new ResourceNotFoundException("Esa subida ya no existe en este negocio."));
+        IdentidadDeSubida.acceso(asset, workspaceId);
+        CoordinadorDeSubidas.exigirAbierta(asset);
+        if (asset.getMultipartUploadId() == null) throw new IllegalStateException("Esta subida no va por partes.");
         int total = totalPartes(asset.getSizeBytes(), asset.getMultipartPartSize());
         int tope = limites.getMultipart().getMaxPartesPorLote();
 
@@ -683,26 +785,23 @@ public class MediaService {
             throw new IllegalArgumentException("Esa parte no existe en esta subida: tiene " + total + ".");
         }
 
+        long ttl = coordinador.protegerFirmas(asset, limites.getMultipart().getTtlParteSegundos());
         asset.setUploadRenewedAt(LocalDateTime.now());
         repository.save(asset);
-
-        long ttl = limites.getMultipart().getTtlParteSegundos();
+        java.time.Instant firmasDesde = java.time.Instant.now().truncatedTo(java.time.temporal.ChronoUnit.SECONDS);
         List<MultipartPartsResponse.SignedPart> firmadas = pedidas.stream()
                 .map(n -> new MultipartPartsResponse.SignedPart(n,
-                        storage.firmarParte(asset.getStorageKey(), asset.getMultipartUploadId(), n, ttl)))
+                        storage.firmarParte(asset.getStorageKey(), asset.getMultipartUploadId(), n, ttl), firmasDesde.plusSeconds(ttl)))
                 .toList();
         return partes(asset, total, List.of(), firmadas, ttl);
     }
 
     /**
      * Las partes que ya están en R2. Es lo que permite retomar: el cliente no recuerda nada, R2 sí.
-     * También cuenta como señal de vida, para quien vuelve tras una pausa larga.
+     * No renueva el plazo absoluto ni mantiene una transacción durante ListParts.
      */
-    @Transactional
     public MultipartPartsResponse partesSubidas(UUID assetId, UUID workspaceId) {
         MediaAsset asset = subidaPorPartesEnCurso(assetId, workspaceId);
-        asset.setUploadRenewedAt(LocalDateTime.now());
-        repository.save(asset);
         int total = totalPartes(asset.getSizeBytes(), asset.getMultipartPartSize());
         return partes(asset, total, storage.partesSubidas(asset.getStorageKey(), asset.getMultipartUploadId()),
                 List.of(), 0);
@@ -718,21 +817,34 @@ public class MediaService {
      * base en la mano. Llamarlo dos veces es seguro.
      */
     public MediaAssetResponse completarPorPartes(UUID assetId, UUID workspaceId) {
+        return coordinador.completar(assetId, workspaceId);
+    }
+
+    /** Sólo invocado por el coordinador con un lease persistido. No tiene transacción remota. */
+    public MediaAssetResponse unirPartesCoordinadas(UUID assetId, UUID workspaceId, UUID token) {
         MediaAsset asset = repository.findById(assetId)
                 .filter(a -> workspaceId.toString().equals(a.getTenantId()))
                 .orElseThrow(() -> new ResourceNotFoundException("Esa subida no existe en este negocio."));
         if (asset.getStatus() == MediaAssetStatus.READY || asset.getMultipartUploadId() == null) {
             // Ya se unió (un reintento tras perder la respuesta): solo falta, o ya estaba, confirmar.
-            return confirm(assetId);
+            return confirmarMultipartUnido(assetId, token);
         }
 
         int total = totalPartes(asset.getSizeBytes(), asset.getMultipartPartSize());
         List<R2StorageService.ParteSubida> llegaron = storage.partesSubidas(
                 asset.getStorageKey(), asset.getMultipartUploadId()).stream()
-                .filter(p -> p.numero() <= total)
+                .sorted(java.util.Comparator.comparingInt(R2StorageService.ParteSubida::numero))
                 .toList();
+        // Complete consume el uploadId en R2. Tras una caída antes del guardado,
+        // ListParts ya no encuentra partes aunque el objeto final sí exista.
+        if (llegaron.isEmpty() && objetoMultipartCompleto(asset)) {
+            return confirmarMultipartUnido(assetId, token);
+        }
         java.util.Set<Integer> numeros = llegaron.stream().map(R2StorageService.ParteSubida::numero)
                 .collect(java.util.stream.Collectors.toSet());
+        if (numeros.size() != llegaron.size() || numeros.stream().anyMatch(n -> n < 1 || n > total)) {
+            throw new IllegalStateException("Las partes tienen números repetidos o fuera de esta subida.");
+        }
         List<Integer> faltan = java.util.stream.IntStream.rangeClosed(1, total)
                 .filter(n -> !numeros.contains(n)).boxed().toList();
         if (!faltan.isEmpty()) {
@@ -744,58 +856,66 @@ public class MediaService {
             log.warn("Subida por partes {}: las partes suman {} y se declararon {}", assetId, suma, asset.getSizeBytes());
             throw new IllegalStateException("Las partes no suman lo que pesa el archivo. Cancela y vuelve a subirlo.");
         }
+        for (R2StorageService.ParteSubida parte : llegaron) {
+            long esperado = parte.numero() < total ? asset.getMultipartPartSize()
+                    : asset.getSizeBytes() - (total - 1L) * asset.getMultipartPartSize();
+            if (parte.bytes() != esperado || parte.etag() == null || parte.etag().isBlank()) {
+                throw new IllegalStateException("Una parte no tiene el tamaño esperado o su ETag. Reintenta esa parte.");
+            }
+        }
 
+        coordinador.decidirCompletar(assetId, token);
         try {
             storage.completarPorPartes(asset.getStorageKey(), asset.getMultipartUploadId(), llegaron);
         } catch (software.amazon.awssdk.services.s3.model.S3Exception ex) {
             // La app y el rescate del servidor pueden unir a la vez: el segundo recibe NoSuchUpload
             // aunque el archivo ya esté entero. Si el archivo está, la subida terminó bien.
-            if (storage.consultar(asset.getStorageKey()) == null) {
-                log.warn("R2 no unió las partes de {}: {}", assetId, ex.getMessage());
+            if (!objetoMultipartCompleto(asset)) {
+                log.warn("R2 no unió las partes de {} (HTTP {})", assetId, ex.statusCode());
                 throw new IllegalStateException("No se pudo terminar la subida. Intenta de nuevo en un momento.");
             }
             log.info("Las partes de {} ya estaban unidas (otro proceso las cerró)", assetId);
         }
-        transaccion.executeWithoutResult(estado -> repository.findById(assetId).ifPresent(a -> {
-            a.setMultipartUploadId(null);
-            repository.save(a);
-        }));
         log.info("Subida por partes completada: {} ({} partes, {})", assetId, total,
                 MediaLimitsProperties.legible(suma));
-        return confirm(assetId);
+        return confirmarMultipartUnido(assetId, token);
+    }
+
+    private boolean objetoMultipartCompleto(MediaAsset asset) {
+        R2StorageService.Consulta objeto = storage.consultar(asset.getStorageKey());
+        return objeto != null && asset.getSizeBytes() != null && asset.getSizeBytes() > 0
+                && objeto.sizeBytes() == asset.getSizeBytes();
+    }
+
+    private MediaAssetResponse confirmarMultipartUnido(UUID assetId, UUID token) {
+        coordinador.decidirCompletar(assetId, token);
+        return confirmarSesionCoordinada(assetId, token);
     }
 
     /** Lo que hace el rescate del servidor con una subida pendiente: unir si va por partes, y confirmar. */
     public MediaAssetResponse completarOConfirmar(UUID assetId, UUID workspaceId) {
         MediaAsset asset = repository.findById(assetId)
                 .orElseThrow(() -> new ResourceNotFoundException("Esa subida no existe."));
-        return asset.getMultipartUploadId() != null ? completarPorPartes(assetId, workspaceId) : confirm(assetId);
+        if (!workspaceId.toString().equals(asset.getTenantId())) {
+            throw new ResourceNotFoundException("Esa subida no existe en este negocio.");
+        }
+        return asset.getMultipartPartSize() != null ? completarPorPartes(assetId, workspaceId) : confirm(assetId);
     }
 
     /** Cancela una subida a medias: libera lo que ya ocupaba en R2 y la cuota que tenía apartada. */
     public void cancelarPorPartes(UUID assetId, UUID workspaceId) {
-        MediaAsset asset = repository.findById(assetId)
-                .filter(a -> workspaceId.toString().equals(a.getTenantId()))
-                .orElseThrow(() -> new ResourceNotFoundException("Esa subida no existe en este negocio."));
-        if (asset.getStatus() != MediaAssetStatus.PENDING) {
-            throw new IllegalStateException("El archivo ya se subió. Para quitarlo, elimínalo desde Contenido.");
-        }
-        if (asset.getMultipartUploadId() != null) {
-            storage.abortarPorPartes(asset.getStorageKey(), asset.getMultipartUploadId());
-        }
-        // Por si se llegó a unir y nadie lo confirmó: tampoco debe quedarse ocupando espacio.
-        storage.deleteByKey(asset.getStorageKey());
-        transaccion.executeWithoutResult(estado -> repository.findById(assetId).ifPresent(repository::delete));
-        log.info("Subida por partes cancelada: {}", assetId);
+        coordinador.cancelar(assetId, workspaceId);
     }
 
     private MediaAsset subidaPorPartesEnCurso(UUID assetId, UUID workspaceId) {
         MediaAsset asset = repository.findById(assetId)
                 .filter(a -> workspaceId.toString().equals(a.getTenantId()))
                 .orElseThrow(() -> new ResourceNotFoundException("Esa subida ya no existe. Vuelve a elegir el archivo."));
+        IdentidadDeSubida.acceso(asset, workspaceId);
         if (asset.getStatus() != MediaAssetStatus.PENDING) {
             throw new IllegalStateException("Esta subida ya terminó. Revisa Contenido.");
         }
+        CoordinadorDeSubidas.exigirAbierta(asset);
         if (asset.getMultipartUploadId() == null) {
             throw new IllegalStateException("Esta subida no va por partes.");
         }
@@ -815,6 +935,9 @@ public class MediaService {
                 .uploadedBytes(subidas.stream().mapToLong(R2StorageService.ParteSubida::bytes).sum())
                 .signed(firmadas)
                 .expiresInSeconds(ttl)
+                .expiresAt(asset.getUploadExpiresAt())
+                .signedExpiresAt(firmadas.stream().map(MultipartPartsResponse.SignedPart::getExpiresAt)
+                        .filter(java.util.Objects::nonNull).min(java.time.Instant::compareTo).orElse(null))
                 .build();
     }
 
@@ -907,9 +1030,13 @@ public class MediaService {
     }
 
     /** La parte de {@link #confirm} que escribe en la base, corta y con transacción propia. */
-    private MediaAssetResponse cerrarConfirmacion(UUID assetId, R2StorageService.Consulta enR2) {
-        MediaAsset asset = repository.findById(assetId)
+    private MediaAssetResponse cerrarConfirmacion(UUID assetId, R2StorageService.Consulta enR2, UUID token) {
+        MediaAsset asset = repository.findForUploadUpdate(assetId)
                 .orElseThrow(() -> new ResourceNotFoundException("Esa subida no existe."));
+        if (asset.getStatus() == MediaAssetStatus.READY) return toResponse(asset);
+        if (asset.getMultipartPartSize() != null) {
+            CoordinadorDeSubidas.exigirCompletar(asset, token);
+        }
 
         long declarado = asset.getSizeBytes() == null ? 0 : asset.getSizeBytes();
         if (enR2.sizeBytes() > declarado) {
@@ -919,6 +1046,10 @@ public class MediaService {
             // para no contarlo dos veces.
             long disponible = cuota.uso().disponible() + declarado;
             if (enR2.sizeBytes() > disponible) {
+                if (token != null) {
+                    throw new QuotaExceededException("STORAGE_QUOTA_EXCEEDED",
+                            "El archivo necesita más espacio. Se conserva para recuperar la subida.");
+                }
                 log.warn("Subida rechazada: se declararon {} bytes y llegaron {}", declarado,
                         enR2.sizeBytes());
                 storage.deleteByKey(asset.getStorageKey());
@@ -931,6 +1062,7 @@ public class MediaService {
 
         asset.setSizeBytes(enR2.sizeBytes());
         asset.setStatus(MediaAssetStatus.READY);
+        if (token != null) CoordinadorDeSubidas.terminada(asset);
         if (enR2.contentType() != null && !enR2.contentType().isBlank()) {
             asset.setContentType(enR2.contentType());
         }
@@ -942,7 +1074,11 @@ public class MediaService {
         // esperando alguien mirando una barra de progreso. Aparecera en el
         // siguiente refresco de la galeria.
         if (guardado.getType() == MediaType.VIDEO) {
-            miniaturas.sacar(guardado.getId(), guardado.getTenantId());
+            org.springframework.transaction.support.TransactionSynchronizationManager.registerSynchronization(
+                    new org.springframework.transaction.support.TransactionSynchronization() {
+                        @Override
+                        public void afterCommit() { miniaturas.sacar(guardado.getId(), guardado.getTenantId()); }
+                    });
         }
 
         return toResponse(guardado);
@@ -1055,6 +1191,8 @@ public class MediaService {
                 .subidasHoy(subidasHoy())
                 .multipartFromBytes(multipartDesde())
                 .subidaEnFondo(1)
+                .multipartSessionVersion(2)
+                .multipartMobileReady(false)
                 .build();
     }
 
@@ -1144,6 +1282,9 @@ public class MediaService {
     public void delete(UUID id) {
         MediaAsset asset = repository.findById(id)
                 .orElseThrow(() -> new ResourceNotFoundException("Archivo no encontrado."));
+        if (asset.getMultipartPartSize() != null && asset.getStatus() != MediaAssetStatus.READY) {
+            throw new ConflictoException("UPLOAD_USE_CANCEL", "Usa la cancelación de la subida; se conserva su registro.");
+        }
 
         // Por clave cuando la hay; recortando la URL solo para las filas
         // anteriores a que la clave se guardara.
@@ -1205,6 +1346,10 @@ public class MediaService {
     public void liberar(UUID id) {
         MediaAsset asset = repository.findById(id)
                 .orElseThrow(() -> new ResourceNotFoundException("Archivo no encontrado."));
+
+        if (asset.getMultipartPartSize() != null && asset.getStatus() == MediaAssetStatus.PENDING) {
+            throw new ConflictoException("UPLOAD_USE_CANCEL", "Usa la cancelación de la subida pendiente.");
+        }
 
         if (asset.getStatus() == MediaAssetStatus.RELEASED) {
             return;

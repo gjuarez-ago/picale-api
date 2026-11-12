@@ -273,7 +273,120 @@ class SubidaPorPartesTest {
     // ------------------------------------------------------------------ cancelar y abandonar
 
     @Test
-    @DisplayName("cancelar aborta en R2 y libera la fila, y con ella la cuota apartada")
+    void recuperaLaMismaSesionAunqueSeApaguenLasNuevas() {
+        MediaPresignRequest pedido = pedido(PESO);
+        pedido.setClientUploadId("multipart_" + UUID.randomUUID());
+        MultipartUploadResponse original = enElWorkspace(() -> media.iniciarPorPartes(pedido, WS_ID));
+        creados.add(original.getAssetId());
+        limites.getMultipart().setModo(MediaLimitsProperties.Multipart.Modo.APAGADA);
+
+        MultipartUploadResponse recuperada = enElWorkspace(() -> media.iniciarPorPartes(pedido, WS_ID));
+
+        assertThat(recuperada.getAssetId()).isEqualTo(original.getAssetId());
+        assertThat(recuperada.getPartCount()).isEqualTo(19);
+        verify(storage, org.mockito.Mockito.times(1)).iniciarPorPartes(anyString(), anyString());
+    }
+
+    @Test
+    void rechazaPartesExtraAunqueLasEsperadasEstenCompletas() {
+        List<ParteSubida> partes = new ArrayList<>(todasLasPartes());
+        partes.add(new ParteSubida(20, "extra", MIB));
+        rechazaPartes(partes);
+    }
+
+    @Test
+    void rechazaNumeroCero() {
+        List<ParteSubida> partes = new ArrayList<>(todasLasPartes());
+        partes.add(new ParteSubida(0, "extra", 0));
+        rechazaPartes(partes);
+    }
+
+    @Test
+    void rechazaNumerosDuplicadosAunqueLaSumaSeaCorrecta() {
+        List<ParteSubida> partes = new ArrayList<>(todasLasPartes());
+        partes.set(0, new ParteSubida(1, "a", 8 * MIB));
+        partes.add(new ParteSubida(1, "b", 8 * MIB));
+        rechazaPartes(partes);
+    }
+
+    @Test
+    void rechazaTamanosIntercambiadosAunqueLaSumaSeaCorrecta() {
+        List<ParteSubida> partes = new ArrayList<>(todasLasPartes());
+        partes.set(0, new ParteSubida(1, "a", 15 * MIB));
+        partes.set(1, new ParteSubida(2, "b", 17 * MIB));
+        rechazaPartes(partes);
+    }
+
+    @Test
+    void rechazaEtagVacio() {
+        List<ParteSubida> partes = new ArrayList<>(todasLasPartes());
+        partes.set(0, new ParteSubida(1, " ", 16 * MIB));
+        rechazaPartes(partes);
+    }
+
+    private void rechazaPartes(List<ParteSubida> partes) {
+        UUID id = abrir().getAssetId();
+        when(storage.partesSubidas(anyString(), anyString())).thenReturn(partes);
+        when(storage.consultar(anyString())).thenReturn(new R2StorageService.Consulta(PESO, "video/mp4"));
+        assertThatThrownBy(() -> enElWorkspace(() -> media.completarPorPartes(id, WS_ID)))
+                .isInstanceOf(IllegalStateException.class);
+        verify(storage, never()).completarPorPartes(anyString(), anyString(), any());
+        assertThat(fila(id).getStatus()).isEqualTo(MediaAssetStatus.PENDING);
+        assertThat(fila(id).getMultipartUploadId()).isEqualTo("subida-1");
+    }
+
+    @Test
+    void recuperaUnionTerminadaAntesDeGuardarEnLaBase() {
+        UUID id = abrir().getAssetId();
+        // R2 ya consumió uploadId al unir; ListParts devuelve vacío por NoSuchUpload.
+        when(storage.partesSubidas(anyString(), anyString())).thenReturn(List.of());
+        when(storage.consultar(anyString())).thenReturn(new R2StorageService.Consulta(PESO, "video/mp4"));
+
+        MediaAssetResponse lista = enElWorkspace(() -> media.completarPorPartes(id, WS_ID));
+
+        assertThat(lista.getStatus()).isEqualTo(MediaAssetStatus.READY);
+        assertThat(fila(id).getMultipartUploadId()).isNull();
+        verify(storage, never()).completarPorPartes(anyString(), anyString(), any());
+    }
+
+    @Test
+    void noRecuperaObjetoDeTamanoDistinto() {
+        UUID id = abrir().getAssetId();
+        when(storage.partesSubidas(anyString(), anyString())).thenReturn(List.of());
+        when(storage.consultar(anyString())).thenReturn(new R2StorageService.Consulta(PESO + 1, "video/mp4"));
+        assertThatThrownBy(() -> enElWorkspace(() -> media.completarPorPartes(id, WS_ID)))
+                .isInstanceOf(IllegalStateException.class);
+        assertThat(fila(id).getStatus()).isEqualTo(MediaAssetStatus.PENDING);
+        assertThat(fila(id).getMultipartUploadId()).isEqualTo("subida-1");
+    }
+
+    @Test
+    void errorAlUnirNoAceptaCualquierObjeto() {
+        UUID id = abrir().getAssetId();
+        when(storage.partesSubidas(anyString(), anyString())).thenReturn(todasLasPartes());
+        when(storage.consultar(anyString())).thenReturn(new R2StorageService.Consulta(PESO + 1, "video/mp4"));
+        doThrow(software.amazon.awssdk.services.s3.model.S3Exception.builder().statusCode(404).build())
+                .when(storage).completarPorPartes(anyString(), anyString(), any());
+
+        assertThatThrownBy(() -> enElWorkspace(() -> media.completarPorPartes(id, WS_ID)))
+                .isInstanceOf(IllegalStateException.class);
+        assertThat(fila(id).getStatus()).isEqualTo(MediaAssetStatus.PENDING);
+        assertThat(fila(id).getMultipartUploadId()).isEqualTo("subida-1");
+    }
+
+    @Test
+    void ordenaLasPartesAntesDeUnir() {
+        UUID id = abrir().getAssetId();
+        List<ParteSubida> desordenadas = new ArrayList<>(todasLasPartes());
+        java.util.Collections.reverse(desordenadas);
+        when(storage.partesSubidas(anyString(), anyString())).thenReturn(desordenadas);
+        when(storage.consultar(anyString())).thenReturn(new R2StorageService.Consulta(PESO, "video/mp4"));
+        enElWorkspace(() -> media.completarPorPartes(id, WS_ID));
+        verify(storage).completarPorPartes(anyString(), anyString(), eq(todasLasPartes()));
+    }
+
+    @Test
+    @DisplayName("cancelar aborta en R2 y libera cuota conservando el registro terminal")
     void cancela() {
         UUID id = abrir().getAssetId();
         enElWorkspace(() -> {
@@ -282,26 +395,30 @@ class SubidaPorPartesTest {
         });
 
         verify(storage).abortarPorPartes(anyString(), eq("subida-1"));
-        assertThat(enElWorkspace(() -> assets.findById(id))).isEmpty();
+        assertThat(fila(id).getStatus()).isEqualTo(MediaAssetStatus.RELEASED);
+        assertThat(fila(id).getUploadDecision()).isEqualTo(com.metricol.api.enums.UploadDecision.CANCELLED);
     }
 
     @Test
-    @DisplayName("una subida abandonada se aborta en R2 antes de borrar la fila")
+    @DisplayName("una subida vencida se aborta antes de liberar cuota y queda registrada")
     void abandonada() {
         UUID id = abrir().getAssetId();
+        vencer(id);
         when(storage.consultar(anyString())).thenReturn(null);
 
         boolean confirmada = enElWorkspace(() -> reconciliador.resolver(id));
 
         assertThat(confirmada).isFalse();
         verify(storage).abortarPorPartes(anyString(), eq("subida-1"));
-        assertThat(enElWorkspace(() -> assets.findById(id))).isEmpty();
+        assertThat(fila(id).getStatus()).isEqualTo(MediaAssetStatus.RELEASED);
+        assertThat(fila(id).getUploadDecision()).isEqualTo(com.metricol.api.enums.UploadDecision.EXPIRED);
     }
 
     @Test
     @DisplayName("si R2 no deja abortar, la fila se queda para reintentar: sin ella se perdería el id")
     void abandonadaSinR2() {
         UUID id = abrir().getAssetId();
+        vencer(id);
         when(storage.consultar(anyString())).thenReturn(null);
         doThrow(new RuntimeException("R2 caído")).when(storage).abortarPorPartes(anyString(), anyString());
 
@@ -311,6 +428,98 @@ class SubidaPorPartesTest {
     }
 
     // ------------------------------------------------------------------ cálculo de partes
+
+    @Test
+    void archivoConMasDe50PartesSeFirmaEnVariosLotes() {
+        long configurado = limites.getMultipart().getTamanoParteBytes();
+        try {
+            limites.getMultipart().setTamanoParteBytes(5 * MIB);
+            MultipartUploadResponse abierta = abrir();
+            assertThat(abierta.getPartCount()).isEqualTo(60);
+            UUID id = abierta.getAssetId();
+            assertThat(enElWorkspace(() -> media.firmarPartes(id, WS_ID,
+                    IntStream.rangeClosed(1, 50).boxed().toList())).getSigned()).hasSize(50);
+            assertThat(enElWorkspace(() -> media.firmarPartes(id, WS_ID,
+                    IntStream.rangeClosed(51, 60).boxed().toList())).getSigned()).hasSize(10);
+            assertThatThrownBy(() -> enElWorkspace(() -> media.firmarPartes(id, WS_ID,
+                    IntStream.rangeClosed(1, 51).boxed().toList())))
+                    .isInstanceOf(IllegalArgumentException.class).hasMessageContaining("hasta 50");
+            verify(storage, org.mockito.Mockito.times(60))
+                    .firmarParte(anyString(), anyString(), anyInt(), anyLong());
+        } finally {
+            limites.getMultipart().setTamanoParteBytes(configurado);
+        }
+    }
+
+    @Test
+    void listaVaciaSinObjetoNoConfirmaNiLiberaReserva() {
+        UUID id = abrir().getAssetId();
+        when(storage.partesSubidas(anyString(), anyString())).thenReturn(List.of());
+        when(storage.consultar(anyString())).thenReturn(null);
+        assertThatThrownBy(() -> enElWorkspace(() -> media.completarPorPartes(id, WS_ID)))
+                .hasMessageContaining("Faltan 19 de 19");
+        assertThat(fila(id).getStatus()).isEqualTo(MediaAssetStatus.PENDING);
+        assertThat(fila(id).getMultipartUploadId()).isEqualTo("subida-1");
+        verify(storage, never()).completarPorPartes(anyString(), anyString(), any());
+    }
+
+    @Test
+    void recuperaErrorS3DeUnionSiElObjetoTieneTamanoExacto() {
+        UUID id = abrir().getAssetId();
+        when(storage.partesSubidas(anyString(), anyString())).thenReturn(todasLasPartes());
+        when(storage.consultar(anyString())).thenReturn(new R2StorageService.Consulta(PESO, "video/mp4"));
+        doThrow(software.amazon.awssdk.services.s3.model.S3Exception.builder().statusCode(404).build())
+                .when(storage).completarPorPartes(anyString(), anyString(), any());
+        assertThat(enElWorkspace(() -> media.completarPorPartes(id, WS_ID)).getStatus())
+                .isEqualTo(MediaAssetStatus.READY);
+        assertThat(fila(id).getMultipartUploadId()).isNull();
+    }
+
+    @Test
+    void apagarNoImpideFirmarConsultarCompletarNiCancelarSesionesExistentes() {
+        UUID completar = abrir().getAssetId();
+        UUID cancelar = abrir().getAssetId();
+        limites.getMultipart().setModo(MediaLimitsProperties.Multipart.Modo.APAGADA);
+        when(storage.partesSubidas(anyString(), anyString())).thenReturn(todasLasPartes());
+        when(storage.consultar(anyString())).thenReturn(new R2StorageService.Consulta(PESO, "video/mp4"));
+        String claveCancelada = fila(cancelar).getStorageKey();
+        when(storage.partesSubidas(eq(claveCancelada), anyString())).thenReturn(List.of());
+        when(storage.consultar(claveCancelada)).thenReturn(null);
+
+        assertThat(enElWorkspace(() -> media.firmarPartes(completar, WS_ID, List.of(1))).getSigned()).hasSize(1);
+        assertThat(enElWorkspace(() -> media.partesSubidas(completar, WS_ID)).getUploaded()).hasSize(19);
+        assertThat(enElWorkspace(() -> media.completarPorPartes(completar, WS_ID)).getStatus())
+                .isEqualTo(MediaAssetStatus.READY);
+        enElWorkspace(() -> { media.cancelarPorPartes(cancelar, WS_ID); return null; });
+        assertThat(fila(cancelar).getUploadDecision()).isEqualTo(com.metricol.api.enums.UploadDecision.CANCELLED);
+    }
+
+    @Test
+    void noConsultaCompletaNiCancelaOtroWorkspace() {
+        UUID id = abrir().getAssetId();
+        UUID otro = UUID.randomUUID();
+        assertThatThrownBy(() -> enElWorkspace(() -> media.partesSubidas(id, otro)))
+                .isInstanceOf(com.metricol.api.exception.ResourceNotFoundException.class);
+        assertThatThrownBy(() -> enElWorkspace(() -> media.completarPorPartes(id, otro)))
+                .isInstanceOf(com.metricol.api.exception.ResourceNotFoundException.class);
+        assertThatThrownBy(() -> enElWorkspace(() -> { media.cancelarPorPartes(id, otro); return null; }))
+                .isInstanceOf(com.metricol.api.exception.ResourceNotFoundException.class);
+        verify(storage, never()).partesSubidas(anyString(), anyString());
+        verify(storage, never()).abortarPorPartes(anyString(), anyString());
+        verify(storage, never()).deleteByKey(anyString());
+    }
+
+    @Test
+    void unErrorDeLecturaNoSeInterpretaComoObjetoAusente() {
+        UUID id = abrir().getAssetId();
+        when(storage.partesSubidas(anyString(), anyString())).thenReturn(List.of());
+        when(storage.consultar(anyString())).thenThrow(new IllegalStateException("R2 no disponible"));
+        assertThatThrownBy(() -> enElWorkspace(() -> media.completarPorPartes(id, WS_ID)))
+                .hasMessage("R2 no disponible");
+        assertThat(fila(id).getStatus()).isEqualTo(MediaAssetStatus.PENDING);
+        assertThat(fila(id).getMultipartUploadId()).isEqualTo("subida-1");
+        verify(storage, never()).deleteByKey(anyString());
+    }
 
     @Test
     @DisplayName("las partes: el tamaño configurado, nunca menos de 5 MiB ni más de 10,000 partes")
@@ -328,6 +537,15 @@ class SubidaPorPartesTest {
     }
 
     // ------------------------------------------------------------------ ayudas
+
+    private void vencer(UUID id) {
+        enElWorkspace(() -> {
+            MediaAsset a = assets.findById(id).orElseThrow();
+            a.setUploadExpiresAt(java.time.Instant.now().minusSeconds(1));
+            assets.save(a);
+            return null;
+        });
+    }
 
     private MultipartUploadResponse abrir() {
         MultipartUploadResponse abierta = enElWorkspace(() -> media.iniciarPorPartes(pedido(PESO), WS_ID));

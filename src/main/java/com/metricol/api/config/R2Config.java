@@ -15,7 +15,15 @@ import software.amazon.awssdk.services.s3.presigner.S3Presigner;
 public class R2Config {
 
     @Bean
+    @org.springframework.context.annotation.Primary
     public S3Client r2Client(R2Properties props) {
+        return cliente(props, false);
+    }
+
+    @Bean
+    public S3Client r2OpeningClient(R2Properties props) { return cliente(props, true); }
+
+    private S3Client cliente(R2Properties props, boolean apertura) {
         // Sin credenciales configuradas, se arma un cliente "apuntando a nada" en
         // vez de tronar el arranque de la app: R2StorageService revisa
         // props.isConfigured() antes de usarlo, así que este cliente nunca llega
@@ -25,12 +33,16 @@ public class R2Config {
         String secretKey = props.isConfigured() ? props.getSecretKey() : "sin-configurar";
 
         // R2 es compatible con la API de S3; "auto" es la región que espera R2.
-        return S3Client.builder()
+        var builder = S3Client.builder()
                 .endpointOverride(URI.create(endpoint))
                 .region(Region.of("auto"))
                 .credentialsProvider(StaticCredentialsProvider.create(
-                        AwsBasicCredentials.create(accessKey, secretKey)))
-                .build();
+                        AwsBasicCredentials.create(accessKey, secretKey)));
+        if (apertura) builder.overrideConfiguration(c -> c
+                .retryPolicy(software.amazon.awssdk.core.retry.RetryPolicy.none())
+                .apiCallTimeout(java.time.Duration.ofMinutes(2))
+                .apiCallAttemptTimeout(java.time.Duration.ofMinutes(2)));
+        return builder.build();
     }
 
     /**

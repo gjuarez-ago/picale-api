@@ -38,4 +38,7 @@ public class MultipartUploadResponse {
     /** PENDING, o READY si esta misma subida ({@code clientUploadId}) ya terminó. */
     @Builder.Default
     private String estado = "PENDING";
+    private int protocolVersion;
+    private java.time.Instant expiresAt;
+    private java.time.Instant nextCheckAt;
 }

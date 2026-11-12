@@ -1,6 +1,7 @@
 package com.metricol.api.entity;
 
 import java.time.LocalDateTime;
+import java.time.Instant;
 import java.util.UUID;
 
 import org.hibernate.annotations.CreationTimestamp;
@@ -10,6 +11,7 @@ import org.hibernate.annotations.TenantId;
 import com.metricol.api.enums.EtapaAgente;
 import com.metricol.api.enums.MediaAssetStatus;
 import com.metricol.api.enums.MediaType;
+import com.metricol.api.enums.UploadDecision;
 
 import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
@@ -32,7 +34,9 @@ import lombok.Setter;
 @DynamicUpdate
 @Entity
 @Table(name = "media_assets",
-        indexes = @jakarta.persistence.Index(name = "ix_media_generation_job", columnList = "generation_job_id,tenant_id"),
+        indexes = {
+                @jakarta.persistence.Index(name = "ix_media_generation_job", columnList = "generation_job_id,tenant_id"),
+                @jakarta.persistence.Index(name = "ix_media_upload_retry", columnList = "status,upload_next_attempt_at") },
         // La misma subida pedida dos veces (se perdió la respuesta, Android repitió el trabajo)
         // es UNA fila: lo garantiza la base, no un chequeo previo que dos peticiones pasan juntas.
         uniqueConstraints = @jakarta.persistence.UniqueConstraint(name = "ux_media_client_upload",
@@ -123,6 +127,26 @@ public class MediaAsset {
     @Column(length = 512)
     private String multipartUploadId;
     private Long multipartPartSize;
+
+    @Enumerated(EnumType.STRING)
+    @Column(length = 24)
+    private UploadDecision uploadDecision;
+    private UUID uploadLeaseOwner;
+    private Instant uploadLeaseUntil;
+    private Instant uploadExpiresAt;
+    private Instant uploadProtectedUntil;
+    private Instant uploadNextAttemptAt;
+    private Integer uploadAttempts;
+    @Column(length = 40)
+    private String uploadLastError;
+    private UUID uploadOwnerId;
+    @Column(length = 64)
+    private String uploadIdentityHash;
+    private Long uploadDeclaredBytes;
+    private Integer uploadProtocolVersion;
+    /** null heredada; RESERVED todavía no admitió Create; SENT nunca repite Create; ATTACHED tiene ID. */
+    @Column(length = 16)
+    private String uploadOpeningState;
 
     private UUID sourceAssetId;
     private Double trimStartSeconds;

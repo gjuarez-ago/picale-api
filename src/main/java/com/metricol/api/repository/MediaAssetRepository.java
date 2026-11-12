@@ -12,7 +12,17 @@ import org.springframework.transaction.annotation.Transactional;
 import com.metricol.api.entity.MediaAsset;
 import com.metricol.api.enums.MediaAssetStatus;
 
-public interface MediaAssetRepository extends JpaRepository<MediaAsset, UUID> {
+public interface MediaAssetRepository extends JpaRepository<MediaAsset, UUID>, MediaAssetUploadLocks {
+
+    /** Consulta global acotada: cada fila se procesa después bajo su tenant. */
+    @Query(value = """
+            select cast(id as varchar), tenant_id from media_assets
+            where status = 'PENDING' and multipart_part_size is not null
+              and (upload_next_attempt_at is null or upload_next_attempt_at <= :ahora)
+              and (upload_lease_until is null or upload_lease_until <= :ahora)
+            order by upload_next_attempt_at asc nulls first, created_at asc limit :tope
+            """, nativeQuery = true)
+    List<Object[]> multipartRecuperables(java.time.Instant ahora, int tope);
 
     @Modifying
     @Transactional
@@ -310,6 +320,7 @@ public interface MediaAssetRepository extends JpaRepository<MediaAsset, UUID> {
             select cast(m.id as varchar), m.tenant_id, m.storage_key
             from media_assets m
             where m.status = 'PENDING'
+              and m.multipart_part_size is null
               and coalesce(m.upload_renewed_at, m.created_at) <
                   (case when m.client_upload_id is null then cast(:limite as timestamp)
                         else cast(:limiteEnFondo as timestamp) end)
@@ -318,10 +329,14 @@ public interface MediaAssetRepository extends JpaRepository<MediaAsset, UUID> {
             """, nativeQuery = true)
     List<Object[]> findPrefirmadosViejos(LocalDateTime limite, LocalDateTime limiteEnFondo, int tope);
 
-    /** Igual, con el mismo plazo para todas (el rescate de lo completo no distingue). */
-    default List<Object[]> findPrefirmadosViejos(LocalDateTime limite, int tope) {
-        return findPrefirmadosViejos(limite, limite, tope);
-    }
+    /** Rescate simple; multipart usa su cola durable con backoff y lease propios. */
+    @Query(value = """
+            select cast(id as varchar), tenant_id, storage_key from media_assets
+            where status = 'PENDING' and multipart_part_size is null
+              and coalesce(upload_renewed_at, created_at) < :limite
+            order by created_at asc limit :tope
+            """, nativeQuery = true)
+    List<Object[]> findPrefirmadosViejos(LocalDateTime limite, int tope);
 
     /**
      * Los archivos ya subidos que ninguna publicación usa, de TODOS los

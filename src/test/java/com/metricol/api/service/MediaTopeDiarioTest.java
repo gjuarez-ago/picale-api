@@ -33,11 +33,11 @@ import com.metricol.api.service.storage.R2StorageService;
 @SpringBootTest
 @ActiveProfiles("dev")
 @TestPropertySource(properties = {
-        "spring.datasource.url=jdbc:h2:mem:mobile-upload;DB_CLOSE_DELAY=-1",
-        "spring.datasource.driver-class-name=org.h2.Driver",
-        "spring.datasource.username=sa",
-        "spring.datasource.password=",
-        "spring.jpa.database-platform=org.hibernate.dialect.H2Dialect",
+        "spring.datasource.url=${subidas.test.url:jdbc:h2:mem:mobile-upload;DB_CLOSE_DELAY=-1}",
+        "spring.datasource.driver-class-name=${subidas.test.driver:org.h2.Driver}",
+        "spring.datasource.username=${subidas.test.user:sa}",
+        "spring.datasource.password=${subidas.test.password:}",
+        "spring.jpa.database-platform=${subidas.test.dialect:org.hibernate.dialect.H2Dialect}",
         "app.publishing.queue.poll-delay-ms=3600000",
         "app.publishing.queue.rescue-delay-ms=3600000",
         "app.scheduling.poll-delay-ms=3600000",

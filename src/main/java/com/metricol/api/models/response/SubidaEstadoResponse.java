@@ -30,4 +30,15 @@ public class SubidaEstadoResponse {
     private String estado;
 
     private MediaAssetResponse media;
+    private int protocolVersion;
+    private java.time.Instant expiresAt;
+    private java.time.Instant nextCheckAt;
+    private String mode;
+    private Long sizeBytes;
+    private String contentType;
+    private String fileName;
+    private UUID uploadBatchId;
+    private Integer uploadBatchIndex;
+    private Long partSizeBytes;
+    private Integer partCount;
 }

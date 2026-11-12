@@ -63,6 +63,7 @@ public class R2StorageService {
     private final S3Client s3Client;
     private final S3Presigner presigner;
     private final R2Properties props;
+    private final S3Client openingClient;
 
     /**
      * Cuánto vale una URL firmada. Media hora y no cinco minutos porque la
@@ -73,9 +74,17 @@ public class R2StorageService {
     private long ttlSegundos;
 
     public R2StorageService(S3Client s3Client, S3Presigner presigner, R2Properties props) {
+        this(s3Client, presigner, props, s3Client);
+    }
+
+    @org.springframework.beans.factory.annotation.Autowired
+    public R2StorageService(@org.springframework.beans.factory.annotation.Qualifier("r2Client") S3Client s3Client,
+            S3Presigner presigner, R2Properties props,
+            @org.springframework.beans.factory.annotation.Qualifier("r2OpeningClient") S3Client openingClient) {
         this.s3Client = s3Client;
         this.presigner = presigner;
         this.props = props;
+        this.openingClient = openingClient;
     }
 
     /** Falla con un mensaje que dice qué variable falta, en vez de un NPE. */
@@ -173,12 +182,33 @@ public class R2StorageService {
      */
     public String iniciarPorPartes(String key, String contentType) {
         exigirConfiguracion();
-        return s3Client.createMultipartUpload(CreateMultipartUploadRequest.builder()
+        return openingClient.createMultipartUpload(CreateMultipartUploadRequest.builder()
                 .bucket(props.getBucket())
                 .key(key)
                 .contentType(contentType)
                 .build())
                 .uploadId();
+    }
+
+    /** Recupera una respuesta de Create perdida; prefijo NO basta para identificar la sesión. */
+    public List<String> aperturasPorClave(String key) {
+        exigirConfiguracion();
+        List<String> ids = new ArrayList<>();
+        String keyMarker = null, uploadMarker = null;
+        java.util.Set<String> cursores = new java.util.HashSet<>();
+        do {
+            var pagina = s3Client.listMultipartUploads(software.amazon.awssdk.services.s3.model.ListMultipartUploadsRequest.builder()
+                    .bucket(props.getBucket()).prefix(key).keyMarker(keyMarker).uploadIdMarker(uploadMarker).build());
+            for (var subida : pagina.uploads()) {
+                if (key.equals(subida.key()) && subida.uploadId() != null && !subida.uploadId().isBlank()) ids.add(subida.uploadId());
+            }
+            if (!Boolean.TRUE.equals(pagina.isTruncated())) return ids.stream().distinct().sorted().toList();
+            keyMarker = pagina.nextKeyMarker(); uploadMarker = pagina.nextUploadIdMarker();
+            String cursor = String.valueOf(keyMarker) + "\n" + String.valueOf(uploadMarker);
+            if (keyMarker == null || !cursores.add(cursor) || cursores.size() > 1000) {
+                throw new IllegalStateException("R2 devolvió una paginación de aperturas inválida.");
+            }
+        } while (true);
     }
 
     /**
@@ -224,7 +254,14 @@ public class R2StorageService {
                 if (!Boolean.TRUE.equals(pagina.isTruncated())) {
                     break;
                 }
-                desde = pagina.nextPartNumberMarker();
+                Integer siguiente = pagina.nextPartNumberMarker();
+                // Una respuesta truncada debe permitir avanzar. Si repite/omite el
+                // marcador, repetir ListParts retendría el hilo indefinidamente.
+                // El límite coincide con las 10,000 partes admitidas por la API.
+                if (siguiente == null || siguiente <= (desde == null ? 0 : desde) || siguiente > 10_000) {
+                    throw new IllegalStateException("R2 devolvió una paginación de partes inválida. Intenta de nuevo.");
+                }
+                desde = siguiente;
             }
         } catch (NoSuchUploadException ex) {
             return List.of();

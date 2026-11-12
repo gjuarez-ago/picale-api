@@ -52,4 +52,7 @@ public class StorageUsageResponse {
      * entonces sube como antes, con la app abierta.
      */
     private int subidaEnFondo;
+    /** Contrato de sesión API; no habilita el motor móvil multipart. */
+    private int multipartSessionVersion;
+    private boolean multipartMobileReady;
 }
