@@ -103,6 +103,14 @@ public class MediaLimitsProperties {
 
         private Modo modo = Modo.APAGADA;
 
+        /**
+         * Habilita el protocolo multipart persistente en clientes móviles que
+         * anuncian soporte para la versión 2. Permanece apagado de fábrica:
+         * activar multipart en el servidor no debe migrar teléfonos hasta que
+         * el canario nativo y el APK correspondiente estén validados.
+         */
+        private boolean mobileReady = false;
+
         /** Desde qué tamaño se sube por partes; lo menor sigue en un solo PUT, que es menos ida y vuelta. */
         private long desdeBytes = 100L * 1024 * 1024;
 

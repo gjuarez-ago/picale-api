@@ -1192,7 +1192,7 @@ public class MediaService {
                 .multipartFromBytes(multipartDesde())
                 .subidaEnFondo(1)
                 .multipartSessionVersion(2)
-                .multipartMobileReady(false)
+                .multipartMobileReady(limites.getMultipart().isMobileReady())
                 .build();
     }
 
