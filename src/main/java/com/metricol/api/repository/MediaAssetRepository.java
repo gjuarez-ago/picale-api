@@ -14,6 +14,31 @@ import com.metricol.api.enums.MediaAssetStatus;
 
 public interface MediaAssetRepository extends JpaRepository<MediaAsset, UUID>, MediaAssetUploadLocks {
 
+    /** Recuperación acotada de originales recientes que bloquean al agente. */
+    @Query(value = """
+            select cast(id as varchar), tenant_id from media_assets
+            where type = 'VIDEO' and status = 'READY' and archived_at is null
+              and thumbnail_url is null and storage_key is not null
+              and source_asset_id is null
+              and (generada_por_ia is null or generada_por_ia = false)
+              and (agente_etapa is null or agente_etapa = 'PENDIENTE')
+              and created_at >= :desde and created_at < :hasta
+            order by created_at desc, id limit 50
+            """, nativeQuery = true)
+    List<Object[]> videosRecientesSinPortada(LocalDateTime desde, LocalDateTime hasta);
+
+    @Modifying
+    @Transactional
+    @Query(value = "update media_assets set subtitulos_estado=:estado, subtitulos_intentos=:intentos"
+            + " where id=:id and tenant_id=:tenant", nativeQuery = true)
+    int guardarEstadoSubtitulos(UUID id, String tenant, String estado, Integer intentos);
+
+    @Modifying
+    @Transactional
+    @Query(value = "update media_assets set subtitulos_estado=:estado, subtitulos_intentos=:intentos, musica_fondo=:fondo"
+            + " where id=:id and tenant_id=:tenant", nativeQuery = true)
+    int guardarEstadoSubtitulosConFondo(UUID id, String tenant, String estado, Integer intentos, String fondo);
+
     /** Consulta global acotada: cada fila se procesa después bajo su tenant. */
     @Query(value = """
             select cast(id as varchar), tenant_id from media_assets

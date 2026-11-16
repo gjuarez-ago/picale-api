@@ -286,21 +286,24 @@ public class SubtitulosAutomaticos {
         if (original == null || !HACIENDO.equals(original.getSubtitulosEstado())) return;
         int intentos = original.getSubtitulosIntentos() == null ? 0 : original.getSubtitulosIntentos();
         original.setSubtitulosEstado(bien ? LISTO : (intentos >= MAX_INTENTOS ? SIN_SUBTITULOS : ESPERANDO));
-        assets.save(original);
+        assets.guardarEstadoSubtitulos(originalId, original.getTenantId(), original.getSubtitulosEstado(),
+                original.getSubtitulosIntentos());
     }
 
     /** Relee la fila antes de guardar: palabras() guarda la transcripción en ella y no hay que pisarla. */
     private void guardar(UUID id, String estado, Integer intentos, String fondo) {
         assets.findById(id).ifPresent(fresco -> {
             fresco.setMusicaFondo(fondo);
-            guardar(fresco, estado, intentos);
+            fresco.setSubtitulosEstado(estado);
+            fresco.setSubtitulosIntentos(intentos);
+            assets.guardarEstadoSubtitulosConFondo(id, fresco.getTenantId(), estado, intentos, fondo);
         });
     }
 
     private void guardar(MediaAsset video, String estado, Integer intentos) {
         video.setSubtitulosEstado(estado);
         video.setSubtitulosIntentos(intentos);
-        assets.save(video);
+        assets.guardarEstadoSubtitulos(video.getId(), video.getTenantId(), estado, intentos);
     }
 
     static EstiloSubtitulos estiloDe(Workspace espacio) {

@@ -146,7 +146,10 @@ public class SubtitulosService {
         }
         if (!palabras.isEmpty()) {
             video.setTranscripcion(escribir(palabras));
-            assets.save(video);
+            // Whisper tarda: esta entidad puede ser anterior a la portada.
+            // merge de una entidad detached copia también los valores viejos
+            // aunque lleve @DynamicUpdate. Escribir sólo la transcripción.
+            assets.ponerTranscripcionSiFalta(video.getId(), video.getTranscripcion());
         }
         return palabras;
     }

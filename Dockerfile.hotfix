@@ -1,0 +1,4 @@
+ARG PREVIOUS_IMAGE
+FROM ${PREVIOUS_IMAGE}
+COPY runtime.jar /app/app.jar
+COPY BUILD_SHA /app/BUILD_SHA

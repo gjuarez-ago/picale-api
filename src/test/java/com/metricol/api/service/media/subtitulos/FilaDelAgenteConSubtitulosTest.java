@@ -45,6 +45,34 @@ class FilaDelAgenteConSubtitulosTest {
 
     private final List<UUID> creados = new ArrayList<>();
 
+    @Test
+    void transcripcionParcialConservaPortadaYRecuperacionSeleccionaSoloPendientes() {
+        TenantIdentifierResolver.comoTenant(WS, () -> {
+            MediaAsset video = video("con-portada.mp4", "LISTO", null, null);
+            assets.ponerTranscripcionSiFalta(video.getId(), "voz transcrita");
+            assertThat(assets.findById(video.getId()).orElseThrow().getThumbnailUrl())
+                    .isEqualTo("https://cdn.test/t.jpg");
+            // Una transcripción posterior no sustituye la primera.
+            assets.ponerTranscripcionSiFalta(video.getId(), "otra voz");
+            assertThat(assets.findById(video.getId()).orElseThrow().getTranscripcion())
+                    .isEqualTo("voz transcrita");
+            assets.guardarEstadoSubtitulos(video.getId(), WS, "HACIENDO", 1);
+            assets.guardarEstadoSubtitulosConFondo(video.getId(), WS, "LISTO", 1, "YA_TENIA");
+            MediaAsset terminado = assets.findById(video.getId()).orElseThrow();
+            assertThat(terminado.getThumbnailUrl()).isEqualTo("https://cdn.test/t.jpg");
+            assertThat(terminado.getTranscripcion()).isEqualTo("voz transcrita");
+            assertThat(terminado.getSubtitulosEstado()).isEqualTo("LISTO");
+            assertThat(assets.guardarEstadoSubtitulos(video.getId(), "otro-negocio", "ERROR", 9)).isZero();
+            MediaAsset pendiente = video("sin-portada.mp4", "LISTO", null, null);
+            pendiente.setThumbnailUrl(null);
+            assets.save(pendiente);
+            var filas = assets.videosRecientesSinPortada(LocalDateTime.now().minusDays(1),
+                    LocalDateTime.now().plusMinutes(1));
+            assertThat(filas.stream().map(f -> String.valueOf(f[0])))
+                    .contains(pendiente.getId().toString()).doesNotContain(video.getId().toString());
+        });
+    }
+
     @AfterEach
     void limpiar() {
         TenantIdentifierResolver.comoTenant(WS, () -> creados.forEach(id -> assets.findById(id).ifPresent(assets::delete)));

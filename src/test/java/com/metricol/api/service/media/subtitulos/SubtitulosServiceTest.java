@@ -100,6 +100,17 @@ class SubtitulosServiceTest {
     }
 
     @Test
+    @DisplayName("Whisper guarda sólo su transcripción sin fusionar el video viejo que carece de portada")
+    void transcribirNoSobrescribeLaPortadaConcurrente() {
+        // Esta entidad se leyó antes de que el hilo de miniaturas guardara
+        // su portada. Volver a guardar la entidad completa la borraría.
+        video.setThumbnailUrl(null);
+        service.texto(video.getId(), WS);
+        verify(assets).ponerTranscripcionSiFalta(video.getId(), video.getTranscripcion());
+        verify(assets, never()).save(any(MediaAsset.class));
+    }
+
+    @Test
     @DisplayName("Sin voz o sin sonido, se dice claro y no se guarda nada")
     void sinVoz() {
         when(ia.transcribirConTiempos(any(), anyString())).thenReturn(Map.of("words", List.of()));
@@ -117,7 +128,7 @@ class SubtitulosServiceTest {
         service.pedir(video.getId(), WS, null, null, null);
 
         ArgumentCaptor<MediaAsset> guardado = ArgumentCaptor.forClass(MediaAsset.class);
-        verify(assets, times(2)).save(guardado.capture());
+        verify(assets).save(guardado.capture());
         MediaAsset copia = guardado.getValue();
         assertThat(copia.getSourceAssetId()).isEqualTo(video.getId());
         assertThat(copia.getStatus()).isEqualTo(MediaAssetStatus.PROCESSING);
