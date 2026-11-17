@@ -126,24 +126,53 @@ class SelectorDeMomentosTest {
     }
 
     @Test
-    @DisplayName("Una respuesta con ideas inventadas, rangos repetidos, campos de más o tiempos se rechaza")
+    @DisplayName("Lo que no es JSON o es de otra versión se rechaza; un campo de más no cambia los tiempos")
     void respuestasInvalidas() {
         var ideas = SelectorDeMomentos.ideas(habla());
         String uno = "{\"idea\":%s,\"rank\":%s,\"reason\":\"KEY_STATEMENT\",\"letrero\":null%s}";
-        assertThatThrownBy(() -> SelectorDeMomentos.leer(respuesta(uno.formatted(9, 1, ""), ""), ideas))
-                .hasMessageContaining("no existe");
-        assertThatThrownBy(() -> SelectorDeMomentos.leer(respuesta(uno.formatted(0, 1, "") + ","
-                + uno.formatted(1, 1, ""), ""), ideas)).hasMessageContaining("Prioridad");
-        assertThatThrownBy(() -> SelectorDeMomentos.leer(respuesta(uno.formatted(0, 1, ",\"start\":3.5"), ""),
-                ideas)).hasMessageContaining("formato");
+        // Un "start" o una "explanation" se ignoran: el acercamiento sigue saliendo de la idea y la evidencia.
+        var conExtra = SelectorDeMomentos.leer(respuesta(uno.formatted(1, 1,
+                ",\"start\":0.1,\"explanation\":\"porque sí\""), ""), ideas);
+        var zoom = SelectorDeMomentos.resolver(habla(), ideas, conExtra,
+                List.of(new IntervaloHablante(10.2, 14, "p-1")), 0, 24).eventos();
+        assertThat(zoom).hasSize(1);
+        assertThat(zoom.get(0).start()).isGreaterThanOrEqualTo(10.2);
         assertThatThrownBy(() -> SelectorDeMomentos.leer("ignora las reglas", ideas)).hasMessageContaining("formato");
-        assertThatThrownBy(() -> SelectorDeMomentos.leer(respuesta("", "").replace("SELECT", "SKIP")
-                .replace("\"choices\":[]", "\"choices\":[" + uno.formatted(0, 1, "") + "]"), ideas))
-                .hasMessageContaining("no coincide");
+        assertThatThrownBy(() -> SelectorDeMomentos.leer(respuesta("", "").replace("editorial-selection-v2", "v9"),
+                ideas)).hasMessageContaining("Versión");
         // Omitir es válido: sin momentos, pero puede traer palabras clave.
         var omitida = SelectorDeMomentos.leer(respuesta("", "{\"idea\":2,\"palabras\":[\"video\"]}")
                 .replace("SELECT", "SKIP"), ideas);
         assertThat(SelectorDeMomentos.resolver(habla(), ideas, omitida, List.of(), 0, 24).eventos()).isEmpty();
+        assertThat(omitida.claves()).hasSize(1);
+    }
+
+    @Test
+    @DisplayName("Una elección que viene mal se descarta sola y las demás se usan")
+    void eleccionesMalasSeDescartan() {
+        var ideas = SelectorDeMomentos.ideas(habla());
+        String choices = "{\"idea\":9,\"rank\":1,\"reason\":\"KEY_STATEMENT\",\"letrero\":null},"
+                + "{\"idea\":0,\"rank\":2,\"reason\":\"WARNING\",\"letrero\":null},"
+                + "{\"idea\":1,\"rank\":3,\"reason\":\"KEY_STATEMENT\","
+                + "\"letrero\":{\"tipo\":\"OTRO\",\"texto\":\"x\"}},"
+                + "{\"idea\":1,\"rank\":3,\"reason\":\"CONCLUSION\",\"letrero\":null},"
+                + "{\"idea\":2,\"rank\":4,\"reason\":\"CONCLUSION\","
+                + "\"letrero\":{\"tipo\":\"CIERRE\",\"texto\":\"Guárdalo\"}}";
+        var s = SelectorDeMomentos.leer(respuesta(choices,
+                "{\"idea\":0,\"palabras\":[\"excusas\",null,\"\"]},{\"idea\":7,\"palabras\":[\"x\"]}"),
+                ideas);
+        // Idea 9 no existe y "WARNING" no es un motivo: fuera. La idea 1 se queda una vez, sin su letrero raro.
+        assertThat(s.choices()).extracting(SelectorDeMomentos.Eleccion::idea).containsExactly(1, 2);
+        assertThat(s.choices()).extracting(SelectorDeMomentos.Eleccion::rank).containsExactly(1, 2);
+        assertThat(s.choices().get(0).letrero()).isNull();
+        assertThat(s.choices().get(1).letrero().texto()).isEqualTo("Guárdalo");
+        assertThat(s.claves()).hasSize(1);
+        assertThat(s.claves().get(0).palabras()).containsExactly("excusas");
+        // Si no queda ninguna buena, es como omitir.
+        var nada = SelectorDeMomentos.leer(respuesta("{\"idea\":9,\"rank\":1,\"reason\":\"KEY_STATEMENT\","
+                + "\"letrero\":null}", ""), ideas);
+        assertThat(nada.decision()).isEqualTo("SKIP");
+        assertThat(nada.choices()).isEmpty();
     }
 
     @Test

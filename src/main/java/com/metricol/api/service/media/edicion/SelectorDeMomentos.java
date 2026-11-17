@@ -10,7 +10,6 @@ import java.util.Set;
 
 import com.fasterxml.jackson.core.JsonFactory;
 import com.fasterxml.jackson.core.StreamReadConstraints;
-import com.fasterxml.jackson.core.StreamReadFeature;
 import com.fasterxml.jackson.databind.DeserializationFeature;
 import com.fasterxml.jackson.databind.json.JsonMapper;
 import com.metricol.api.service.media.edicion.ContextoEdicionVideo.IntervaloHablante;
@@ -56,13 +55,21 @@ public final class SelectorDeMomentos {
     /** Las muestras del detector van a 25 por segundo: los límites se alinean hacia dentro. */
     private static final double PASO = 1 / 25.0;
 
+    // Tolerante con la forma y estricto con lo que se usa: un campo de más (una
+    // "explicación", un tiempo) se ignora porque el código nunca lo lee; los
+    // tiempos, la escala y los límites los pone siempre este código.
     private static final JsonMapper JSON = JsonMapper.builder(JsonFactory.builder()
-            .enable(StreamReadFeature.STRICT_DUPLICATE_DETECTION)
             .streamReadConstraints(StreamReadConstraints.builder().maxNestingDepth(8).maxStringLength(400).build())
             .build())
-            .enable(DeserializationFeature.FAIL_ON_UNKNOWN_PROPERTIES)
+            .disable(DeserializationFeature.FAIL_ON_UNKNOWN_PROPERTIES)
             .enable(DeserializationFeature.FAIL_ON_TRAILING_TOKENS)
+            // Un motivo o tipo de letrero inventado no tira la respuesta entera: queda
+            // nulo y esa elección se descarta sola (17 nov 2026, un video de 671 palabras
+            // se quedó sin ningún letrero por un solo valor así).
+            .enable(DeserializationFeature.READ_UNKNOWN_ENUM_VALUES_AS_NULL)
             .build();
+
+    private static final org.slf4j.Logger log = org.slf4j.LoggerFactory.getLogger(SelectorDeMomentos.class);
 
     private SelectorDeMomentos() {
     }
@@ -206,36 +213,71 @@ public final class SelectorDeMomentos {
         return altura < 0.12 ? null : Math.min(altura, 0.45);
     }
 
-    /** Lee la respuesta sin perdonar nada: campos de más, ideas inventadas o rangos repetidos la invalidan. */
+    /**
+     * Lee la respuesta. Lo que no es JSON o es de otra versión se rechaza
+     * entero; los campos de más se ignoran (nunca se leen tiempos, rutas ni
+     * filtros de aquí). Una
+     * elección suelta que viene mal —una idea que no existe, un motivo
+     * inventado, un letrero vacío— se descarta sola y el resto se usa: perder
+     * todos los letreros de un video por un detalle es peor que perder uno.
+     */
     public static Seleccion leer(String respuesta, List<Idea> ideas) {
-        Seleccion seleccion;
+        Seleccion leida;
         try {
-            seleccion = JSON.readValue(respuesta, Seleccion.class);
+            leida = JSON.readValue(respuesta, Seleccion.class);
+        } catch (com.fasterxml.jackson.core.JsonProcessingException ex) {
+            // Solo el motivo de Jackson (qué campo, qué tipo), sin el texto del video.
+            log.warn("Selección editorial ilegible: {}", recortar(ex.getOriginalMessage()));
+            throw new IllegalArgumentException("La selección editorial no tiene un formato válido.");
         } catch (Exception ex) {
             throw new IllegalArgumentException("La selección editorial no tiene un formato válido.");
         }
-        exigir(seleccion != null && VERSION.equals(seleccion.schemaVersion()), "Versión de selección no admitida.");
-        List<Eleccion> elegidas = seleccion.choices() == null ? List.of() : seleccion.choices();
-        boolean omite = "SKIP".equals(seleccion.decision());
-        exigir(omite || "SELECT".equals(seleccion.decision()), "Decisión editorial desconocida.");
-        exigir(omite == elegidas.isEmpty(), "La decisión no coincide con sus elecciones.");
-        exigir(elegidas.size() <= MAX_IDEAS, "Demasiadas elecciones.");
+        exigir(leida != null && VERSION.equals(leida.schemaVersion()), "Versión de selección no admitida.");
+        boolean omite = "SKIP".equals(leida.decision());
+        exigir(omite || "SELECT".equals(leida.decision()), "Decisión editorial desconocida.");
+
+        List<Eleccion> buenas = new ArrayList<>();
         Set<Integer> vistas = new HashSet<>();
-        Set<Integer> rangos = new HashSet<>();
-        for (Eleccion e : elegidas) {
-            exigir(e != null && e.idea() >= 0 && e.idea() < ideas.size() && vistas.add(e.idea()),
-                    "La selección nombra una idea que no existe o la repite.");
-            exigir(e.rank() >= 1 && rangos.add(e.rank()) && e.reason() != null, "Prioridad o motivo inválido.");
-            exigir(e.letrero() == null || (e.letrero().tipo() != null && e.letrero().tipo() != Letrero.Tipo.TITULO
-                    && e.letrero().texto() != null && !e.letrero().texto().isBlank()), "Letrero incompleto.");
+        int descartadas = 0;
+        List<Eleccion> crudas = omite || leida.choices() == null ? List.of() : leida.choices();
+        // Por prioridad: si dos repiten idea o prioridad, se queda la primera.
+        List<Eleccion> ordenadas = crudas.stream().filter(java.util.Objects::nonNull)
+                .sorted(Comparator.comparingInt(Eleccion::rank)).toList();
+        for (Eleccion e : ordenadas) {
+            if (buenas.size() >= MAX_IDEAS || e.idea() < 0 || e.idea() >= ideas.size() || e.reason() == null
+                    || !vistas.add(e.idea())) {
+                descartadas++;
+                continue;
+            }
+            Rotulo letrero = e.letrero();
+            boolean letreroBueno = letrero != null && letrero.tipo() != null && letrero.tipo() != Letrero.Tipo.TITULO
+                    && letrero.texto() != null && !letrero.texto().isBlank();
+            // La prioridad se vuelve a numerar en orden, sin huecos ni repetidas.
+            buenas.add(new Eleccion(e.idea(), buenas.size() + 1, e.reason(), letreroBueno ? letrero : null));
         }
-        if (seleccion.claves() != null) {
-            for (Claves c : seleccion.claves()) {
-                exigir(c != null && c.idea() >= 0 && c.idea() < ideas.size() && c.palabras() != null
-                        && c.palabras().size() <= 4, "Palabras clave inválidas.");
+        List<Claves> claves = new ArrayList<>();
+        if (leida.claves() != null) {
+            for (Claves c : leida.claves()) {
+                if (c == null || c.idea() < 0 || c.idea() >= ideas.size() || c.palabras() == null) {
+                    descartadas++;
+                    continue;
+                }
+                List<String> palabras = c.palabras().stream().filter(w -> w != null && !w.isBlank()).limit(4)
+                        .toList();
+                if (!palabras.isEmpty()) claves.add(new Claves(c.idea(), palabras));
             }
         }
-        return seleccion;
+        if (descartadas > 0) {
+            log.info("Selección editorial: {} elecciones o palabras clave descartadas por venir mal.", descartadas);
+        }
+        return new Seleccion(leida.schemaVersion(), buenas.isEmpty() ? "SKIP" : "SELECT", leida.titulo(), buenas,
+                claves);
+    }
+
+    private static String recortar(String texto) {
+        if (texto == null) return "";
+        String una = texto.replaceAll("\\s+", " ");
+        return una.length() > 200 ? una.substring(0, 200) : una;
     }
 
     /**
