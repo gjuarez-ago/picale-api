@@ -190,7 +190,7 @@ public class RecorteAutomatico {
         List<Palabra> quedan = new ArrayList<>();
         for (Palabra p : palabras) {
             if (p.inicio() >= inicio - 0.01 && p.fin() <= fin + 0.01) {
-                quedan.add(new Palabra(p.texto(), Math.max(0, p.inicio() - inicio), Math.max(0, p.fin() - inicio)));
+                quedan.add(new Palabra(p.texto(), Math.max(0, p.inicio() - inicio), Math.max(0, p.fin() - inicio), p.clave()));
             }
         }
         return quedan;

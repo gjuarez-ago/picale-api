@@ -60,7 +60,7 @@ public final class Frases {
             if (viejas.size() == nuevas.length) {
                 for (int i = 0; i < nuevas.length; i++) {
                     Palabra v = viejas.get(i);
-                    todas.add(new Palabra(nuevas[i], v.inicio(), Math.max(v.fin(), v.inicio())));
+                    todas.add(new Palabra(nuevas[i], v.inicio(), Math.max(v.fin(), v.inicio()), v.clave()));
                 }
             } else {
                 repartir(nuevas, f.inicio(), Math.max(f.fin(), f.inicio()), todas);

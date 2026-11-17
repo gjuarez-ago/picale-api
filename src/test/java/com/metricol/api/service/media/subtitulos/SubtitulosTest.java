@@ -132,4 +132,71 @@ class SubtitulosTest {
         assertThat(GuionAss.tiempo(3725.456)).isEqualTo("1:02:05.46");
         assertThat(SubtitulosService.nombreSubtitulado("reel.MOV")).isEqualTo("reel-subtitulado.mp4");
     }
+
+    @Test
+    @DisplayName("Caja: la palabra que suena lleva una caja de color detrás y va en tinta oscura encima")
+    void estiloCaja() {
+        List<Palabra> palabras = List.of(new Palabra("Hola", 0, 0.4), new Palabra("mundo", 0.4, 0.9, true));
+        String ass = GuionAss.escribir(palabras, EstiloSubtitulos.CAJA, 1080, 1920, null);
+        assertThat(ass).contains("Style: Caja,Montserrat ExtraBold,81,").containsPattern("Style: Caja,.*,3,13\\.0,");
+        List<String> eventos = ass.lines().filter(l -> l.startsWith("Dialogue:")).toList();
+        // Dos capas por palabra: la caja abajo y el texto arriba.
+        assertThat(eventos).hasSize(4);
+        assertThat(eventos.get(0)).startsWith("Dialogue: 0,").contains(",Caja,")
+                .contains("{\\alpha&HFF&}{\\3a&H00&\\3c&H0000D4FF&}Hola{\\3a&HFF&} mundo");
+        // Encima: la que suena en tinta; la clave, en color aunque no le toque.
+        assertThat(eventos.get(1)).startsWith("Dialogue: 1,").contains(",Default,")
+                .contains("{\\c&H00141414&\\3a&HFF&\\4a&HFF&}Hola{\\r} {\\c&H0000D4FF&}mundo{\\r}");
+    }
+
+    @Test
+    @DisplayName("Las palabras clave van en color y crecen cuando suenan; sin ellas todo queda como antes")
+    void palabrasClave() {
+        List<Palabra> palabras = List.of(new Palabra("sin", 0, 0.3), new Palabra("excusas", 0.3, 0.9, true));
+        List<String> karaoke = GuionAss.escribir(palabras, EstiloSubtitulos.PALABRA, 1080, 1920, null).lines()
+                .filter(l -> l.startsWith("Dialogue:")).toList();
+        assertThat(karaoke.get(0)).contains("{\\c&H0000D4FF&\\fscx112\\fscy112}sin{\\r} {\\c&H0000D4FF&}excusas{\\r}");
+        assertThat(karaoke.get(1)).contains("\\t(0,90,\\fscx126\\fscy126)}excusas{\\r}");
+        String rebote = GuionAss.escribir(palabras, EstiloSubtitulos.REBOTE, 1080, 1920, null);
+        assertThat(rebote).contains("SIN {\\c&H0000D4FF&}EXCUSAS{\\c&H00FFFFFF&}");
+        String clasico = GuionAss.escribir(palabras, EstiloSubtitulos.CLASICO, 1080, 1920, null);
+        assertThat(clasico).contains("sin {\\c&H0000D4FF&}excusas{\\c&H00FFFFFF&}");
+    }
+
+    @Test
+    @DisplayName("Un letrero: sombra, recuadro redondo a la medida del texto y el texto, entrando juntos")
+    void letreros() {
+        List<Palabra> palabras = List.of(new Palabra("Hola", 0, 0.4));
+        Letrero aviso = new Letrero(Letrero.Tipo.AVISO, "No esperes {\\b1}el momento ideal", 2, 5, null);
+        Letrero corto = new Letrero(Letrero.Tipo.CLAVE, "Hoy", 7, 10, 0.3);
+        String ass = GuionAss.escribir(palabras, EstiloSubtitulos.PALABRA, 1080, 1920, "#D4A858", List.of(aviso, corto));
+        assertThat(ass).contains("Style: Letrero,Montserrat ExtraBold,71,");
+        List<String> capas = ass.lines().filter(l -> l.contains(",Letrero,")).toList();
+        assertThat(capas).hasSize(6);
+        // Sombra, forma y texto del primero, de 2 a 5 s; en dos renglones parejos y sin órdenes coladas.
+        assertThat(capas.get(0)).startsWith("Dialogue: 4,0:00:02.00,0:00:05.00").contains("\\blur").contains("\\p1}m ");
+        assertThat(capas.get(1)).startsWith("Dialogue: 5,").contains("\\c&H00303BFF&\\p1}m ").contains(" b ");
+        assertThat(capas.get(2)).startsWith("Dialogue: 6,").contains("\\an5\\move(540,157,540,221,0,220)")
+                .contains("\\fad(140,160)").endsWith("}NO ESPERES B1EL\\NMOMENTO IDEAL");
+        // El segundo, en el color de la marca y a la altura que se le pidió (0.3 de 1920 = 576).
+        assertThat(capas.get(4)).contains("\\c&H0058A8D4&\\p1}");
+        assertThat(capas.get(5)).contains(",576,0,220)").endsWith("}HOY");
+        // El recuadro mide lo que el texto más su relleno: "HOY" son 2345 milésimas de un cuadro de 71 × 0.64.
+        assertThat(GuionAss.anchoDe("HOY", 71)).isCloseTo(106.6, org.assertj.core.data.Offset.offset(0.1));
+        assertThat(GuionAss.renglones("TÚ CARGAS LAS CONSECUENCIAS")).containsExactly("TÚ CARGAS LAS", "CONSECUENCIAS");
+        // Sin letreros, ni estilo ni eventos de letrero.
+        assertThat(GuionAss.escribir(palabras, EstiloSubtitulos.PALABRA, 1080, 1920, null)).doesNotContain("Letrero");
+    }
+
+    @Test
+    @DisplayName("Lo guardado antes se lee igual, y una palabra que no es clave se escribe como siempre")
+    void palabraCompatible() throws Exception {
+        var json = new com.fasterxml.jackson.databind.ObjectMapper();
+        assertThat(json.writeValueAsString(new Palabra("hola", 1, 1.5)))
+                .isEqualTo("{\"texto\":\"hola\",\"inicio\":1.0,\"fin\":1.5}");
+        assertThat(json.readValue("{\"texto\":\"hola\",\"inicio\":1.0,\"fin\":1.5}", Palabra.class).clave()).isFalse();
+        String clave = json.writeValueAsString(new Palabra("hola", 1, 1.5, true));
+        assertThat(clave).contains("\"clave\":true");
+        assertThat(json.readValue(clave, Palabra.class).clave()).isTrue();
+    }
 }

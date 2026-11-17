@@ -53,7 +53,7 @@ class VideosAjustesControllerTest {
     private static VideosAjustesController.Ajustes cambio(Boolean subtitulos, String estilo, Boolean logo,
             Boolean musicaVideos, String ambiente) {
         return new VideosAjustesController.Ajustes(subtitulos, estilo, null, null, logo, null, musicaVideos, null,
-                ambiente, null);
+                ambiente, null, null, null, null, null, null, null, null);
     }
 
     @Test
@@ -63,6 +63,42 @@ class VideosAjustesControllerTest {
         verify(automaticos).guardar(eq(WS), eq(new SubtitulosAutomaticos.Ajustes(true, EstiloSubtitulos.REBOTE,
                 SubtitulosService.Color.AMARILLO, null, true, null)));
         verify(musica, never()).guardar(any(), any());
+    }
+
+    @Test
+    @DisplayName("Un look manda estilo, letreros, letra y tamaño de un toque; lo demás del diseño se conserva")
+    void unLookDeUnToque() {
+        var guardado = new com.metricol.api.service.media.subtitulos.DisenoVideo("#4DD8FF", null, null, null, null);
+        when(automaticos.ajustes(WS)).thenReturn(new SubtitulosAutomaticos.Ajustes(true, EstiloSubtitulos.REBOTE,
+                SubtitulosService.Color.AMARILLO, true, false, true, false, false, guardado));
+        controller.cambiar(persona, new VideosAjustesController.Ajustes(null, "CAJA", null, null, null, null, null,
+                null, null, null, true, true, null, null, "ANTON", "GRANDE", "POCOS"));
+        verify(automaticos).guardar(eq(WS), eq(new SubtitulosAutomaticos.Ajustes(true, EstiloSubtitulos.CAJA,
+                SubtitulosService.Color.AMARILLO, null, null, null, true, true,
+                new com.metricol.api.service.media.subtitulos.DisenoVideo("#4DD8FF", null,
+                        com.metricol.api.service.media.subtitulos.DisenoVideo.Letra.ANTON,
+                        com.metricol.api.service.media.subtitulos.DisenoVideo.Tamano.GRANDE,
+                        com.metricol.api.service.media.subtitulos.DisenoVideo.Cantidad.POCOS))));
+    }
+
+    @Test
+    @DisplayName("Vacío regresa un color al de siempre; algo que no es un color o una letra inventada se rechaza")
+    void coloresYLetras() {
+        var guardado = new com.metricol.api.service.media.subtitulos.DisenoVideo("#4DD8FF", "#FFFFFF", null, null,
+                null);
+        when(automaticos.ajustes(WS)).thenReturn(new SubtitulosAutomaticos.Ajustes(true, EstiloSubtitulos.REBOTE,
+                SubtitulosService.Color.AMARILLO, true, false, true, false, false, guardado));
+        controller.cambiar(persona, new VideosAjustesController.Ajustes(null, null, null, null, null, null, null,
+                null, null, null, null, null, "", null, null, null, null));
+        verify(automaticos).guardar(eq(WS), eq(new SubtitulosAutomaticos.Ajustes(true, EstiloSubtitulos.REBOTE,
+                SubtitulosService.Color.AMARILLO, null, null, null, null, null,
+                new com.metricol.api.service.media.subtitulos.DisenoVideo(null, "#FFFFFF", null, null, null))));
+        assertThatThrownBy(() -> controller.cambiar(persona, new VideosAjustesController.Ajustes(null, null, null,
+                null, null, null, null, null, null, null, null, null, "rojo", null, null, null, null)))
+                .hasMessageContaining("color");
+        assertThatThrownBy(() -> controller.cambiar(persona, new VideosAjustesController.Ajustes(null, null, null,
+                null, null, null, null, null, null, null, null, null, null, null, "COMIC", null, null)))
+                .hasMessageContaining("no existe");
     }
 
     @Test

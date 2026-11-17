@@ -1,0 +1,33 @@
+{
+  "schemaVersion": "talking-video-edit-v1",
+  "workspaceId": "10000000-0000-0000-0000-000000000001",
+  "sourceAssetId": "20000000-0000-0000-0000-000000000002",
+  "sourceRevision": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+  "transcriptRevision": "transcript-v1",
+  "evidenceRevision": "evidence-v1",
+  "policyVersion": "subtle-v1",
+  "templateCatalogVersion": "video-templates-v1",
+  "profile": "SUBTLE",
+  "timeBase": "OUTPUT_SECONDS",
+  "sourceRange": { "start": 0, "end": 120 },
+  "events": [
+    {
+      "type": "PUNCH_IN",
+      "start": 10,
+      "end": 12,
+      "scale": 1.12,
+      "templateVersion": "punch-in-v1",
+      "focusTrackRef": "person-1",
+      "reason": "KEY_STATEMENT"
+    },
+    {
+      "type": "PUNCH_IN",
+      "start": 40,
+      "end": 42,
+      "scale": 1.12,
+      "templateVersion": "punch-in-v1",
+      "focusTrackRef": "person-1",
+      "reason": "KEY_STATEMENT"
+    }
+  ]
+}

@@ -429,6 +429,37 @@ public class R2StorageService {
         }
     }
 
+    /** Descarga para análisis con límite real de bytes, incluso si cambió el objeto desde su reserva. */
+    public boolean descargarLimitado(String key, Path destino, long maxBytes) {
+        if (maxBytes <= 0) throw new IllegalArgumentException("El límite de descarga debe ser positivo.");
+        exigirConfiguracion();
+        try (ResponseInputStream<GetObjectResponse> cuerpo = s3Client.getObject(
+                GetObjectRequest.builder().bucket(props.getBucket()).key(key).build())) {
+            if (cuerpo.response().contentLength() != null && cuerpo.response().contentLength() > maxBytes) {
+                cuerpo.abort();
+                throw new IllegalArgumentException("El original excede el límite de análisis.");
+            }
+            try (var output = Files.newOutputStream(destino)) {
+                byte[] buffer = new byte[64 * 1024];
+                long total = 0;
+                int read;
+                while ((read = cuerpo.read(buffer)) != -1) {
+                    total += read;
+                    if (total > maxBytes) {
+                        cuerpo.abort();
+                        throw new IllegalArgumentException("La descarga excede el límite de análisis.");
+                    }
+                    output.write(buffer, 0, read);
+                }
+            }
+            return true;
+        } catch (NoSuchKeyException ex) {
+            return false;
+        } catch (IOException | S3Exception ex) {
+            throw new IllegalStateException("No se pudo descargar el original para análisis.", ex);
+        }
+    }
+
     /** Sube bytes que generó el servidor, no una persona. */
     public String subirBytes(String key, byte[] contenido, String contentType) {
         exigirConfiguracion();

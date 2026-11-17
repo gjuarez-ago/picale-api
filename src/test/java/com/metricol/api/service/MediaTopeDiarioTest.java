@@ -38,6 +38,10 @@ import com.metricol.api.service.storage.R2StorageService;
         "spring.datasource.username=${subidas.test.user:sa}",
         "spring.datasource.password=${subidas.test.password:}",
         "spring.jpa.database-platform=${subidas.test.dialect:org.hibernate.dialect.H2Dialect}",
+        // El perfil dev toma el dialecto de DB_DIALECT, y esa propiedad le gana a la de arriba: con un
+        // .env apuntado a Postgres, Hibernate le hablaba en Postgres a esta H2 y el candado de
+        // upload_scopes ("for no key update") no se podía preparar.
+        "spring.jpa.properties.hibernate.dialect=${subidas.test.dialect:org.hibernate.dialect.H2Dialect}",
         "app.publishing.queue.poll-delay-ms=3600000",
         "app.publishing.queue.rescue-delay-ms=3600000",
         "app.scheduling.poll-delay-ms=3600000",

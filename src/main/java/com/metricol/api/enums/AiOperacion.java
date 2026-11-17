@@ -51,6 +51,9 @@ public enum AiOperacion {
     /** El revisor del recorte automático: qué tan probable es que el video recortado quede bien. */
     RECORTE_AUTOMATICO,
 
+    /** Los letreros y las palabras clave de un video: qué decir en corto y qué resaltar. */
+    ENFASIS_VIDEO,
+
     /** El agente mira un video completo (varios cuadros y lo que se dice). */
     AGENTE_VIDEO,
 

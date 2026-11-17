@@ -9,6 +9,9 @@ public enum EstiloSubtitulos {
     /** Una o dos palabras enormes, en mayúsculas, que entran con un rebote. */
     REBOTE,
 
+    /** Como "palabra", pero la que suena lleva detrás una caja de color: el de los videos que explican. */
+    CAJA,
+
     /** Una línea abajo sobre una franja oscura, como los de la tele. */
     CLASICO
 }

@@ -70,7 +70,12 @@ public class SubtitulosService {
      * @param logo    el logo de la marca para la esquina de arriba; nulo = sin logo
      */
     record Encargo(EstiloSubtitulos estilo, String color, List<Palabra> palabras, String musica, Double volumen,
-            Double recorteInicio, Double recorteFin, String logo) {
+            Double recorteInicio, Double recorteFin, String logo, List<Letrero> letreros, DisenoVideo diseno) {
+
+        Encargo(EstiloSubtitulos estilo, String color, List<Palabra> palabras, String musica, Double volumen,
+                Double recorteInicio, Double recorteFin, String logo) {
+            this(estilo, color, palabras, musica, volumen, recorteInicio, recorteFin, logo, null, null);
+        }
     }
 
     /** El tramo que se queda de una copia recortada (segundos del original); nulo si va entera. */
@@ -201,7 +206,7 @@ public class SubtitulosService {
         if (conSubtitulos && palabras.isEmpty()) {
             throw new IllegalArgumentException("Primero saca el texto del video.");
         }
-        return editar(video, workspaceId, estilo, color, palabras, musica, recorte, logo);
+        return editar(video, workspaceId, estilo, color, palabras, musica, recorte, logo, null, null);
     }
 
     /**
@@ -215,17 +220,32 @@ public class SubtitulosService {
      */
     public MediaAssetResponse encargarEdicion(UUID videoId, UUID workspaceId, EstiloSubtitulos estilo, Color color,
             List<Palabra> subtitulos, MusicaDeCopia musica, RecorteAutomatico.Recorte recorte, String logo) {
+        return encargarEdicion(videoId, workspaceId, estilo, color, subtitulos, musica, recorte, logo, null);
+    }
+
+    /** @param letreros los recuadros informativos, en segundos de la copia ya recortada; nulo = sin letreros */
+    public MediaAssetResponse encargarEdicion(UUID videoId, UUID workspaceId, EstiloSubtitulos estilo, Color color,
+            List<Palabra> subtitulos, MusicaDeCopia musica, RecorteAutomatico.Recorte recorte, String logo,
+            List<Letrero> letreros) {
+        return encargarEdicion(videoId, workspaceId, estilo, color, subtitulos, musica, recorte, logo, letreros, null);
+    }
+
+    /** @param diseno colores, letra y tamaño de la cuenta; nulo = lo de siempre */
+    public MediaAssetResponse encargarEdicion(UUID videoId, UUID workspaceId, EstiloSubtitulos estilo, Color color,
+            List<Palabra> subtitulos, MusicaDeCopia musica, RecorteAutomatico.Recorte recorte, String logo,
+            List<Letrero> letreros, DisenoVideo diseno) {
         MediaAsset video = videoDe(videoId, workspaceId);
         List<Palabra> palabras = subtitulos == null ? List.of() : subtitulos;
         if (!palabras.isEmpty() && leer(video.getTranscripcion()).isEmpty()
                 && assets.ponerTranscripcionSiFalta(video.getId(), escribir(palabras)) > 0) {
             log.warn("La transcripción del video {} se había borrado: se volvió a poner.", video.getId());
         }
-        return editar(video, workspaceId, estilo, color, palabras, musica, recorte, logo);
+        return editar(video, workspaceId, estilo, color, palabras, musica, recorte, logo, letreros, diseno);
     }
 
     private MediaAssetResponse editar(MediaAsset video, UUID workspaceId, EstiloSubtitulos estilo, Color color,
-            List<Palabra> palabras, MusicaDeCopia musica, RecorteAutomatico.Recorte recorte, String logo) {
+            List<Palabra> palabras, MusicaDeCopia musica, RecorteAutomatico.Recorte recorte, String logo,
+            List<Letrero> letreros, DisenoVideo diseno) {
         boolean conSubtitulos = !palabras.isEmpty();
         if (palabras.isEmpty() && musica == null && recorte == null && logo == null) {
             throw new IllegalArgumentException("No hay nada que ponerle a este video.");
@@ -235,7 +255,10 @@ public class SubtitulosService {
         }
         Encargo base = encargo(workspaceId, estilo, color, palabras, musica);
         Encargo encargo = new Encargo(base.estilo(), base.color(), base.palabras(), base.musica(), base.volumen(),
-                recorte == null ? null : recorte.inicio(), recorte == null ? null : recorte.fin(), logo);
+                recorte == null ? null : recorte.inicio(), recorte == null ? null : recorte.fin(), logo,
+                // Sin subtítulos no hay letreros: van en el mismo guion.
+                conSubtitulos && letreros != null && !letreros.isEmpty() ? letreros : null,
+                conSubtitulos && diseno != null && !diseno.limpio().deSiempre() ? diseno.limpio() : null);
         String nombre = conSubtitulos ? nombreSubtitulado(video.getFileName())
                 : musica != null ? nombreConMusica(video.getFileName())
                 : recorte == null ? nombreSubtitulado(video.getFileName()).replace("-subtitulado.mp4", "-con-logo.mp4")
@@ -293,7 +316,7 @@ public class SubtitulosService {
             return null;
         }
         return GuionAss.escribir(encargo.palabras(), encargo.estilo(), medidas.ancho(), medidas.alto(),
-                encargo.color());
+                encargo.color(), encargo.letreros(), encargo.diseno());
     }
 
     /** El tramo que se queda de una copia recortada; nulo si va entera. */

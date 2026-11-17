@@ -552,8 +552,28 @@ public class FfmpegImagen {
 
     List<String> comandoEditar(String fuente, Path guion, Path musica, Path logo, double volumen, double inicio,
             double fin, boolean conSonido, Path destino) {
+        return comandoEditar(fuente, guion, musica, logo, volumen, inicio, fin, conSonido, destino, null);
+    }
+
+    /** Acercamientos validados, antes del logo y los subtítulos, en la pasada de edición existente. */
+    public boolean editarVideoConAcercamientos(String fuente, Path guion, Path musica, Path logo, double volumen,
+            boolean conSonido, Path destino,
+            com.metricol.api.service.media.edicion.CompiladorDeAcercamientos.Composicion composicion) {
+        java.util.Objects.requireNonNull(composicion, "Falta la composición validada.");
+        String salida = ejecutar(comandoEditar(fuente, guion, musica, logo, volumen, composicion.inicioFuente(),
+                composicion.finFuente(), conSonido, destino, composicion), "ffmpeg-acercamientos", 1800);
+        try {
+            return salida != null && Files.size(destino) > 0;
+        } catch (IOException ex) {
+            return false;
+        }
+    }
+
+    private List<String> comandoEditar(String fuente, Path guion, Path musica, Path logo, double volumen, double inicio,
+            double fin, boolean conSonido, Path destino,
+            com.metricol.api.service.media.edicion.CompiladorDeAcercamientos.Composicion composicion) {
         double largo = Math.max(fin - inicio, 1);
-        boolean recorta = inicio > 0.05;
+        boolean recorta = composicion == null ? inicio > 0.05 : inicio > 0;
         List<String> comando = new ArrayList<>(List.of(
                 props.getFfmpeg(),
                 "-hide_banner", "-loglevel", "error", "-y"));
@@ -597,7 +617,8 @@ public class FfmpegImagen {
             // Primero el logo y encima los subtítulos: si alguna vez se cruzan, se lee lo que se dice.
             // Una sola imagen basta: overlay repite su último cuadro todo el video.
             comando.addAll(List.of("-i", logo.toString()));
-            String video = "[0:v][" + (musica != null ? 2 : 1) + ":v]overlay=0:0:format=auto";
+            String base = composicion == null ? "[0:v]" : "[0:v]" + composicion.filtro() + "[dinamico];[dinamico]";
+            String video = base + "[" + (musica != null ? 2 : 1) + ":v]overlay=0:0:format=auto";
             filtros.add(guion != null
                     ? video + ",subtitles=filename=" + rutaParaFiltro(guion) + "[vf]"
                     : video + "[vf]");
@@ -610,13 +631,19 @@ public class FfmpegImagen {
             comando.addAll(List.of("-filter_complex", String.join(";", filtros)));
         }
         comando.addAll(salidas);
-        if (guion != null && logo == null) {
-            comando.addAll(List.of("-vf", "subtitles=filename=" + rutaParaFiltro(guion)));
+        if (logo == null && (guion != null || composicion != null)) {
+            String visual = composicion == null ? "" : composicion.filtro();
+            if (guion != null) visual += (visual.isEmpty() ? "" : ",") + "subtitles=filename=" + rutaParaFiltro(guion);
+            comando.addAll(List.of("-vf", visual));
         }
-        if (guion != null || logo != null || recorta) {
+        if (guion != null || logo != null || recorta || composicion != null) {
             comando.addAll(List.of("-c:v", "libx264", "-preset", "veryfast", "-crf", "20", "-pix_fmt", "yuv420p"));
         } else {
             comando.addAll(List.of("-c:v", "copy"));
+        }
+        if (composicion != null) {
+            comando.addAll(List.of("-threads", "2", "-filter_threads", "2", "-fps_mode:v", "vfr", "-enc_time_base:v", "demux",
+                    "-metadata:s:v:0", "rotate=0"));
         }
         comando.addAll(List.of(
                 "-c:a", "aac", "-b:a", "160k",
@@ -703,6 +730,14 @@ public class FfmpegImagen {
             alto = t;
         }
         return new MedidasVideo(ancho, alto, segundos);
+    }
+
+    /** El primer render dinámico conserva dimensiones de fuentes con píxeles cuadrados. */
+    public boolean tienePixelesCuadrados(String fuente) {
+        String salida = ejecutar(List.of(props.getFfprobe(), "-v", "error", "-select_streams", "v:0",
+                "-show_entries", "stream=sample_aspect_ratio", "-of", "default=noprint_wrappers=1:nokey=1", fuente),
+                "ffprobe-sar");
+        return salida != null && "1:1".equals(salida.strip());
     }
 
     /** ¿Está ffmpeg donde dice la configuración? */

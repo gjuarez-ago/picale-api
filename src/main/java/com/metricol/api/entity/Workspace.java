@@ -332,6 +332,20 @@ public class Workspace {
      */
     private Boolean logoVideos;
 
+    /**
+     * Letreros informativos en los videos: recuadros cortos que resumen lo
+     * importante de cada momento. Nulo o FALSE = no; se enciende en los
+     * ajustes de video.
+     */
+    private Boolean letrerosVideos;
+
+    /** Las palabras importantes de los subtítulos en color y más grandes; nulo o FALSE = no. */
+    private Boolean clavesVideos;
+
+    /** Colores, letra, tamaño y cantidad de letreros de los videos, en JSON ({@code DisenoVideo}); nulo = lo de siempre. */
+    @Column(length = 400)
+    private String videosDiseno;
+
     /** El último aviso al teléfono de "tengo publicaciones listas": entre uno y otro pasa al menos una hora. */
     private java.time.LocalDateTime agenteUltimoAviso;
 

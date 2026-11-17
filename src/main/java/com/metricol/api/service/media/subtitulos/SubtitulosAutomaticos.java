@@ -18,6 +18,7 @@ import com.metricol.api.entity.Workspace;
 import com.metricol.api.repository.MediaAssetRepository;
 import com.metricol.api.repository.WorkspaceRepository;
 import com.metricol.api.service.ai.RevisorDeLogo;
+import com.metricol.api.service.media.edicion.EnfasisDeVideo;
 import com.metricol.api.service.reels.FfmpegReelRenderer;
 import com.metricol.api.service.reels.MusicaDeReels;
 import com.metricol.api.service.reels.ReelMusicCatalog;
@@ -71,6 +72,7 @@ public class SubtitulosAutomaticos {
     private final ReelMusicCatalog catalogo;
     private final RecorteAutomatico recortes;
     private final RevisorDeLogo revisorDeLogo;
+    private final EnfasisDeVideo enfasis;
     /** Uno a la vez: transcribir y encargar es corto, pero no debe correr dos veces el mismo video. */
     private final ExecutorService hilo = Executors.newSingleThreadExecutor(r -> {
         Thread t = new Thread(r, "subtitulos-auto");
@@ -82,6 +84,14 @@ public class SubtitulosAutomaticos {
     public SubtitulosAutomaticos(MediaAssetRepository assets, WorkspaceRepository workspaces,
             SubtitulosService subtitulos, MusicaDeReels musicaDeCuenta, ReelMusicCatalog catalogo,
             RecorteAutomatico recortes, RevisorDeLogo revisorDeLogo) {
+        this(assets, workspaces, subtitulos, musicaDeCuenta, catalogo, recortes, revisorDeLogo, null);
+    }
+
+    @org.springframework.beans.factory.annotation.Autowired
+    public SubtitulosAutomaticos(MediaAssetRepository assets, WorkspaceRepository workspaces,
+            SubtitulosService subtitulos, MusicaDeReels musicaDeCuenta, ReelMusicCatalog catalogo,
+            RecorteAutomatico recortes, RevisorDeLogo revisorDeLogo, EnfasisDeVideo enfasis) {
+        this.enfasis = enfasis;
         this.assets = assets;
         this.workspaces = workspaces;
         this.subtitulos = subtitulos;
@@ -106,9 +116,22 @@ public class SubtitulosAutomaticos {
      * @param logo     el logo de la marca arriba en los videos; al guardar, nulo = como estaba
      * @param hayLogo  solo de lectura: si la marca tiene un logo que se puede pegar
      *                 (no lo tiene, o el "logo" es una foto de una persona o un lugar)
+     * @param letreros letreros informativos en los videos con subtítulos; al guardar, nulo = como estaba
+     * @param claves   palabras importantes en color; al guardar, nulo = como estaba
+     * @param diseno   colores, letra, tamaño y cantidad de letreros; al guardar, nulo = como estaba
      */
     public record Ajustes(boolean activo, EstiloSubtitulos estilo, SubtitulosService.Color color, Boolean recortes,
-            Boolean logo, Boolean hayLogo) {
+            Boolean logo, Boolean hayLogo, Boolean letreros, Boolean claves, DisenoVideo diseno) {
+
+        public Ajustes(boolean activo, EstiloSubtitulos estilo, SubtitulosService.Color color, Boolean recortes,
+                Boolean logo, Boolean hayLogo, Boolean letreros, Boolean claves) {
+            this(activo, estilo, color, recortes, logo, hayLogo, letreros, claves, null);
+        }
+
+        public Ajustes(boolean activo, EstiloSubtitulos estilo, SubtitulosService.Color color, Boolean recortes,
+                Boolean logo, Boolean hayLogo) {
+            this(activo, estilo, color, recortes, logo, hayLogo, null, null);
+        }
 
         public Ajustes(boolean activo, EstiloSubtitulos estilo, SubtitulosService.Color color, Boolean recortes) {
             this(activo, estilo, color, recortes, null, null);
@@ -120,7 +143,8 @@ public class SubtitulosAutomaticos {
                 .orElseThrow(() -> new com.metricol.api.exception.ResourceNotFoundException("Ese negocio no existe."));
         return new Ajustes(Boolean.TRUE.equals(espacio.getSubtitulosAuto()), estiloDe(espacio), colorDe(espacio),
                 !Boolean.FALSE.equals(espacio.getRecorteAuto()), Boolean.TRUE.equals(espacio.getLogoVideos()),
-                logoUsable(espacio) != null);
+                logoUsable(espacio) != null, Boolean.TRUE.equals(espacio.getLetrerosVideos()),
+                Boolean.TRUE.equals(espacio.getClavesVideos()), disenoDe(espacio));
     }
 
     public Ajustes guardar(UUID workspaceId, Ajustes nuevos) {
@@ -134,6 +158,20 @@ public class SubtitulosAutomaticos {
         }
         if (nuevos.logo() != null) {
             espacio.setLogoVideos(nuevos.logo());
+        }
+        if (nuevos.letreros() != null) {
+            espacio.setLetrerosVideos(nuevos.letreros());
+        }
+        if (nuevos.claves() != null) {
+            espacio.setClavesVideos(nuevos.claves());
+        }
+        if (nuevos.diseno() != null) {
+            DisenoVideo limpio = nuevos.diseno().limpio();
+            try {
+                espacio.setVideosDiseno(limpio.deSiempre() ? null : JSON.writeValueAsString(limpio));
+            } catch (Exception ex) {
+                throw new IllegalStateException("No pude guardar cómo se ven tus videos.", ex);
+            }
         }
         workspaces.save(espacio);
         return ajustes(workspaceId);
@@ -239,8 +277,29 @@ public class SubtitulosAutomaticos {
             guardar(id, HACIENDO, intentos, fondo);
             // Las palabras de aquí, no las de la fila: si otra tarea la pisó
             // mientras tanto, el video igual sale con sus subtítulos.
-            subtitulos.encargarEdicion(id, workspaceId, estiloDe(espacio), colorDe(espacio),
-                    ponerSubtitulos ? palabras : List.of(), cancion, recorte, logo);
+            // Letreros y palabras clave: solo con subtítulos, y sobre lo que se queda del video.
+            boolean conLetreros = Boolean.TRUE.equals(espacio.getLetrerosVideos());
+            boolean conClaves = Boolean.TRUE.equals(espacio.getClavesVideos());
+            if (enfasis != null && ponerSubtitulos && (conLetreros || conClaves)) {
+                double desde = recorte == null ? 0 : recorte.inicio();
+                double hasta = recorte == null ? subtitulos.segundos(id, workspaceId) : recorte.fin();
+                DisenoVideo diseno = disenoDe(espacio);
+                EnfasisDeVideo.Enfasis decidido = enfasis.decidir(id, palabras, desde, hasta, conLetreros,
+                        conClaves, logo != null, diseno.letrerosONormal());
+                if (diseno.deSiempre()) {
+                    subtitulos.encargarEdicion(id, workspaceId, estiloDe(espacio), colorDe(espacio),
+                            decidido.palabras(), cancion, recorte, logo, decidido.letreros());
+                } else {
+                    subtitulos.encargarEdicion(id, workspaceId, estiloDe(espacio), colorDe(espacio),
+                            decidido.palabras(), cancion, recorte, logo, decidido.letreros(), diseno);
+                }
+            } else if (ponerSubtitulos && !disenoDe(espacio).deSiempre()) {
+                subtitulos.encargarEdicion(id, workspaceId, estiloDe(espacio), colorDe(espacio), palabras, cancion,
+                        recorte, logo, null, disenoDe(espacio));
+            } else {
+                subtitulos.encargarEdicion(id, workspaceId, estiloDe(espacio), colorDe(espacio),
+                        ponerSubtitulos ? palabras : List.of(), cancion, recorte, logo);
+            }
         } catch (IllegalArgumentException ex) {
             // Muy largo, no se abre: no es un fallo, no hay qué poner.
             log.info("Video {} sin edición automática: {}", id, ex.getMessage());
@@ -304,6 +363,20 @@ public class SubtitulosAutomaticos {
         video.setSubtitulosEstado(estado);
         video.setSubtitulosIntentos(intentos);
         assets.guardarEstadoSubtitulos(video.getId(), video.getTenantId(), estado, intentos);
+    }
+
+    private static final com.fasterxml.jackson.databind.ObjectMapper JSON =
+            new com.fasterxml.jackson.databind.ObjectMapper();
+
+    /** El diseño guardado de la cuenta; uno ilegible o ausente es "lo de siempre". */
+    static DisenoVideo disenoDe(Workspace espacio) {
+        String guardado = espacio.getVideosDiseno();
+        if (guardado == null || guardado.isBlank()) return DisenoVideo.DE_SIEMPRE;
+        try {
+            return JSON.readValue(guardado, DisenoVideo.class).limpio();
+        } catch (Exception ex) {
+            return DisenoVideo.DE_SIEMPRE;
+        }
     }
 
     static EstiloSubtitulos estiloDe(Workspace espacio) {

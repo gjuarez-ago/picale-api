@@ -67,6 +67,42 @@ class SubtitulosAutomaticosTest {
     private static final java.util.List<Palabra> HABLA = java.util.List.of(new Palabra("hola", 1, 1.5));
 
     @Test
+    @DisplayName("Con letreros encendidos, la copia se encarga con los letreros y las palabras clave decididos")
+    void encargaConLetreros() {
+        var enfasis = mock(com.metricol.api.service.media.edicion.EnfasisDeVideo.class);
+        ReelMusicCatalog catalogo = new ReelMusicCatalog(new ReelsProperties(), mock(R2StorageService.class),
+                new ObjectMapper());
+        WorkspaceRepository workspaces = mock(WorkspaceRepository.class);
+        when(workspaces.findById(WS)).thenReturn(Optional.of(espacio));
+        var conEnfasis = new SubtitulosAutomaticos(assets, workspaces, subtitulos,
+                new MusicaDeReels(workspaces, catalogo), catalogo, recortes, null, enfasis);
+        espacio.setLetrerosVideos(true);
+        when(subtitulos.segundos(video.getId(), WS)).thenReturn(30.0);
+        var clave = java.util.List.of(new Palabra("hola", 1, 1.5, true));
+        var letreros = java.util.List.of(new Letrero(Letrero.Tipo.CLAVE, "Hola", 1, 4, null));
+        when(enfasis.decidir(video.getId(), HABLA, 0, 30.0, true, false, false, DisenoVideo.Cantidad.NORMAL))
+                .thenReturn(new com.metricol.api.service.media.edicion.EnfasisDeVideo.Enfasis(clave, letreros));
+
+        conEnfasis.procesar(video.getId());
+
+        verify(subtitulos).encargarEdicion(eq(video.getId()), eq(WS), eq(EstiloSubtitulos.REBOTE), eq(null), eq(clave),
+                eq(null), eq(null), eq(null), eq(letreros));
+        assertThat(video.getSubtitulosEstado()).isEqualTo(SubtitulosAutomaticos.HACIENDO);
+    }
+
+    @Test
+    @DisplayName("Letreros y palabras clave se guardan cada uno por su lado, y nulo los deja como estaban")
+    void guardaLetrerosYClaves() {
+        automaticos.guardar(WS, new SubtitulosAutomaticos.Ajustes(true, null, null, null, null, null, true, null));
+        assertThat(espacio.getLetrerosVideos()).isTrue();
+        assertThat(espacio.getClavesVideos()).isNull();
+        var despues = automaticos.guardar(WS,
+                new SubtitulosAutomaticos.Ajustes(true, null, null, null, null, null, null, true));
+        assertThat(despues.letreros()).isTrue();
+        assertThat(despues.claves()).isTrue();
+    }
+
+    @Test
     @DisplayName("Saca el texto y encarga la copia con el estilo de la cuenta; el agente sigue esperando")
     void encargaConElEstiloDeLaCuenta() {
         automaticos.procesar(video.getId());

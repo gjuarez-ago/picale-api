@@ -134,7 +134,7 @@ class SubtitulosServiceTest {
         assertThat(copia.getStatus()).isEqualTo(MediaAssetStatus.PROCESSING);
         assertThat(copia.getFileName()).isEqualTo("reel-subtitulado.mp4");
         Map<?, ?> encargo = json.readValue(copia.getSubtitulos(), Map.class);
-        assertThat(encargo.get("estilo")).isIn("PALABRA", "REBOTE", "CLASICO");
+        assertThat(encargo.get("estilo")).isIn("PALABRA", "REBOTE", "CAJA", "CLASICO");
         assertThat(encargo.get("color")).isIn("#D4A858", GuionAss.AMARILLO);
         assertThat(video.getStatus()).isEqualTo(MediaAssetStatus.READY);
         verify(cola).dispatch(any(), any());
