@@ -45,6 +45,17 @@ public record EspecTexto(int maxCaracteres, int hashtagsSugeridos, String estilo
             "un titulo profesional de una linea: nombra lo que se ofrece o el tema,"
                     + " sin hashtags, sin emojis y sin punto final");
 
+    /**
+     * Lo que Facebook admite en el campo común {@code title} de upload-post.
+     *
+     * <p>El caption de Facebook va entero por {@code description} (ver
+     * {@link #de}), pero una publicación de solo texto no tiene otro campo:
+     * su texto ES el {@code title}, y ahí Facebook valida 255. 359 caracteres
+     * tiraron una publicación entera con un 400 (sep 2026). Se queda en 300,
+     * el tope que ya tenía y que no volvió a fallar.
+     */
+    static final EspecTexto FACEBOOK_CAMPO_COMUN = new EspecTexto(300, 2, "");
+
     public static EspecTexto de(Platform platform) {
         return switch (platform) {
             case INSTAGRAM -> new EspecTexto(2200, 5,
@@ -52,25 +63,27 @@ public record EspecTexto(int maxCaracteres, int hashtagsSugeridos, String estilo
                             + " linea en blanco: gancho, cuerpo, cierre. Si hay cosas que enumerar, una"
                             + " por linea. Los hashtags al final, en su propia linea, nunca dentro de la frase");
 
-            // 300: el caption de Facebook. Historicamente era 255, el tope
-            // del campo `title` de Facebook en upload-post (359 caracteres
-            // tiraron una publicacion entera con un 400). Hoy el titulo va
-            // aparte (TITULO) y el caption viaja por `description`, que
-            // admite mucho mas; el 300 (24 sep 2026) es una medida a
-            // proposito, un poco mas holgada que la anterior: cabe una frase
-            // mas y sigue cerca de lo que Facebook enseña sin plegar en "Ver
-            // mas". Es el mismo tope que TikTok, lo que permite reutilizar un
-            // texto entre ambas.
-            case FACEBOOK -> new EspecTexto(300, 2,
-                    "conversacional y directo, como quien le cuenta algo a un vecino. Dos o tres lineas,"
-                            + " no un parrafo; lo concreto en la primera. Casi sin hashtags, y abajo");
+            // 3000, como LinkedIn (9 nov 2026, pedido de Gabriel: el texto
+            // de Facebook salía incompleto). Antes era 300, y todo caption
+            // —también el escrito a mano o el de otra red— se cortaba ahí al
+            // enviarse. El tope viejo nació del campo `title` (255; 359
+            // caracteres tiraron una publicación con un 400), pero en fotos y
+            // videos el caption ya viaja por `description` /
+            // `facebook_description`, que admiten mucho más. El único envío
+            // que sigue yendo por `title` es el de solo texto, y ese lo cubre
+            // FACEBOOK_CAMPO_COMUN en masEstricta.
+            case FACEBOOK -> new EspecTexto(3000, 2,
+                    "conversacional y cercano, como quien le cuenta algo a un vecino, pero completo:"
+                            + " el mensaje entero, no un resumen. En parrafos cortos con una linea en blanco"
+                            + " entre ellos; lo concreto en la primera linea, que es lo que se ve antes de"
+                            + " \"Ver mas\". Casi sin hashtags, y abajo");
 
             // 300 y ya no 90: los 90 eran el TITULO de una publicacion de
             // fotos en TikTok, y ahi es donde iba nuestro texto. Ahora el
             // titulo va aparte (TITULO, 90) y el caption viaja por
             // `tiktok_description` en fotos y `tiktok_title` en video, que
-            // admiten 4000 y 2200. Se queda en 300, igual que Facebook, para
-            // que el mismo caption sirva en las dos redes.
+            // admiten 4000 y 2200. Se queda en 300 a propósito: en TikTok el
+            // texto acompaña al video y se lee de un vistazo.
             //
             // Cuenta como cuenta Java: un emoji fuera del BMP son dos unidades
             // UTF-16, que es la regla de TikTok ("an emoji counts as 2").
@@ -152,7 +165,7 @@ public record EspecTexto(int maxCaracteres, int hashtagsSugeridos, String estilo
      */
     public static EspecTexto masEstricta(Collection<Platform> platforms) {
         return platforms.stream()
-                .map(EspecTexto::de)
+                .map(red -> red == Platform.FACEBOOK ? FACEBOOK_CAMPO_COMUN : de(red))
                 .min(Comparator.comparingInt(EspecTexto::maxCaracteres))
                 // Sin redes no hay a quién ajustarse. No debería pasar —no se
                 // publica sin destinos— pero devolver algo es mejor que

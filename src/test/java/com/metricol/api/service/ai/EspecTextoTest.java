@@ -25,14 +25,24 @@ class EspecTextoTest {
     }
 
     @Test
-    @DisplayName("Facebook admite 300 en el caption, no los 2000 de un post")
-    void facebookSonTrescientos() {
-        // 359 es el largo exacto del que rechazó upload-post. Con el tope
-        // viejo de 2000 pasaba entero y se perdía la publicación. El 300
-        // (24 sep 2026) sube un poco el 255 anterior sin volver a ese caso.
-        String recortado = EspecTexto.de(Platform.FACEBOOK).recortar(largo(359));
+    @DisplayName("Facebook recibe el caption completo, como LinkedIn")
+    void facebookVaCompleto() {
+        // 9 nov 2026: los textos de Facebook salían cortados a 300. El caption
+        // viaja por `description`, que admite textos largos.
+        String texto = largo(1331);
 
-        assertThat(recortado).hasSizeLessThanOrEqualTo(300);
+        assertThat(EspecTexto.de(Platform.FACEBOOK).recortar(texto)).isEqualTo(texto);
+        assertThat(EspecTexto.de(Platform.FACEBOOK).maxCaracteres())
+                .isEqualTo(EspecTexto.de(Platform.LINKEDIN).maxCaracteres());
+    }
+
+    @Test
+    @DisplayName("Una publicación de solo texto a Facebook sigue cabiendo en su `title`")
+    void soloTextoAFacebookSigueCorto() {
+        // 359 es el largo exacto del que rechazó upload-post en el `title`.
+        EspecTexto estricta = EspecTexto.masEstricta(List.of(Platform.FACEBOOK, Platform.LINKEDIN));
+
+        assertThat(estricta.recortar(largo(359))).hasSizeLessThanOrEqualTo(300);
     }
 
     @Test

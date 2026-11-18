@@ -183,8 +183,10 @@ public class Redactor {
               una frase separadas por comas.
             - Los hashtags van siempre al final, en su propia linea, despues de
               una linea en blanco. Nunca dentro de la frase.
-            - En Facebook y TikTok, que son cortos, basta con una o dos lineas
-              y los hashtags abajo: ahi un parrafo ya es demasiado.
+            - En TikTok, que es corto, basta con una o dos lineas y los
+              hashtags abajo: ahi un parrafo ya es demasiado.
+            - En Facebook va el mensaje completo, en parrafos cortos, como en
+              LinkedIn pero con tono mas cercano: no lo resumas a una linea.
 
             EMOJIS CON INTENCION, NO COMO DECORACION:
             - Usa entre CERO y DOS emojis relevantes en todo el caption. No es
