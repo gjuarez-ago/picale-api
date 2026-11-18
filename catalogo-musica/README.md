@@ -1,6 +1,6 @@
 # Catálogo musical inicial de Pícale
 
-Catálogo local de 48 pistas instrumentales, organizado en ocho ambientes, diez
+Catálogo local de 78 pistas instrumentales, organizado en ocho ambientes, diez
 temas de negocio y nueve intenciones editoriales para videos comerciales. Las
 pistas provienen de Kaino Free Asset Library y fueron
 publicadas por el proveedor bajo CC0 1.0 Universal.
@@ -17,8 +17,10 @@ publicadas por el proveedor bajo CC0 1.0 Universal.
 
 ## Clasificación
 
-La distribución prioriza variedad temática; cada ambiente tiene entre tres y
-nueve pistas:
+La distribución prioriza variedad temática; cada ambiente tiene entre seis y
+quince pistas. La ampliación del 31 de octubre de 2026 añadió lo-fi hip hop,
+boom bap, música explicativa, guitarra española, cuarteto de cuerdas, techno,
+trap y más variantes de jazz, ambient, funk, house y música latina:
 
 - `alegre`: celebraciones, promociones, comida y eventos.
 - `energetica`: deportes, lanzamientos, ofertas y cortes rápidos.

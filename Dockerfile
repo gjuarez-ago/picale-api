@@ -20,7 +20,7 @@ RUN mvn -B dependency:go-offline
 
 COPY src ./src
 COPY catalogo-musica/catalogo.json catalogo-musica/taxonomia.json catalogo-musica/LICENSE.txt ./catalogo-musica/
-# kaino.dev contesta 429 si se le piden las 48 canciones seguidas: una pausa
+# kaino.dev contesta 429 si se le piden las 78 canciones seguidas: una pausa
 # entre cada una y reintentos con espera.
 RUN apk add --no-cache curl jq \
     && mkdir -p catalogo-musica/audio \
@@ -44,9 +44,10 @@ WORKDIR /app
 # no conoce America/Mexico_City y la JVM se queda en UTC aunque se lo pidan.
 RUN apk add --no-cache ffmpeg tzdata fontconfig ttf-dejavu
 
-# La letra de los subtítulos que se pintan en los videos (Montserrat
-# ExtraBold y Black, licencia OFL): gruesa, como la de TikTok. libass la busca
-# por nombre a través de fontconfig, por eso va a las fuentes del sistema.
+# Las letras de los subtítulos que se pintan en los videos (Montserrat,
+# Poppins, Anton y Bebas Neue, licencia OFL; las cuatro que se pueden elegir en
+# Ajustes de videos). libass las busca por nombre a través de fontconfig, por
+# eso van a las fuentes del sistema.
 COPY docker/fonts/ /usr/share/fonts/picale/
 RUN fc-cache -f
 

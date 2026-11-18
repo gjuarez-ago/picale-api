@@ -12,8 +12,8 @@ https://creativecommons.org/publicdomain/zero/1.0/legalcode
 Source library:
 https://kaino.dev/library/music
 
-The source page and this license were reviewed on 2026-10-30. A copy of the
-source page as seen on that date is kept in evidencia/.
+The source page and this license were reviewed again on 2026-10-31. Copies of
+the source page as seen on each review date are kept in evidencia/.
 
 The provider states that files are supplied as-is and does not guarantee that
 no file resembles an existing work. Pícale should retain the source URL and

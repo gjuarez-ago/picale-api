@@ -1,7 +1,7 @@
 {
-  "version": "1.1.0",
+  "version": "1.2.0",
   "createdAt": "2026-10-30",
-  "updatedAt": "2026-10-30",
+  "updatedAt": "2026-10-31",
   "source": "Kaino Free Asset Library",
   "sourceUrl": "https://kaino.dev/library/music",
   "license": "CC0-1.0",
@@ -708,6 +708,186 @@
       "sourceUrl": "https://kaino.dev/library/music#asset-synthwave-05",
       "downloadUrl": "https://kaino.dev/api/library/music/synthwave-05/download?format=mp3",
       "sha256": "17cb2237c3f557e1b2c60b159c8823475a65fbb2e3052e68ceceb39f53f43092"
+    },
+    {
+      "id": "acoustic-folk-02", "title": "Silent Voltage", "file": "audio/acoustic-folk-02.mp3",
+      "ambiente": "calida", "genre": "Acoustic folk", "sourceMood": "Warm", "bpm": 80, "key": "A minor", "durationSeconds": 90,
+      "suggestedUses": ["historias", "negocios-locales", "artesania"],
+      "sourceUrl": "https://kaino.dev/library/music#asset-acoustic-folk-02", "downloadUrl": "https://kaino.dev/api/library/music/acoustic-folk-02/download?format=mp3", "sha256": "eaf4a5fada0572520f1978422bbc8c46a9d6870386eb0fc955dd26011e6c2360"
+    },
+    {
+      "id": "acoustic-folk-05", "title": "Coastal Thunder", "file": "audio/acoustic-folk-05.mp3",
+      "ambiente": "alegre", "genre": "Acoustic folk", "sourceMood": "Cheerful", "bpm": 96, "key": "F major", "durationSeconds": 90,
+      "suggestedUses": ["restaurantes", "eventos", "familia"],
+      "sourceUrl": "https://kaino.dev/library/music#asset-acoustic-folk-05", "downloadUrl": "https://kaino.dev/api/library/music/acoustic-folk-05/download?format=mp3", "sha256": "6638c020855f3f77f810525be3e528b125a53f9302cda372a96271aae8782b7c"
+    },
+    {
+      "id": "ambient-03", "title": "Northern Satellite", "file": "audio/ambient-03.mp3",
+      "ambiente": "relajada", "genre": "Ambient", "sourceMood": "Ethereal", "bpm": 61, "key": "C minor", "durationSeconds": 120,
+      "suggestedUses": ["bienestar", "spa", "tecnologia"],
+      "sourceUrl": "https://kaino.dev/library/music#asset-ambient-03", "downloadUrl": "https://kaino.dev/api/library/music/ambient-03/download?format=mp3", "sha256": "cc9935bc9cec495a18bbbd9b94f6b5108fb2959908b5ff67e9c14fab277f2a4a"
+    },
+    {
+      "id": "ambient-08", "title": "Northern Circuit", "file": "audio/ambient-08.mp3",
+      "ambiente": "confiada", "genre": "Ambient", "sourceMood": "Hopeful", "bpm": 67, "key": "B♭ major", "durationSeconds": 120,
+      "suggestedUses": ["salud", "servicios", "testimonios"],
+      "sourceUrl": "https://kaino.dev/library/music#asset-ambient-08", "downloadUrl": "https://kaino.dev/api/library/music/ambient-08/download?format=mp3", "sha256": "368a9193dfcd49f5b3e8991edbff8a14ab87f80bec25a442984942afbd49df7d"
+    },
+    {
+      "id": "boom-bap-05", "title": "Phantom Window", "file": "audio/boom-bap-05.mp3",
+      "ambiente": "confiada", "genre": "Boom bap", "sourceMood": "Confident", "bpm": 95, "key": "A minor", "durationSeconds": 150,
+      "suggestedUses": ["moda-urbana", "marca-personal", "servicios"],
+      "sourceUrl": "https://kaino.dev/library/music#asset-boom-bap-05", "downloadUrl": "https://kaino.dev/api/library/music/boom-bap-05/download?format=mp3", "sha256": "c16ac780fc27ab203b8405d2fb01d6f39085b3ec28d7f9144b4d66d8509e5c1a"
+    },
+    {
+      "id": "boom-bap-07", "title": "Brave Orbit", "file": "audio/boom-bap-07.mp3",
+      "ambiente": "relajada", "genre": "Boom bap", "sourceMood": "Relaxed", "bpm": 95, "key": "F# minor", "durationSeconds": 120,
+      "suggestedUses": ["cafeterias", "lifestyle", "marca-personal"],
+      "sourceUrl": "https://kaino.dev/library/music#asset-boom-bap-07", "downloadUrl": "https://kaino.dev/api/library/music/boom-bap-07/download?format=mp3", "sha256": "d3b99157a95a8e01b5a7be708be233f27d0a3c9b294c87cdd8e3ff67c7095509"
+    },
+    {
+      "id": "bossa-nova-03", "title": "Slow Mosaic", "file": "audio/bossa-nova-03.mp3",
+      "ambiente": "elegante", "genre": "Bossa nova", "sourceMood": "Sophisticated", "bpm": 127, "key": "G minor", "durationSeconds": 120,
+      "suggestedUses": ["gastronomia", "hoteles", "servicios-premium"],
+      "sourceUrl": "https://kaino.dev/library/music#asset-bossa-nova-03", "downloadUrl": "https://kaino.dev/api/library/music/bossa-nova-03/download?format=mp3", "sha256": "0f7935dc039d6a095b640d89d1a085c5f40b219649ad67e32ee34a334582c3b7"
+    },
+    {
+      "id": "creator-explainer-01", "title": "Lunar Avenue", "file": "audio/creator-explainer-01.mp3",
+      "ambiente": "moderna", "genre": "Explainer bed", "sourceMood": "Focused", "bpm": 100, "key": "C major", "durationSeconds": 90,
+      "suggestedUses": ["tutoriales", "tecnologia", "servicios-profesionales"],
+      "sourceUrl": "https://kaino.dev/library/music#asset-creator-explainer-01", "downloadUrl": "https://kaino.dev/api/library/music/creator-explainer-01/download?format=mp3", "sha256": "314e53becbfe2bc114826620f9c3a149dab03b5131f9afab503d95e9f9a777da"
+    },
+    {
+      "id": "creator-explainer-07", "title": "Golden Atlas", "file": "audio/creator-explainer-07.mp3",
+      "ambiente": "calida", "genre": "Explainer bed", "sourceMood": "Friendly", "bpm": 106, "key": "E♭ major", "durationSeconds": 120,
+      "suggestedUses": ["tutoriales", "educacion", "negocios-locales"],
+      "sourceUrl": "https://kaino.dev/library/music#asset-creator-explainer-07", "downloadUrl": "https://kaino.dev/api/library/music/creator-explainer-07/download?format=mp3", "sha256": "fe64ca514854fdcd0a454af4c443e277d10cc57a25ac8caeff80f288bb75abc5"
+    },
+    {
+      "id": "funk-01", "title": "Crimson Pulse", "file": "audio/funk-01.mp3",
+      "ambiente": "moderna", "genre": "Funk", "sourceMood": "Groovy", "bpm": 109, "key": "A minor", "durationSeconds": 90,
+      "suggestedUses": ["productos", "retail", "moda"],
+      "sourceUrl": "https://kaino.dev/library/music#asset-funk-01", "downloadUrl": "https://kaino.dev/api/library/music/funk-01/download?format=mp3", "sha256": "dbcaa4c612a1769c0e5caf32866ea2487ca08432d179940d1db1077f6ab8ab26"
+    },
+    {
+      "id": "funk-05", "title": "Cosmic Harbor", "file": "audio/funk-05.mp3",
+      "ambiente": "alegre", "genre": "Funk", "sourceMood": "Upbeat", "bpm": 113, "key": "E major", "durationSeconds": 90,
+      "suggestedUses": ["promociones", "productos", "eventos"],
+      "sourceUrl": "https://kaino.dev/library/music#asset-funk-05", "downloadUrl": "https://kaino.dev/api/library/music/funk-05/download?format=mp3", "sha256": "690546b7aa5a99bd548b9c0f83224280d6067268cac4ca57926ad7fdcc3a05d0"
+    },
+    {
+      "id": "house-01", "title": "Quiet Monsoon", "file": "audio/house-01.mp3",
+      "ambiente": "energetica", "genre": "House", "sourceMood": "Uplifting", "bpm": 120, "key": "D major", "durationSeconds": 120,
+      "suggestedUses": ["eventos", "fitness", "lanzamientos"],
+      "sourceUrl": "https://kaino.dev/library/music#asset-house-01", "downloadUrl": "https://kaino.dev/api/library/music/house-01/download?format=mp3", "sha256": "467a75f5b9f75a30354dc662e428dbafd4a4ea12e60f527cf110e0ec58aa2310"
+    },
+    {
+      "id": "house-06", "title": "Frozen Garden", "file": "audio/house-06.mp3",
+      "ambiente": "moderna", "genre": "House", "sourceMood": "Groovy", "bpm": 120, "key": "E♭ major", "durationSeconds": 120,
+      "suggestedUses": ["vida-nocturna", "moda", "productos"],
+      "sourceUrl": "https://kaino.dev/library/music#asset-house-06", "downloadUrl": "https://kaino.dev/api/library/music/house-06/download?format=mp3", "sha256": "3b54ba41e13d613933bec896a2701192d665a316f291392baf055accd4578b1d"
+    },
+    {
+      "id": "jazz-01", "title": "Atomic Tundra", "file": "audio/jazz-01.mp3",
+      "ambiente": "elegante", "genre": "Jazz", "sourceMood": "Smooth", "bpm": 118, "key": "B♭ major", "durationSeconds": 150,
+      "suggestedUses": ["gastronomia", "hoteles", "boutiques"],
+      "sourceUrl": "https://kaino.dev/library/music#asset-jazz-01", "downloadUrl": "https://kaino.dev/api/library/music/jazz-01/download?format=mp3", "sha256": "56d8a8f933f1205309914ed177ecc53897e08c47362683f1e3d46751336d1afc"
+    },
+    {
+      "id": "jazz-07", "title": "Quiet Voltage", "file": "audio/jazz-07.mp3",
+      "ambiente": "elegante", "genre": "Jazz", "sourceMood": "Sophisticated", "bpm": 70, "key": "A minor", "durationSeconds": 90,
+      "suggestedUses": ["joyeria", "inmobiliaria", "servicios-profesionales"],
+      "sourceUrl": "https://kaino.dev/library/music#asset-jazz-07", "downloadUrl": "https://kaino.dev/api/library/music/jazz-07/download?format=mp3", "sha256": "8f71372bdf3ddab31accc5f105c589c6e306aea82504fb7d77b93a401957bd21"
+    },
+    {
+      "id": "latin-pop-02", "title": "Ember Mirror", "file": "audio/latin-pop-02.mp3",
+      "ambiente": "alegre", "genre": "Latin pop", "sourceMood": "Cheerful", "bpm": 99, "key": "F major", "durationSeconds": 120,
+      "suggestedUses": ["comida", "eventos", "promociones"],
+      "sourceUrl": "https://kaino.dev/library/music#asset-latin-pop-02", "downloadUrl": "https://kaino.dev/api/library/music/latin-pop-02/download?format=mp3", "sha256": "00c7eee41f3956ec66ea58bd0dacaeff55348c5ccd80c5a86bc7445af7b20dad"
+    },
+    {
+      "id": "latin-pop-05", "title": "Midnight Lighthouse", "file": "audio/latin-pop-05.mp3",
+      "ambiente": "energetica", "genre": "Latin pop", "sourceMood": "Upbeat", "bpm": 105, "key": "B minor", "durationSeconds": 120,
+      "suggestedUses": ["eventos", "viajes", "moda"],
+      "sourceUrl": "https://kaino.dev/library/music#asset-latin-pop-05", "downloadUrl": "https://kaino.dev/api/library/music/latin-pop-05/download?format=mp3", "sha256": "37fb293cd393cdb758448c019190d942cb9c259cdeae338604e86cc0d1c5c8d5"
+    },
+    {
+      "id": "lofi-hip-hop-03", "title": "Glass Bridge", "file": "audio/lofi-hip-hop-03.mp3",
+      "ambiente": "moderna", "genre": "Lo-fi hip hop", "sourceMood": "Focused", "bpm": 72, "key": "D minor", "durationSeconds": 90,
+      "suggestedUses": ["tutoriales", "educacion", "tecnologia"],
+      "sourceUrl": "https://kaino.dev/library/music#asset-lofi-hip-hop-03", "downloadUrl": "https://kaino.dev/api/library/music/lofi-hip-hop-03/download?format=mp3", "sha256": "1496255dde868dcc01791c4e1bda3739f8e4b3b8da73809c7ed0adafecb559c2"
+    },
+    {
+      "id": "lofi-hip-hop-07", "title": "Paper Circuit", "file": "audio/lofi-hip-hop-07.mp3",
+      "ambiente": "relajada", "genre": "Lo-fi hip hop", "sourceMood": "Cozy", "bpm": 70, "key": "C# minor", "durationSeconds": 90,
+      "suggestedUses": ["cafeterias", "lifestyle", "bienestar"],
+      "sourceUrl": "https://kaino.dev/library/music#asset-lofi-hip-hop-07", "downloadUrl": "https://kaino.dev/api/library/music/lofi-hip-hop-07/download?format=mp3", "sha256": "c965580f503292fc1c012e11bb101ddb8bda04251b51c0bd20d2d4a636847183"
+    },
+    {
+      "id": "creator-podcast-intro-03", "title": "Lunar Mirage", "file": "audio/creator-podcast-intro-03.mp3",
+      "ambiente": "confiada", "genre": "Podcast intro", "sourceMood": "Confident", "bpm": 112, "key": "F# major", "durationSeconds": 20,
+      "suggestedUses": ["testimonios", "marca-personal", "llamadas-a-la-accion"],
+      "sourceUrl": "https://kaino.dev/library/music#asset-creator-podcast-intro-03", "downloadUrl": "https://kaino.dev/api/library/music/creator-podcast-intro-03/download?format=mp3", "sha256": "6159de7ab73e9dce3423b606a1cb590b6ddade373b9da1a17069e3cc44021e7f"
+    },
+    {
+      "id": "creator-podcast-intro-07", "title": "Silent Comet", "file": "audio/creator-podcast-intro-07.mp3",
+      "ambiente": "calida", "genre": "Podcast intro", "sourceMood": "Friendly", "bpm": 102, "key": "C major", "durationSeconds": 30,
+      "suggestedUses": ["negocios-locales", "presentaciones", "servicios"],
+      "sourceUrl": "https://kaino.dev/library/music#asset-creator-podcast-intro-07", "downloadUrl": "https://kaino.dev/api/library/music/creator-podcast-intro-07/download?format=mp3", "sha256": "17454dc96e87e2f3489375f6bbaaede611642dfe518631b644b280361197bf21"
+    },
+    {
+      "id": "solo-piano-01", "title": "Amber Monsoon", "file": "audio/solo-piano-01.mp3",
+      "ambiente": "calida", "genre": "Solo piano", "sourceMood": "Emotional", "bpm": 68, "key": "E♭ major", "durationSeconds": 90,
+      "suggestedUses": ["historias-humanas", "testimonios", "causas-sociales"],
+      "sourceUrl": "https://kaino.dev/library/music#asset-solo-piano-01", "downloadUrl": "https://kaino.dev/api/library/music/solo-piano-01/download?format=mp3", "sha256": "6b9594db9c7881e40e9bf16ff3d6b487820e8abb1ea40f5eacbdaba2eb62954a"
+    },
+    {
+      "id": "solo-piano-03", "title": "Distant Frequency", "file": "audio/solo-piano-03.mp3",
+      "ambiente": "relajada", "genre": "Solo piano", "sourceMood": "Calm", "bpm": 88, "key": "E♭ major", "durationSeconds": 120,
+      "suggestedUses": ["bienestar", "salud", "hospitalidad"],
+      "sourceUrl": "https://kaino.dev/library/music#asset-solo-piano-03", "downloadUrl": "https://kaino.dev/api/library/music/solo-piano-03/download?format=mp3", "sha256": "ffc5a2221dd23cf1f82e40a84b14849427953b858b980de12217651481545017"
+    },
+    {
+      "id": "spanish-guitar-01", "title": "Frozen Satellite", "file": "audio/spanish-guitar-01.mp3",
+      "ambiente": "elegante", "genre": "Spanish guitar", "sourceMood": "Romantic", "bpm": 120, "key": "G# minor", "durationSeconds": 120,
+      "suggestedUses": ["gastronomia", "bodas", "turismo"],
+      "sourceUrl": "https://kaino.dev/library/music#asset-spanish-guitar-01", "downloadUrl": "https://kaino.dev/api/library/music/spanish-guitar-01/download?format=mp3", "sha256": "811b0c7c7f4dd1bdc68b5edc8a6917433ead0e809bd52ea2f6bc50f440671279"
+    },
+    {
+      "id": "spanish-guitar-05", "title": "Hollow Mirror", "file": "audio/spanish-guitar-05.mp3",
+      "ambiente": "energetica", "genre": "Spanish guitar", "sourceMood": "Energetic", "bpm": 98, "key": "E minor", "durationSeconds": 90,
+      "suggestedUses": ["restaurantes", "eventos", "turismo"],
+      "sourceUrl": "https://kaino.dev/library/music#asset-spanish-guitar-05", "downloadUrl": "https://kaino.dev/api/library/music/spanish-guitar-05/download?format=mp3", "sha256": "2279ecb55a0b08cf8c8a96b4fd61d7e346f4de09fec1e59708555d65163e38ca"
+    },
+    {
+      "id": "string-quartet-03", "title": "Glass Fortress", "file": "audio/string-quartet-03.mp3",
+      "ambiente": "calida", "genre": "String quartet", "sourceMood": "Hopeful", "bpm": 110, "key": "D major", "durationSeconds": 120,
+      "suggestedUses": ["inmobiliaria", "marca", "servicios-premium"],
+      "sourceUrl": "https://kaino.dev/library/music#asset-string-quartet-03", "downloadUrl": "https://kaino.dev/api/library/music/string-quartet-03/download?format=mp3", "sha256": "2ef58a62a95481a650f1535ed9ed75e418fe80136ff35c6eff5d55b611e86d73"
+    },
+    {
+      "id": "string-quartet-07", "title": "Hollow Cascade", "file": "audio/string-quartet-07.mp3",
+      "ambiente": "elegante", "genre": "String quartet", "sourceMood": "Sophisticated", "bpm": 100, "key": "G minor", "durationSeconds": 150,
+      "suggestedUses": ["joyeria", "servicios-premium", "gastronomia"],
+      "sourceUrl": "https://kaino.dev/library/music#asset-string-quartet-07", "downloadUrl": "https://kaino.dev/api/library/music/string-quartet-07/download?format=mp3", "sha256": "d757df0e657b17265d935f4fb56a96c5cdb7200dbca9bfe819b70132fc704577"
+    },
+    {
+      "id": "techno-01", "title": "Turbo Archive", "file": "audio/techno-01.mp3",
+      "ambiente": "moderna", "genre": "Techno", "sourceMood": "Hypnotic", "bpm": 127, "key": "F# minor", "durationSeconds": 120,
+      "suggestedUses": ["vida-nocturna", "tecnologia", "automotriz"],
+      "sourceUrl": "https://kaino.dev/library/music#asset-techno-01", "downloadUrl": "https://kaino.dev/api/library/music/techno-01/download?format=mp3", "sha256": "a3189bae01c2990611126c9b6b12e90cdb2fc82e607a32278cb7e965d8c733a8"
+    },
+    {
+      "id": "techno-07", "title": "Cobalt Frequency", "file": "audio/techno-07.mp3",
+      "ambiente": "moderna", "genre": "Techno", "sourceMood": "Minimal", "bpm": 135, "key": "G major", "durationSeconds": 150,
+      "suggestedUses": ["tecnologia", "productos", "vida-nocturna"],
+      "sourceUrl": "https://kaino.dev/library/music#asset-techno-07", "downloadUrl": "https://kaino.dev/api/library/music/techno-07/download?format=mp3", "sha256": "ceb5214515870b1cf3009ec4ca98d30e38dbb2a793cb64964549854d2f0de230"
+    },
+    {
+      "id": "trap-03", "title": "Lunar Meadow", "file": "audio/trap-03.mp3",
+      "ambiente": "confiada", "genre": "Trap", "sourceMood": "Confident", "bpm": 130, "key": "A♭ major", "durationSeconds": 150,
+      "suggestedUses": ["moda-urbana", "automotriz", "marca-personal"],
+      "sourceUrl": "https://kaino.dev/library/music#asset-trap-03", "downloadUrl": "https://kaino.dev/api/library/music/trap-03/download?format=mp3", "sha256": "1f9fc9e430e5a0b00eed3ab8712d5ac74b7a4e4c867cefd27444195e7eb4e05d"
     }
   ]
 }

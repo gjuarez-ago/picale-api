@@ -104,8 +104,9 @@ public class ReelMusicCatalog {
             return null;
         }
         int best = score.getOrDefault(ranked.get(0).id(), 0);
-        List<Track> top = ranked.stream().filter(track -> score.getOrDefault(track.id(), 0) == best)
-                .limit(4).toList();
+        List<Track> top = ranked.stream()
+                .filter(track -> score.getOrDefault(track.id(), 0) == best)
+                .toList();
         Track chosen = top.get(stableIndex(seed, top.size()));
         return new Selection(chosen, key(chosen.id()));
     }

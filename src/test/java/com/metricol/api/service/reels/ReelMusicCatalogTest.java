@@ -3,6 +3,8 @@ package com.metricol.api.service.reels;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.Mockito.mock;
 
+import java.util.stream.IntStream;
+
 import org.junit.jupiter.api.Test;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
@@ -39,6 +41,16 @@ class ReelMusicCatalogTest {
         // Sin ambiente, lo de antes: misma pista que sin el parámetro.
         assertThat(catalog.select("gimnasio", "promoción", "Entrena hoy", false, "s", null).track().id())
                 .isEqualTo(catalog.select("gimnasio", "promoción", "Entrena hoy", false, "s").track().id());
+    }
+
+    @Test
+    void rotatesAcrossAllBestMatchesInsteadOfOnlyFour() {
+        long distinct = IntStream.range(0, 200)
+                .mapToObj(seed -> catalog.select(null, null, null, false,
+                        "seed-" + seed, "juguetona").track().id())
+                .distinct().count();
+
+        assertThat(distinct).isGreaterThan(4);
     }
 
     @Test

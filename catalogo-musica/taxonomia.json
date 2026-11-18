@@ -1,6 +1,6 @@
 {
-  "version": "1.0.0",
-  "updatedAt": "2026-10-30",
+  "version": "1.1.0",
+  "updatedAt": "2026-10-31",
   "selectionPriority": ["tema", "intencion", "voz", "ambiente", "historial"],
   "rules": {
     "avoidLastUsedTracks": 5,
@@ -8,96 +8,96 @@
     "defaultAmbiente": "calida",
     "defaultIntencion": "presentacion_marca",
     "requireActiveTrack": true,
-    "fallbackTrackIds": ["acoustic-folk-01", "tropical-chill-07", "tech-explainer-03"]
+    "fallbackTrackIds": ["acoustic-folk-01", "acoustic-folk-02", "creator-explainer-07", "tropical-chill-07", "tech-explainer-03"]
   },
   "temas": {
     "alimentos_bebidas": {
       "label": "Alimentos y bebidas",
       "keywords": ["restaurante", "cafeteria", "bar", "panaderia", "comida", "bebida", "menu"],
-      "preferredTrackIds": ["latin-pop-06", "bossa-nova-05", "afrobeat-05", "jazz-05", "tropical-chill-07", "latin-pop-01"]
+      "preferredTrackIds": ["latin-pop-06", "latin-pop-02", "bossa-nova-05", "bossa-nova-03", "afrobeat-05", "jazz-05", "jazz-01", "spanish-guitar-05", "acoustic-folk-05", "tropical-chill-07", "latin-pop-01"]
     },
     "belleza_bienestar": {
       "label": "Belleza y bienestar",
       "keywords": ["spa", "salon", "estetica", "skincare", "bienestar", "yoga", "masaje"],
-      "preferredTrackIds": ["ambient-07", "solo-piano-08", "chillwave-01", "tropical-chill-01", "solo-piano-07", "tropical-chill-03"]
+      "preferredTrackIds": ["ambient-07", "ambient-03", "ambient-08", "solo-piano-08", "solo-piano-03", "lofi-hip-hop-07", "chillwave-01", "tropical-chill-01", "solo-piano-07", "tropical-chill-03"]
     },
     "moda_retail": {
       "label": "Moda y comercio",
       "keywords": ["moda", "ropa", "boutique", "accesorios", "tienda", "retail", "coleccion"],
-      "preferredTrackIds": ["city-pop-03", "city-pop-01", "synth-pop-02", "synth-pop-01", "funk-07", "future-bass-03"]
+      "preferredTrackIds": ["city-pop-03", "city-pop-01", "synth-pop-02", "synth-pop-01", "funk-07", "funk-01", "funk-05", "house-06", "techno-01", "techno-07", "trap-03", "future-bass-03"]
     },
     "deporte_fitness": {
       "label": "Deporte y fitness",
       "keywords": ["gimnasio", "fitness", "entrenamiento", "deporte", "competencia", "energia"],
-      "preferredTrackIds": ["creator-sports-01", "creator-sports-02", "creator-workout-01", "drum-and-bass-03", "indie-rock-01", "edm-festival-03"]
+      "preferredTrackIds": ["creator-sports-01", "creator-sports-02", "creator-workout-01", "house-01", "latin-pop-05", "techno-01", "drum-and-bass-03", "indie-rock-01", "edm-festival-03"]
     },
     "tecnologia_servicios": {
       "label": "Tecnología y servicios profesionales",
       "keywords": ["software", "app", "tecnologia", "consultoria", "tutorial", "servicio", "innovacion"],
-      "preferredTrackIds": ["tech-explainer-03", "tech-explainer-04", "game-menu-03", "future-bass-04", "hip-hop-01", "synthwave-05"]
+      "preferredTrackIds": ["tech-explainer-03", "tech-explainer-04", "creator-explainer-01", "creator-explainer-07", "lofi-hip-hop-03", "ambient-03", "techno-07", "game-menu-03", "future-bass-04", "hip-hop-01", "synthwave-05"]
     },
     "hogar_inmobiliaria_hoteleria": {
       "label": "Hogar, inmobiliaria y hotelería",
       "keywords": ["casa", "hogar", "inmueble", "hotel", "habitacion", "arquitectura", "interiores"],
-      "preferredTrackIds": ["cinematic-03", "cinematic-04", "acoustic-folk-01", "country-04", "bossa-nova-01", "jazz-04"]
+      "preferredTrackIds": ["cinematic-03", "cinematic-04", "string-quartet-03", "string-quartet-07", "acoustic-folk-01", "acoustic-folk-02", "solo-piano-03", "country-04", "bossa-nova-01", "jazz-04", "jazz-07"]
     },
     "familia_educacion_mascotas": {
       "label": "Familia, educación y mascotas",
       "keywords": ["familia", "ninos", "escuela", "curso", "mascota", "juego", "diversion"],
-      "preferredTrackIds": ["creator-kids-03", "creator-kids-01", "whimsical-01", "whimsical-08", "game-puzzle-09", "acoustic-folk-01"]
+      "preferredTrackIds": ["creator-kids-03", "creator-kids-01", "creator-explainer-07", "creator-podcast-intro-07", "whimsical-01", "whimsical-08", "game-puzzle-09", "acoustic-folk-01", "acoustic-folk-05"]
     },
     "automotriz_eventos_nocturna": {
       "label": "Automotriz, eventos y vida nocturna",
       "keywords": ["auto", "moto", "evento", "concierto", "bar", "club", "fiesta", "lanzamiento"],
-      "preferredTrackIds": ["cyberpunk-07", "edm-festival-04", "edm-festival-03", "synthwave-05", "house-05", "creator-sports-01"]
+      "preferredTrackIds": ["cyberpunk-07", "edm-festival-04", "edm-festival-03", "synthwave-05", "house-05", "house-01", "house-06", "techno-01", "techno-07", "trap-03", "latin-pop-05", "creator-sports-01"]
     },
     "turismo_experiencias": {
       "label": "Turismo y experiencias",
       "keywords": ["viaje", "turismo", "playa", "aventura", "experiencia", "destino", "recorrido"],
-      "preferredTrackIds": ["tropical-chill-03", "tropical-chill-07", "country-01", "latin-pop-06", "afrobeat-05", "cinematic-03"]
+      "preferredTrackIds": ["tropical-chill-03", "tropical-chill-07", "country-01", "latin-pop-06", "latin-pop-05", "spanish-guitar-01", "spanish-guitar-05", "acoustic-folk-05", "bossa-nova-03", "afrobeat-05", "cinematic-03"]
     },
     "marca_personal_servicios": {
       "label": "Marca personal y servicios",
       "keywords": ["testimonio", "experto", "profesional", "marca personal", "equipo", "confianza", "resultado"],
-      "preferredTrackIds": ["hip-hop-01", "funk-07", "blues-05", "tech-explainer-03", "cinematic-04", "acoustic-folk-01"]
+      "preferredTrackIds": ["hip-hop-01", "boom-bap-05", "boom-bap-07", "creator-podcast-intro-03", "creator-podcast-intro-07", "creator-explainer-01", "ambient-08", "string-quartet-03", "funk-07", "blues-05", "tech-explainer-03", "cinematic-04", "acoustic-folk-01"]
     }
   },
   "intenciones": {
     "promocion_oferta": {
       "label": "Promoción u oferta",
-      "preferredTrackIds": ["afrobeat-03", "city-pop-03", "latin-pop-06", "house-05", "creator-sports-01", "synth-pop-01"]
+      "preferredTrackIds": ["afrobeat-03", "city-pop-03", "latin-pop-06", "latin-pop-02", "funk-05", "house-05", "house-01", "acoustic-folk-05", "creator-sports-01", "synth-pop-01"]
     },
     "presentacion_marca": {
       "label": "Presentación de marca",
-      "preferredTrackIds": ["cinematic-03", "acoustic-folk-01", "tech-explainer-03", "funk-07", "bossa-nova-01", "country-04"]
+      "preferredTrackIds": ["cinematic-03", "string-quartet-03", "acoustic-folk-01", "acoustic-folk-02", "creator-explainer-07", "creator-podcast-intro-07", "tech-explainer-03", "funk-07", "bossa-nova-01", "country-04"]
     },
     "mostrar_producto": {
       "label": "Mostrar producto o servicio",
-      "preferredTrackIds": ["tech-explainer-04", "city-pop-01", "future-bass-03", "synth-pop-02", "afrobeat-05", "hip-hop-01"]
+      "preferredTrackIds": ["tech-explainer-04", "creator-explainer-01", "city-pop-01", "funk-01", "house-06", "techno-07", "trap-03", "future-bass-03", "synth-pop-02", "afrobeat-05", "hip-hop-01"]
     },
     "tutorial_explicacion": {
       "label": "Tutorial o explicación",
-      "preferredTrackIds": ["game-menu-03", "tech-explainer-03", "tech-explainer-04", "ambient-07", "tropical-chill-07", "jazz-03"]
+      "preferredTrackIds": ["game-menu-03", "tech-explainer-03", "tech-explainer-04", "creator-explainer-01", "creator-explainer-07", "lofi-hip-hop-03", "ambient-03", "tropical-chill-07", "jazz-03"]
     },
     "testimonio": {
       "label": "Testimonio o entrevista",
-      "preferredTrackIds": ["solo-piano-07", "solo-piano-08", "acoustic-folk-01", "ambient-07", "jazz-04", "blues-05"]
+      "preferredTrackIds": ["solo-piano-07", "solo-piano-08", "solo-piano-01", "solo-piano-03", "acoustic-folk-01", "boom-bap-07", "ambient-07", "ambient-08", "jazz-04", "blues-05"]
     },
     "evento": {
       "label": "Evento o celebración",
-      "preferredTrackIds": ["edm-festival-03", "edm-festival-04", "latin-pop-06", "afrobeat-03", "house-05", "creator-sports-02"]
+      "preferredTrackIds": ["edm-festival-03", "edm-festival-04", "latin-pop-06", "latin-pop-05", "spanish-guitar-05", "acoustic-folk-05", "afrobeat-03", "house-05", "house-01", "creator-sports-02"]
     },
     "historia_emocional": {
       "label": "Historia emocional",
-      "preferredTrackIds": ["cinematic-04", "solo-piano-08", "country-04", "acoustic-folk-01", "cinematic-03", "chillwave-01"]
+      "preferredTrackIds": ["cinematic-04", "solo-piano-08", "solo-piano-01", "string-quartet-03", "country-04", "acoustic-folk-01", "acoustic-folk-02", "ambient-08", "cinematic-03", "chillwave-01"]
     },
     "ambiente": {
       "label": "Ambiente sin narración",
-      "preferredTrackIds": ["tropical-chill-01", "jazz-03", "chillwave-01", "bossa-nova-05", "ambient-07", "tropical-chill-03"]
+      "preferredTrackIds": ["tropical-chill-01", "jazz-03", "jazz-01", "jazz-07", "chillwave-01", "bossa-nova-05", "bossa-nova-03", "ambient-07", "lofi-hip-hop-07", "spanish-guitar-01", "string-quartet-07", "tropical-chill-03"]
     },
     "urgencia": {
       "label": "Urgencia o cuenta regresiva",
-      "preferredTrackIds": ["drum-and-bass-03", "creator-sports-01", "future-bass-04", "edm-festival-04", "cyberpunk-07", "creator-workout-01"]
+      "preferredTrackIds": ["drum-and-bass-03", "creator-sports-01", "future-bass-04", "edm-festival-04", "cyberpunk-07", "techno-07", "trap-03", "house-06", "creator-workout-01"]
     }
   },
   "voiceoverPreferredTrackIds": [
@@ -111,5 +111,20 @@
     "tropical-chill-07",
     "game-menu-03",
     "tech-explainer-03"
+    ,"ambient-03"
+    ,"ambient-08"
+    ,"acoustic-folk-02"
+    ,"boom-bap-07"
+    ,"creator-explainer-01"
+    ,"creator-explainer-07"
+    ,"creator-podcast-intro-07"
+    ,"jazz-01"
+    ,"jazz-07"
+    ,"lofi-hip-hop-03"
+    ,"lofi-hip-hop-07"
+    ,"solo-piano-01"
+    ,"solo-piano-03"
+    ,"string-quartet-03"
+    ,"string-quartet-07"
   ]
 }
