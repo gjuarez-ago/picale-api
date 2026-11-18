@@ -1,7 +1,11 @@
 # Subida por partes (archivos grandes)
 
-> Estado al 27 de octubre de 2026: **API lista y probada, apagada por defecto.**
-> La web y la app todavía suben todo con un solo PUT. Ver "Puesta en marcha".
+> Revisión local al 11 de noviembre de 2026: API multipart existente, con
+> validación y recuperación reforzadas en D42. El protocolo móvil completo
+> incorpora coordinación durable local D43 entre cierre, cancelación y limpieza,
+> pendiente de desplegar y validar en PostgreSQL/R2 real.
+> Android conserva PUT completo. Consulta el
+> [contrato y pendientes actuales](subidas-moviles-contrato-multipart.md).
 
 ## Por qué
 
@@ -63,14 +67,24 @@ control: al cerrar, la API arma la lista preguntándole a R2, no al cliente.
 - Tamaño de parte: 16 MiB, salvo que haga falta más para no pasar de 10,000
   partes. Nunca menos de 5 MiB. Todas iguales salvo la última (lo exige R2).
 - Solo se firman partes que existen en esa subida (1 a `partCount`).
-- Cada lote firmado y cada consulta de partes cuentan como señal de vida
-  (`upload_renewed_at`): una subida lenta no se da por abandonada mientras siga.
-- Cerrar exige **todas** las partes y que **sumen exactamente** lo declarado.
+- D43: plazo absoluto de 24 horas para nuevas sesiones; protección persistida de
+  firmas más diez minutos. El TTL se acota al plazo; consultar partes no lo renueva.
+- Cerrar exige números exactos sin sobrantes ni duplicados, tamaños individuales
+  correctos, ETags no vacíos y suma exacta. La API ordena la lista antes de unir.
+- Si R2 ya unió y se perdió la respuesta antes de guardar, una lista vacía no
+  prueba pérdida: se consulta el objeto final y se exige su tamaño exacto antes
+  de confirmar. Un error de lectura conserva la información de recuperación.
+- Apagar nuevas sesiones no impide recuperar una apertura idempotente existente,
+  firmar, consultar, completar o cancelar esa sesión.
 - Un `PUT` entero (`POST /media/{id}/presign`) sobre una subida por partes se
   rechaza: la pisaría a medias.
-- Una subida abandonada: el limpiador (`MediaOrphanWorker` →
-  `MediaAssetReconciler`) **aborta en R2** antes de borrar la fila. Si R2 no
-  contesta, la fila se queda y se reintenta, para no perder el id.
+- D43: MultipartRecoveryWorker y CoordinadorDeSubidas gestionan recuperación,
+  cierre y cancelación. La limpieza antigua excluye multipart. Se aborta antes
+  de liberar reserva y se conserva el registro terminal. Ante fallo de R2 queda
+  pendiente con uploadId y backoff; no se borra el objeto final ni un READY.
+
+Detalles de la coordinación, esquema propuesto y despliegue pendiente:
+[subidas-moviles-coordinacion.md](subidas-moviles-coordinacion.md).
 
 ## Configuración
 

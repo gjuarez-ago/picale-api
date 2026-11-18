@@ -1,8 +1,614 @@
 # Avance: subidas móviles persistentes
 
-Última actualización: 10 de noviembre de 2026, America/Mexico_City.
+Última actualización: 13 de noviembre de 2026, America/Mexico_City.
 
-## Checkpoint actual (10 nov 2026): Android integrado, sin emulador
+## Checkpoint actual: D49-R1, coordinador revisado (13 nov 2026)
+
+- Solicitud «revisa que haya quedado por favor»; tras interrupción «mira», usuario pide «retoma». Se continúa la misma revisión sin depender de información visual que no llegó.
+- Primera reproducción9casos:1pase/8fallos reales. Corregidos: regresión de cancelando al integrar OPENING/EXPIRING; eventos fallidos tardíos tras intento enviado; permiso vencido durante commit; reintento manual perdido frente a consulta automática; propietarios simultáneos de carpeta; cierre bloqueado por consumidor pausado y petición HTTP nueva tras cerrar.
+- Prueba adicional confirmó que cancelar esperaba una petición HTTP antes de guardar intención. Ahora persiste primero por cola de IO y luego espera el ciclo remoto. Toda modificación conserva cancelando hasta terminal; se prueba reiniciar con HTTP viejo aún pendiente, sin nuevas entregas. Inyección de error ajustada al commit de integración tras agregar escritura anticipada, sin debilitar la aserción.
+- Exclusión por ruta canónica entre coordinadores del mismo isolate (no entre procesos/isolate). Propiedad retenida hasta arranque/ACK nativos/lecturas y escrituras locales quiescentes; fallo de inicio libera propiedad tras limpieza. Close coalescido y desacoplado de consumidores pausados. Fuera de cierre no hay nuevos efectos de resultados obsoletos.
+- Final: suite app479 y foco de revisión14 aprobados,0fallos/errores,exit0. Análisis dos archivos cambiados --fatal-infos limpio,exit0. Ocho hashes de fuentes/pruebas coinciden antes/después de corrida final. Evidencia target/subidas-d49-review/report.json y cinco logs asociados; corrida intermedia477 es histórica, anterior al último ajuste de cancelación.
+- Sin API productiva/bucket/flag/selección/Cola/pantallas/APK/Android físico. Pruebas de adaptador real sobre puerto simulado, API simulada y archivos temporales. Detalle en sección D49-R1 de [coordinador Android](subidas-moviles-coordinador-android.md).
+- Siguiente unidad: integrar selección/preparación/cola/tarjetas sin doble registro ni migración silenciosa de simples; después canario nativo bytes/cabeceras/background/red y APK antes de activar. Mantener pendientes purga/reparación conservadora e iOS/Mac.
+
+## Checkpoint histórico: D49, coordinador de partes Android implementado (13 nov 2026)
+
+- Usuario autoriza «Okis va ayudame hacerlo» tras proponer unir registro/API/motor. Implementados CoordinadorDeSubidasMultipart, entrada crearAndroid opt-in y export en services.dart. La selección/Cola/pantallas actuales NO lo invocan todavía; capacidad productiva false, sin APK nuevo. No presentar como función Android probada o activada.
+- Carpeta privada subidas-multipart y registro4 separados de subidas/registro3, grupo picale-partes separado de picale-subidas. MotorNativoDeSubidas/PuertoBackgroundDownloader admiten grupo configurable; compatibilidad por defecto preservada. Payload identity añade Range/metaData.
+- Registro.agregar inserta serialmente sin sobrescribir trabajos; Trabajo.conSesion liga asset/sesión atómicamente. Cliente API incorpora completar (exigeREADY) y cancelar (ACK no terminal); vigente controla token en memoria.
+- Recupera la misma clave, espera OPENING, no recrea una sesión conocida NO_EXISTE. Native inventory antes de ListParts; consulta fallida conserva incertidumbre. Verifica SHA256 privado antes de reservar/entregar, firma tandas<=50, guarda intento antes de handoff y reutiliza ID tras ACK perdido; nuevas generaciones sólo después de terminal+consulta. No cancela ni borra final READY. Completa con estado verificando y exige medioREADY.
+- Cancelación frena entregas inmediatamente, persiste intención y comprueba tareas ausentes antes de abortoAPI; respuesta/APIaborto inciertos conservan cancelando y copia. READY ganador conserva medio. Cierre espera ACK nativo pendiente y escrituras, desvincula eventos pero no cancela bytes aceptados. Contexto inválido no aplica resultados. Progreso ponderado sin dobleconteo; sin bucle automático de reenvío de fallos.
+- SDK9.5.9 Kotlin instalado inspeccionado: Range gobierna stream/Content-Length y no se reenvía como cabecera genérica; runner sí añade Content-Type (candidato octet-stream). No afirmar ausencia de esa cabecera ni compatibilidad R2 nativa ya ejecutada. Falta canario real con esos bytes/cabeceras.
+- Incidencias corregidas: whenComplete devolvía el mismoFuture retirado de mapa y bloqueaba cierres de ciclo; limpieza ahora void. En pruebas se drenaban sólo eventos del dominio y no del adaptador, causando verificación prematura y cinco carpetas con JSON aún abiertos; ahora se drenan ambos. Intento amplio preliminar detenido por variable local mal referida, corregida. No se ampliaron timeouts para ocultar el bloqueo; el caso255MiB tiene límite3min por trabajo de hashing real.
+- Final: suite app465 aprobada, incluidas29coordinador, cero fallos/errores, exit0. Análisis siete archivos --fatal-infos limpio, exit0; hashes coincidentes antes/después. Motor/adaptador reales con Puerto falso y API simulada; no WorkManager/dispositivo/R2 real. Evidencia target/subidas-d49/report.json y logs mobile-upload-d49-suite-final.log/mobile-upload-d49-analyze-final.log. Seis temporales fallidos conocidos limpios por borrado individual (recursivo rechazado por revisión automática); no procesos de prueba pendientes.
+- Sin cambios API/bucket/credenciales/dependencias/Kotlin/APK/publicación. Detalle [coordinadorAndroid](subidas-moviles-coordinador-android.md). Siguiente unidad: enrutar selección/preparación/Cola/tarjetas al coordinador sin doble registro o migración silenciosa de sesiones simples; validar canario nativo/SDKcabeceras/background/red y APK antes de activar; purga y reparador de incertidumbre pendientes. iOS sigue pendienteMac.
+
+## Checkpoint histórico: D48-R1, revisión del cliente API (13 nov 2026)
+
+- Usuario solicita «revisa que haya quedado bien». Se revisó contra contrato Java y se añadió cliente_multipart_revision_test.dart con12casos; antes de corregir:3pases/9fallos reales, exit1.
+- R1: respuesta401 vieja podía ejecutar onSessionExpired sobre nueva cuenta;200 viejo también ejecutaba parser. ApiHelper._ejecutar ahora liga token al envío y descarta respuesta antes de _leer si cambió. Se prueba helper real con MockClient y envoltura result;401 vigente mantiene expiración. Alcance: rutas JSON de _ejecutar; postFile legacy intacto.
+- R2: constructor público permitía sesión local con clave/tamaño incompatibles; guardia previa de todas las operaciones valida clientUploadId/bytes/assetId/identidad antes de HTTP.
+- R3: tryParse normalizaba fechas imposibles; parser de plazos ahora valida estructura ISO/zona/calendario/hora/offset; conserva fracciones y offsets válidos.
+- Final: suite app436 y foco68 aprobados sin fallos/errores; análisis siete archivos --fatal-infos limpio, exit0. Sólo comentario aclaratorio después. Evidencia/hashes/logs: target/subidas-d48-review/report.json; sección revisión en [cliente API v2](subidas-moviles-cliente-api-v2.md).
+- Sin cambios de API productiva, bucket, APK, publicación, flags, motor nativo o dependencias. Pendiente orquestación de rangos Android, cancelación/finalización integral y pruebas reales.
+
+## Checkpoint histórico: D48, cliente API multipart v2 (13 nov 2026)
+
+- Usuario autoriza «Okis va» para el punto1 propuesto: conectar app con apertura/recuperación, consulta de partes y renovación de permisos. Se implementa el cliente de control; no se entregan rangos al motor Android todavía.
+- MediaService.multipartPara(userId,workspaceId) expone ClienteDeSesionesMultipart, ligado al token/propietario/negocio originales en memoria. Comprueba identidad antes/después de HTTP; rechaza respuesta de operación obsoleta. Trabajo preparado exige copia/huella/SHA/lote; no recalcula el archivo, responsabilidad del preparador antes de reservar.
+- DTO estricto v2: OPENING/PENDING/READY/CANCELLING/CANCELLED/EXPIRING/EXPIRED/NO_EXISTE. No convierte errores/estados desconocidos en ausencia. Recuperación coteja identidad y conserva intentos/partes; READY en GET exige medio confirmado. Apertura perdida no se reintenta automáticamente ni cambia clave; recuperar NO_EXISTE tampoco abre otra sesión. HTTP404/409/5xx/timeouts no disparan fallback.
+- ListParts usa reconciliación D47 y valida parámetros, números, tamaños y suma; firma sobre el mismo asset en tandas1..50, URLs HTTPS/UTC futuras y acotadas, sin duplicados/sobrantes. Firmar no es consultar partes, cambiar generación ni cancelar una tarea. Permisos en memoria, fuera de manifiesto. UUID de lote normalizado por API se acepta sin cambiar identidad local.
+- StorageUsage consume versión/flag/umbral; requiere exactamente protocolo2+flag booleana true+umbral válido para capacidad móvil. Campos ausentes o versión futura no habilitan. El camino simple y registro3 predeterminados se conservan; servidor D46 mantiene multipartMobileReady=false.
+- Validación: suite app423 aprobada y pase focalizado final56 en cliente multipart/envío simple/registro4, exit0. El foco final cubre además normalización UUID añadida durante la revisión. Análisis cinco archivos --fatal-infos sin incidencias, exit0. Primera pasada53 aprobada; análisis inicial tenía cuatro lints de llaves y una aserción nula innecesaria, corregidos. Hashes de cinco fuentes, seis contratos Java y tres logs en target/subidas-d48/report.json.
+- Sin despliegue/cambio API, R2, APK, publicación, dependencias, emulador o código nativo. ApiHelper simulado en pruebas nuevas; receptor local en tests de subida simple. No acredita sesión productiva Juan, multipart R2 real, background Android ni iOS.
+- Detalle: [cliente API v2](subidas-moviles-cliente-api-v2.md). Siguiente unidad: orquestación Android que persiste asset+sesión atómicamente, reconcilia nativo/remoto, planifica y entrega rangos tras commit; luego cancelación/finalización integral, integración real y APK. No activar capacidades sólo por estos tests.
+
+## Checkpoint histórico: D47, persistencia multipart móvil preparada (12 nov 2026)
+
+- Usuario autoriza «vamos» después del paso propuesto: guardar el avance de cada parte. Se implementan modelo y registro v4 en Flutter; el motor Android todavía NO consume ni entrega partes.
+- SesionDeSubidaPorPartes: snapshot inmutable con identidad local, assetId/clientUploadId, bytes/tamaño/plazo UTC, rangos calculados, partes confirmadas por API y generaciones/IDs nativos deterministas. Una tarea enviada no confirma bytes ni READY. Intentos activos no se duplican; reintento exige consulta posterior al cierre y plazo vigente; callbacks antiguos se ignoran.
+- RegistroDeSubidas mantiene v3 por defecto y ofrece migración explícita mediante admiteMultipart:true. El orquestador actual conserva v3 y rechaza v4 sin adoptar backups viejos. V1/v2/v3 migran como simples, preservando identidad/tarea/archivo y propietario nulo de v1. No se convierten sesiones simples remotas a multipart.
+- Actualización lectura/modificación/escritura serializada por propietario Dart; guardar y esperar antes de handoff. Rechaza snapshots atrasados que perderían sesiones/intentos. No implementa cerrojo entre isolates/procesos ni purga multipart todavía. Si v4 está corrupto conserva main y backup, sin rollback automático que olvide tareas entregadas; reparación con inventario nativo/remoto sigue pendiente.
+- Validación: suite completa 397/397 aprobada; comprobación final de registro 27/27 (17 nuevas multipart y10 previas), exit0. Primera pasada de análisis encontró dos lints de llaves, corregidos; análisis final de cuatro archivos con --fatal-infos limpio, exit0. Último pase focalizado cubre además los campos obligatorios del parser v4 endurecidos al cerrar la revisión. Evidencia/hash de cuatro fuentes y tres logs: target/subidas-d47/report.json.
+- Sin cambios/despliegue de API, APK, publicación, bucket, emulador, dependencias ni código nativo. API productiva continúa D46; multipartMobileReady=false. No se acredita reinicio Android real, pantalla bloqueada, red interrumpida o iOS.
+- Contrato y límites: [subidas-moviles-manifiesto-v4.md](subidas-moviles-manifiesto-v4.md). Siguiente unidad: DTO/MediaService multipart v2 y orquestación Android con reconciliación, rangos, firmas por tandas, cancelación/confirmación; después pruebas nativas/APK. No habilitar capacidades basándose sólo en estas pruebas de persistencia.
+
+## Checkpoint histórico: D46, API liberada (12 nov 2026)
+
+- Nueva autorización expresa: «Puedes liberar la api por favor». API publicada en api-videos-prod, sin publicación ni reconstrucción de la app.
+- Versión productiva: `0bbace69e3173e3767168ba662eb0bf5951a4a8e`, imagen `sha256:a98e1827e1fbae1e4951236e791b8dea7a933b0fb8d4227c9b54e6a516fb2830`. Salud healthy y SHA público comprobado desde el cliente. Verificación independiente final: 12 nov 22:28:54 UTC, cero errores observados desde arranque 22:26:08 UTC.
+- Fuente aislada desde cb483b7 con D43/D44 y arnés D45; 710 archivos cotejados. Suite completa exacta: 1,414 casos, 1,411 aprobados, tres opcionales omitidos, cero fallos/errores; 187 suites, exit0. Imagen compilada antes del corte; audios de catálogo base48 reutilizados y verificados por SHA256.
+- Git: commit inmutable guardado sólo en `refs/codex/releases/subidas-d46`; rama e índice de trabajo preservados, HEAD sigue cb483b7. No confundir HEAD con la versión productiva. Sin push. Cambios locales ajenos de IA/catálogo/documentos comerciales excluidos.
+- Preflight PostgreSQL18.4 y base configurada correcta. Cero pendientes multipart/simples; se detuvo el único binario anterior y se comprobó cero multipart antes de migrar. Respaldo completo de 1,896,028 bytes, SHA256 `9bafa752caf7188bcadca241c883ebaa7214652d145bbb244f83e588befe1f3a`; restaurado en PostgreSQL sin red, conteos cotejados y migración ensayada dos veces sobre copia real. Luego migración transaccional productiva, 13 columnas/scope/índice/unicidad verificados. Esquema aditivo y datos conservados.
+- Configuración .env.vps y compose conservan hashes; modo multipart existente SIN_LIMITES sin cambios, multipartMobileReady=false. API/imagen/SHA/base correctos; nginx, proxy y otras APIs conservados. Imagen anterior y respaldo de fuente preservados; sin rollback ni borrado de objetos R2. Contenedor/volumen aislado de restauración retirados.
+- Evidencia ignorada: target/subidas-d46/{candidate.json,package.json,payload-verified-fast.json,tests-approved.json,status.json,independent-final.json,public-client.json}. Entrega detallada: [subidas-moviles-liberacion-d46.md](subidas-moviles-liberacion-d46.md).
+- Incidencia del verificador: Python desde la VM recibió403 al dominio público; causa sin establecer. Comprobación pública independiente desde el cliente sí devolvió SHA nuevo. Verificación SSH local/esquema/respaldo/salud completa. No confundir con una prueba autenticada de cuenta.
+- Pendientes globales: sesión productiva de usuario para E2E, manifiesto/partes Android y pruebas físicas; iOS14 requiere Mac. Sin nuevos APK, Flutter, emulador ni transferencias de prueba en esta liberación. Continuar desde D46; no repetir migraciones ni retroceder a binarios viejos con sesiones nuevas pendientes.
+
+## Checkpoint histórico: D45, validación PostgreSQL/R2 (12 nov 2026)
+
+- Usuario autoriza «Okis va» y después «termina». D45 cerrado:152pruebas sobre PostgreSQL,4casos HTTP/R2 reales,migración y limpieza verificadas. No autoriza por sí sola desplegar código nuevo ni publicar app. API/base productivas sin cambios; sólo prefijo de prueba autorizado en bucket real, limpio al terminar.
+- PostgreSQL18.3 instalado en C:/Program Files/PostgreSQL/18/bin aunque no estaba en PATH. Servicio local original18 sigue intacto. Se creó cluster privado en target/subidas-d45/postgres/data,rol subidas_d45,listen127.0.0.1:55445,BD subidas_d45 y subidas_d45_migrations; SHOW data_directory confirmó ruta privada antes de migrar. Archivo Downloads elegido sólo lectura:8348901-uhd_2160_3840_25fps.mp4,12,187,330bytes.
+- Initdb58345exit0. Wrapper76743 retuvo pipe de pg_ctl; se creó BD con CLI aparte. Tras las pruebas se verificó data_directory y se detuvo cluster privado con pg_ctl stop exit0;55445 sin listener y servicio original Running. Wrapper76743 terminó exit1 al intentar su createdb anidado cuando el servidor ya estaba cerrado; no se reabrió para ese comando innecesario. No quedan procesos propios de prueba pendientes.
+- Primera corrida51294exit1 mezcló una clase fijada a H2 con dialectoPG (y arrancó antes de la BD privada disponible). No cuenta como validación PG. Ajuste sólo de arnés: MediaTopeDiarioTest permite subidas.test.{url,driver,user,password,dialect} opcionales manteniendo defaults H2; no cambió expectativas ni códigoAPI. Corregida17283exit0/3:30min:152/152,0fallos/errores/omitidos en PostgreSQL18.3. Evidencia target/subidas-d45/postgres-suite-final.log y13XML archivados en pg-reports antes de otras ejecuciones.
+- Migración real sobre fixture mínimo legado en BD separada: tools/validar-subidas-esquema.ps1 verifica data_directory privado, crea esquema nuevo por ejecución, aplica propuestasD43/D44 dos veces y comprueba13columnas,scope,index,fila vieja y unicidad. Pase en target/subidas-d45/migration.log +migration-input.sql. Primer intento sólo se detuvo por NOTICE de IF NOT EXISTS tratado como error nativo PowerShell; se suprimen NOTICE, no errores. No se probó una copia del esquema/datos productivos ni otra versión mayorPG.
+- Nuevo SubidasInfraRealIT, opt-in doble (nombreIT + subidas.real=true), API HTTP en puerto aleatorio, QA aislado, autenticación mediante login real con usuarios temporales y clave JWT local nueva. Usa servicio R2/S3 real, sólo prefijo UUID de ejecución; único mock miniaturas para no lanzar derivados/IA. Plan4casos: apertura concurrente/reanudación/finalizaciónservidor+SHA256/propietario, cancelar parte en vuelo, respuestaCreate perdida inyectada y falloaborto inyectado con recuperación real. Manifest sin JWT/URLfirmada registra claves ANTES de Create y cleanup sólo de claves exactas + comprobación prefijo vacío.
+- IntentosLive49887(compilación,Role ambiguo) y89836(contexto QA requería CORS) terminaron sin archivos enviados. Corrida66593 terminó por leer data en lugar del sobre API result; login sí respondía200 pero el arnés reutilizaba token vacío. Se corrigió sólo arnés y se recompiló. Su manifiesto7b40e7df... tiene0claves y quedó limpio. Final75446exit0/3:31min,4/4/0omitidos,target/subidas-d45/live-release.log y live-report.xml. Incluye bind127.0.0.1,token no vacío,sobre result y cuota HTTP antes/después de aborto fallido. Tres fuentes del arnés coinciden con inputs.json al cerrar.
+- R2 real aprobado4casos: apertura concurrente y reanudación/finalización por worker sin callbackFlutter,SHA256igual al original,owner realJWT aislado,READY protegido;cancelación parte en vuelo;Create real con pérdida de respuesta inyectada;aborto fallido inyectado con reserva/cuota conservada y recuperación real. Manifiesto ba4d7a61-ab18-432f-8e48-d849bf866901:4claves,5eventos,cleaned=true/objectsRemaining=0/multipartRemaining=0. Fuente Downloads sin cambios. Logs live revisados sin credencialesR2 reales/JWT/URLfirmada. No se enviaron mensajes ni publicaciones.
+- Pícale cuenta_actual sigue UNAUTHORIZED/reauth; no pedir otra vez lo ya contestado ni afirmar prueba de Juan Rodríguez realizada. Auth validada fue login real con cuentas temporales de API local y secreto JWT local nuevo, no sesión del conector ni producción.
+- Compatibilidad H2:73643exit0/5casos/46.2s,sin cambiar defaults ni expectativas. Reporte final target/subidas-d45/report.json verifica13XML PG/152,4Live,5H2,migración,manifiestos limpios y3hashes del arnés. Las20entradas D44 coinciden; código API sin cambios. Todos los handles58345/76743/51294/17283/49887/89836/66593/75446/73643 terminados. No repetir checks aprobados sin cambio/fallo nuevo. Documento docs/subidas-moviles-validacion-infra.md. Sin Flutter/APK D41, publicación, commit/push, delegación ni emulador; nuevo despliegue/respaldo/esquema destino requiere autorización nueva,cb483b7 no se reutiliza. Objetivo global y físicoAndroid/iOS-Mac pendientes.
+
+### Continuación de D45
+
+```text
+Retoma primer checkpoint D45 cerrado y docs/subidas-moviles-validacion-infra.md.
+Lee decisiones/goal/contratos y AGENTS/git status; preserva cambios ajenos.
+PostgreSQL18.3 privado152/152; HTTP+PG+R2 real4/4; H2compatible5/5;
+migraciones D43/D44 aplicadas dos veces a fixture legado fresco, no producción.
+Evidencia target/subidas-d45/report.json,pg-reports,live-report.xml y manifiestos.
+R2 prefijo ba4d7a61... limpio:0objetos/0sesiones; fuente Downloads inalterada.
+JWT de prueba local, no token/credencial de producción; no atribuirlo a Juan.
+Pícale cuenta_actual sigue UNAUTHORIZED, no repetir pregunta de reconexión.
+Cluster privado target/subidas-d45/postgres/data detenido;55445 cerrado;
+servicio original Running. Todos los handles terminaron; no esperar ni repetir.
+Código API D44 coincide con20inputs; D45 sólo arnés/testconfig/herramienta/docs.
+Siguiente: preparar entrega/despliegue revisable con respaldo/esquema real y
+autorización nueva; cb483b7 no cubre lo actual. No desplegar por inferir permiso.
+No mezclar binarios previos ni borrar SENT/tombstones; conservar límites D43/D44.
+Después manifiesto explícito/partes Android, validación física e iOS/Mac.
+API multipartMobileReady=false; app/v3/PUT simple/APK D41 sin cambios.
+Sin publicación/commit/push/delegación/emulador; objetivo global pendiente.
+```
+
+## Checkpoint anterior: D44, apertura/identidad/plazos API (12 nov 2026)
+
+- Usuario autoriza «Okis va vamos» y después «continua» para cerrar aperturas simultáneas, identidad y plazos/versionado antes de Android. D44 cerrado localmente: implementación,152pruebas finales y verificación de fuentes/reportes; no despliegue ni objetivo global completo. Cambios ajenos preservados, sin delegación.
+- Nuevos UploadScope/Repository y AdmisionDeSubidas serializan reserva por negocio en transacción corta. PUT simple y multipart participan. Primero se confirma MediaAsset con clave R2 propia; CreateMultipartUpload ocurre fuera del bloqueo/transacción. Se conservan unicidad tenant/clientUploadId y validaciones de cuota/contador/repetidos.
+- Nueva AperturaDeSubidas: RESERVED admite Create una sola vez mediante SENT persistido; ATTACHED habilita partes. Respuesta perdida se reconcilia con ListMultipartUploads por clave exacta, paginación y abortos de sobrantes antes de firmar. ID elegido se persiste bajo bloqueo. SDK Create dedicado sin reintentos y timeout2min; cliente general anterior conservado.
+- Límite explícito: SENT sin ID visible no repite Create ni libera reserva por suponer ausencia. Guarda OPENING_UNKNOWN/nextCheck; cancelar deja decisión durable y UPLOAD_OPENING_UNCERTAIN hasta resolver ID/aborto. Puede requerir revisión operativa si una caída ocurrió entre admitir y enviar Create. No prometer progreso automático ni cuota liberada tras24h para esa ambigüedad; detalles en docs/subidas-moviles-apertura.md.
+- IdentidadDeSubida captura usuario autenticado y digest de metadatos inmutables: versión/negocio/usuario/modalidad/nombre/MIME/bytes/huella/lote/índice. Guarda propietario y tamaño declarado separado del real. Otro usuario del negocio no puede operar la sesión. Workers internos conservan scope tenant. V2 exige campos completos/multipart; legado sin snapshot/propietario sólo mantiene recuperación v1, no se adopta silenciosamente como v2.
+- Respuestas: versión de sesión, plazos UTC, nextCheck, modo y parámetros en estado; firma individual y agregada con expiración UTC. usage expone multipartSessionVersion=2 y multipartMobileReady=false; subidaEnFondo=1 permanece. Flutter/manifiesto v3/APK D41 sin cambios.
+- Compilación19062exit0/1:38min terminada. Primer intento43925 terminó por inferencia ambigua de assertThat en auxiliar nuevo; corregida declaración de contadores sin cambiar expectativas,target/subidas-d44-focused.log. Pase enfocado43997:85casos,84aprobados/1fallo sólo por frase compatible «otro archivo»;18nuevos de apertura y6SDK pasaron. Se restauró esa frase conservando detalle de identidad; logs *-focused2. Todos esos handles terminaron.
+- Verificación final152/152 en13clases (124anteriores+22apertura+6SDK),0fallos/errores/omitidos,exit0,tiempo Maven6:39min. Handle72773terminado,target/subidas-d44-release.log. Verificador aprobó13XML posteriores a inputs,conteo152 y20hashes seleccionados sin cambios; target/subidas-d44-report.json y target/subidas-d44-inputs.json. No es snapshot total del repo ni suite completa. Todos los handles19062/43925/43997/72773 terminaron; ningún comando propio pendiente. Diff check sin errores. No repetir lo aprobado sin nuevo cambio/fallo.
+- Esquema propuesto no ejecutado: docs/sql/subidas-d44-apertura.sql (tabla admisión+5columnas, requiere D43). Documento docs/subidas-moviles-apertura.md y referencia oficial Cloudflare verifican soporte documental ListMultipartUploads, no el bucket. PostgreSQL/migración/concurrencia real, permisos R2, pérdida de respuesta/aborto reales, autenticación y móviles/iOS-Mac aún pendientes.
+- Sin producción, bucket, credenciales, publicación, commit/push, delegación ni emulador. Permiso cb483b7 no cubre despliegue nuevo; drenar binarios/operaciones anteriores antes de usar RESERVED/SENT. Después de cerrar esta unidad: validar entorno/API y migración explícita de manifiesto/partes Android, sin introducir varias tareas en v3.
+
+### Continuación de D44
+
+```text
+Retoma el primer checkpoint D44 cerrado de docs/subidas-moviles-avance.md.
+Lee docs/subidas-moviles-apertura.md,coordinacion,contrato/decisiones/goal y
+AGENTS/git status; preserva cambios ajenos. API local, sin desplegar.
+Final152/152 en13clases,28nuevos,exit0. Evidencia target/subidas-d44-release.log,
+*-report.json y *-inputs.json (20entradas seleccionadas verificadas,13XML frescos).
+Handles19062/43925/43997/72773 terminados; no esperar ni repetir checks sin cambio.
+Admisión por negocio y reserva ANTES de Create; red fuera de transacción.
+RESERVED admite Create una vez; SENT incierto sólo lista/reconcilia clave exacta,
+jamás vuelve a crear por vencer lease ni suponer ausencia. Mantiene reserva y
+cancelación pendiente hasta resolver ID/aborto; puede requerir revisión operativa.
+No quitar retry0/timeout del cliente Create ni resetear SENT a RESERVED a ciegas.
+Conservar snapshot/propietario/bytes declarados/version; no adoptar legado como v2.
+API multipartSessionVersion=2,multipartMobileReady=false,subidaEnFondo=1.
+D43 conserva refresh bajo bloqueo contra OSIV, decisiones durables y tombstones.
+Siguiente unidad al autorizar el usuario: validación PostgreSQL/R2/autenticación
+y preparación operacional, o migración móvil explícita aislada sin activar
+producción. No afirmar validaciones realizadas ni publicar motor multipart.
+SQL D43/D44 propuestas no ejecutadas. Nuevo deploy exige autorización nueva y
+drenar binarios/operaciones previas; cb483b7 no cubre lo nuevo.
+Flutter/v3/PUT simple/APK D41 iguales. No varias tareas en v3, no publicación,
+commit/push/delegación/emulador. Mac/iOS/físicos y objetivo global pendientes.
+```
+
+## Checkpoint anterior: D43, coordinación durable API (11 nov 2026)
+
+- Usuario autoriza «Okis va llevalo acabo» tras proponer coordinación de cierre/cancelación/limpieza. D43 cerrado localmente: implementación,124pruebas finales y verificación de fuentes/reportes; no objetivo global completo ni despliegue.
+- Nuevos UploadDecision, CoordinadorDeSubidas y MultipartRecoveryWorker. Ocho campos opcionales en MediaAsset e índice de reintentos; propuesta PostgreSQL no ejecutada en docs/sql/subidas-d43-coordinacion.sql. Decisión persistente separada de estado del medio, lease5min con UUID, CHECKING sólo lee; COMPLETING/CANCELLING/EXPIRING no se cambian por una decisión opuesta al vencer lease. READY no se borra por cancelar.
+- MediaService.complete/confirm, worker y reconciliador delegan al coordinador. R2 se consulta fuera de transacciones de coordinación/limpieza. Confirmación bloquea/revalida y despacha miniatura tras commit. Cancelación aborta y verifica partes/objeto antes de liberar cuota; conserva registro CANCELLED/EXPIRED con estado de medio RELEASED. No llama a deleteByKey; borrado/liberación genéricos no eluden la cancelación.
+- Plazos internos Instant UTC:24h apertura nueva, protección firma+10min, TTL acotado a plazo; adopción conservadora de filas heredadas. Consulta de partes sin renovación ni transacción remota. Cola global hasta100filas cada2min, nextAttempt/lease/backoff persistidos. Limpiador y rescate anteriores excluyen multipart para no ocupar sus lotes con sesiones protegidas. Test resources desactivan sólo el nuevo worker automático durante pruebas; pruebas lo invocan explícitamente.
+- Verificación intermedia:compile96792exit0/41.6s;56tests/3clases/15nuevos74923exit0/2:36min;122tests/11clases/18nuevos10176exit0/1:57min;123tests/19nuevos79509exit0/3:51min tras excluir multipart de limpieza antigua. Todos esos handles terminados. Logs target/subidas-d43-{compile,focused,tests,final}.log. Inputs12 de esa corrida en target/subidas-d43-inputs.json; se actualizarán si cambia código.
+- Revisión adicional:prueba de contexto de petición con entidad almacenada antes de que otro coordinador cancele. Reprodujo1fallo/0errores,exit1/3:03min,handle29323terminado,log target/subidas-d43-osiv-before.log. La consulta con bloqueo devolvía la instancia administrada vieja (OSIV está activado por defecto en este proyecto). Corregido con fragmento MediaAssetUploadLocks/Impl: transacción obligatoria, consulta bajo @TenantId/PESSIMISTIC_WRITE y refresh bajo el mismo bloqueo antes de validar decisión/token. Pase124/124,20casos del coordinador y104anteriores,exit0/4:52min,handle92497terminado,log target/subidas-d43-reviewed.log. Ajuste posterior de cierre de consulta: getResultList en vez de getResultStream sin cierre; no dejar cursor remoto pendiente fuera del bloqueo corto.
+- Código congelado final. Entrega verificada124/124 en11clases,20nuevos de coordinación,0fallos/errores/omitidos,exit0/3:06min,handle17661terminado,log target/subidas-d43-release.log. Inputs14 coinciden al terminar y11XML son posteriores a inputs,conteo124 verificado. Reporte target/subidas-d43-report.json,entradas target/subidas-d43-release-inputs.json; hashes de entradas seleccionadas, no snapshot total del repositorio. Comprobación diff sin errores. Todos los handles96792/74923/10176/79509/29323/92497/17661 terminaron; ningún comando propio pendiente. No repetir lo aprobado sin cambio o fallo nuevo.
+- Documento técnico/contrato actualizado en docs/subidas-moviles-coordinacion.md y docs/subidas-moviles-contrato-multipart.md. H2 en memoria y R2 simulado; no había docker/psql/pg_ctl disponibles en PATH. PostgreSQL real/migración, bucket real con partes en vuelo, autenticación y físicos/iOS siguen sin verificarse. No mezclar workers viejos/nuevos al desplegar ni revertir a binario viejo sobre sesiones coordinadas pendientes.
+- Sin Flutter/APK D41, bucket, credenciales, producción, publicación, commit/push, delegación ni emulador. API nueva aún no anuncia protocolo multipart móvil completo. Quedan apertura concurrente sin huérfanos, identidad/propietario completos y plazos/versionado en respuestas, antes de migrar manifiesto y conectar Android. Autorización cb483b7 no cubre un nuevo despliegue. Cambios ajenos preservados.
+
+### Continuación de D43
+
+```text
+Retoma el primer checkpoint D43 cerrado de docs/subidas-moviles-avance.md.
+Lee docs/subidas-moviles-coordinacion.md,contrato/decisiones/goal y AGENTS/git status.
+Preserva cambios ajenos. Coordinador durable API implementado, sin desplegar.
+Final124/124 en11clases,20nuevos,exit0/3:06min. Logs/report/inputs14 en
+target/subidas-d43-{release.log,report.json,release-inputs.json}.
+Todos los handles96792/74923/10176/79509/29323/92497/17661 terminaron;
+no esperar ni repetir checks aprobados sin cambio/fallo nuevo.
+CHECKING sólo lee; antes de mutar R2 persistir COMPLETING. No cancelar esa
+decisión al vencer lease. Cancelar aborta/verifica antes de soltar cuota y
+conserva CANCELLED/EXPIRED; jamás deleteByKey ni borrar READY por cancelar.
+findForUploadUpdate debe refrescar bajo bloqueo: OSIV daba una copia vieja,
+reproducida y corregida. No quitar refresh ni sustituirlo por @Lock solamente.
+Siguiente unidad de código al autorizarla el usuario: D44,cerrar apertura
+concurrente/idempotente sin huérfanos,identidad/propietario y respuestas UTC/
+versionado. Luego migración explícita de manifiesto y partes Android.
+No integrar multipart en v3 ni atribuirlo al APK D41. PostgreSQL/migración,
+R2 real/autenticación/físicos/iOS-Mac pendientes. SQL propuesta no ejecutada;
+sin deploy con permiso cb483b7 ni mezcla/reversión a workers viejos sin drenaje.
+Sin publicación/commit/push/delegación/emulador; objetivo global pendiente.
+```
+
+## Checkpoint anterior: D42-R1, segunda revisión del contrato (11 nov 2026)
+
+- Usuario solicita revisar que haya quedado bien. Baseline verificado:2fuentes D42 y hash de su log coinciden con inputs/reporte anterior;93pruebas no se atribuyeron a otras fuentes. Cambios ajenos preservados, sin delegación.
+- Hallazgo adicional en R2StorageService.partesSubidas: página truncada sin marcador siguiente, repetido, regresivo o fuera del rango de partes permitía consultas inválidas/repetidas; podía retener hilo y transacción del servicio que consulta. Corregido con avance estricto, marcador obligatorio y límite10,000. Error recuperable sin retornar lista parcial ni convertirlo en ausencia.
+- Nuevo R2MultipartConsultaTest,11casos con adaptador R2 real y S3Client simulado. Verifica identidad bucket/key/uploadId al paginar, orden, NoSuchUpload entre páginas, errores S3/transporte y6variantes de marcador inválido. No se usa Spring ni bucket en la reproducción aislada. Primer intento87716 sólo falló al compilar una declaración del auxiliar por tipo del builder SDK; se corrigió con var sin cambiar expectativas; log target/subidas-d42-review-before.log. Reproducción válida13804:11casos,6fallos/0errores,exit1/1:16min,target/subidas-d42-review-repro.log. Ambos handles terminados.
+- Verificación final cerrada:104/104,10clases (93anteriores+11nuevas),0fallos/errores/omitidos,exit0/3:38min,target/subidas-d42-review-tests.log. Handle10128 terminado; ningún comando propio pendiente. Fuente final congelada;4hashes en target/subidas-d42-review-inputs.json coinciden al terminar. Reporte verifica10XML/count104 y hashes:target/subidas-d42-review-report.json. H2 en memoria subidas_d42_review/importación opcional inexistente para no cargar .env/R2 simulado/JDK17. No hay cambio en MediaService ni SubidaPorPartesTest respecto a D42. No repetir checks aprobados sin cambio o fallo nuevo.
+- Alcance propio de revisión:8líneas nuevas/1reemplazada en R2StorageService, prueba nueva y documentos/checkpoints. No avanzar a D43: coordinación completar/cancelar/limpiar, estados terminales, plazos e identidad siguen pendientes. Registro móvil v3/PUT simple/APK D41 sin cambios. Sin producción, bucket, credenciales, publicación, commit/push, emulador ni validación física/iOS. La autorización antigua cb483b7 no cubre nuevos despliegues. Objetivo global pendiente.
+
+### Continuación de D42-R1
+
+```text
+Retoma el primer checkpoint D42-R1 cerrado de docs/subidas-moviles-avance.md.
+Lee contrato multipart/decisiones/goal y AGENTS/git status; preserva cambios ajenos.
+La segunda revisión añadió protección contra paginación sin avance de ListParts.
+11casos nuevos con R2StorageService real/S3Client simulado,6fallos reproducidos;
+104/104 finales en10clases,exit0/3:38min. Inputs4fuentes/reporte en
+target/subidas-d42-review-{inputs,report}.json. Handles87716/13804/10128
+terminados. No esperar ni repetir verificación sin cambio o fallo nuevo.
+Siguiente unidad, sólo cuando el usuario la solicite: D43 coordinador durable
+común de completar/cancelar/limpiar; criterios en
+docs/subidas-moviles-contrato-multipart.md.
+No conectar multipart móvil antes de resolver carreras/plazos/estados terminales.
+v3/PUT simple/APK D41 siguen iguales. Sin nuevo deploy con permiso cb483b7,
+ni publicación/commit/push/delegación/emulador. Físicos e iOS/Mac pendientes.
+```
+
+## Checkpoint anterior: D42, contrato multipart API (11 nov 2026)
+
+- Usuario: «Okis vamos con lo siguiente», después de proponer revisión del contrato multipart API. D42 cerrado localmente: auditoría, endurecimiento compatible y93pruebas aprobadas; no equivale a cerrar todo el protocolo móvil.
+- Alcance propio: MediaService, SubidaPorPartesTest, docs/subida-por-partes.md, nuevo docs/subidas-moviles-contrato-multipart.md y checkpoints/decisiones. Cambios ajenos preservados. Flutter/SDK/manifiesto v3 no se editan; APK D41 sigue siendo el último de la app.
+- Reproducción previa: target/subidas-d42-before.log,27tests,7fallos+2errores esperados,exit1,2:38min. Diez casos nuevos sobre17existentes;9 detectan fallos anteriores y uno comprueba rechazo ya existente. Handle64778 terminado.
+- Correcciones: no filtrar silenciosamente partes extra; números exactos/únicos, tamaños individuales y ETag obligatorio; orden ascendente al unir. Apertura idempotente existente se recupera aun con bandera APAGADA. Si R2 ya unió pero no se guardó, ListParts vacío más objeto final de tamaño exacto permite confirmación; error S3 al unir exige también tamaño exacto al recuperar. Error de lectura no libera reserva ni se interpreta como ausencia.
+- Pruebas finales:16casos nuevos en total. Incluyen60partes en lotes50+10/rechazo51, bandera apagada con sesión abierta, aislamiento por workspace, rechazo de objetos incorrectos y conservación de datos ante fallo remoto. Batería9clases:93/93,0fallos/errores/omitidos,exit0,3:46min;33son de SubidaPorPartesTest. Handle49845 terminado,log target/subidas-d42-tests.log. H2 en memoria,importación opcional inexistente para no cargar .env,R2 simulado,JDK17; sin acceso al bucket. Verificación posterior de9XML y hashes de2fuentes aprobada; target/subidas-d42-inputs.json y target/subidas-d42-report.json. Ningún comando propio pendiente. No repetir checks sin cambio o fallo nuevo.
+- Contrato y brechas en docs/subidas-moviles-contrato-multipart.md. No se anuncia capacidad nueva ni subidaEnFondo>1. Falta coordinación durable completar/cancelar/limpiar, estados terminales, apertura concurrente recuperable, identidad completa y plazos UTC/lease. No conectar multipart móvil antes de resolverlos.
+- Sin despliegue/producción/R2/credenciales/publicación/commit/push/delegación/emulador ni nuevas pruebas físicas. Autorización cb483b7 no cubre estos cambios. Objetivo global pendiente. Siguiente unidad: D43, coordinación durable compartida por HTTP, worker y limpieza con cancelación segura.
+
+### Continuación de D42
+
+```text
+Retoma el primer checkpoint de docs/subidas-moviles-avance.md: D42 cerrado.
+Lee docs/subidas-moviles-contrato-multipart.md, decisiones/goal y AGENTS/git status.
+Preserva cambios ajenos. API local tiene validación exacta de partes y recuperación
+de unión terminada, sin capacidad multipart móvil nueva. 93/93tests en9clases,
+33multipart;16casos nuevos,9fallos anteriores reproducidos. Reporte y hashes en
+target/subidas-d42-report.json. Handles64778/49845 terminaron; no esperar ni repetir.
+Siguiente D43: implementar coordinador durable compartido por cierre HTTP,
+rescate y limpieza; cancelación idempotente recuperable sin borrar READY.
+Usar criterios de aceptación del documento de contrato, probar carreras y
+recuperación sin transacciones largas sobre R2. No basta un lock en memoria.
+No conectar partes Android antes de cerrar coordinación/contrato; v3 y PUT
+simple siguen vigentes, APK D41 no cambia. Sin nuevo deploy con permiso cb483b7,
+ni publicación/commit/push/delegación/emulador. Físicos e iOS/Mac pendientes.
+```
+
+## Checkpoint anterior: D41, revisión del adaptador D40 (11 nov 2026)
+
+- Usuario: «revisa que haya quedado bien», referido al adaptador recién entregado. D41 cerrado localmente: correcciones,133tests, análisis22, APKrelease y firma verificados; no avance a multipart. Antes de editar,28fuentes D40 y su APK coincidían con el reporte; no era un binario obsoleto. Carreras adicionales reproducidas y corregidas; objetivo global pendiente.
+- Reproducción:10casos fallaban en `../metricol_app/mobile-upload-motor-review-before.log`; pase corregido44/44 en *-tests-initial. Fuente nueva de pruebas `test/motor_revision_test.dart`,12casos totales. Corrección limitada a `lib/services/motor_de_subidas.dart`; dominio, registro v3, API y código nativo no cambiaron.
+- Corregido1: coalescencia por ID se hacía antes de validar el segundo pedido. Dos solicitudes simultáneas con otro archivo/grupo podían recibir la misma aceptación. Ahora se valida grupo/tipo y se compara la carga con la solicitud en curso antes de compartir resultado; tareas incompatibles no se entregan ni se presentan como aceptadas.
+- Corregido2: allTasks e historial se leían en momentos distintos; un evento running entre ambas lecturas podía generar ausencia falsa, otro enqueue, borrado de historial activo o cancelación confirmada erróneamente. Contador de cambios por ID invalida una ausencia si recibió estado durante la consulta y reconsulta de forma acotada. Presencia positiva conserva trabajo; lectura inestable que no se estabiliza falla sin efectos. Tarea activa e historial de otro archivo se rechazan en vez de mezclar identidad/estado/progreso.
+- Corregido3: entregar/cancelar después de cerrar podían unirse a futures existentes y devolver aceptación/éxito. Ahora todas las llamadas nuevas se rechazan al cerrar, antes de coalescer/esperar una operación anterior. Solicitudes ya enviadas siguen resolviéndose; cerrar no cancela implícitamente tareas del sistema. Dos casos adicionales comprueban consulta/historial cerrados sin esperar una entrega bloqueada.
+- Verificación de código:133/133 exit0/66s (121anteriores+12nuevas), análisis22 limpio exit0/16.4s. Análisis inicial sólo pidió llaves en un auxiliar nuevo, corregidas sin cambiar lógica/aserciones; log *-analyze-initial preservado. Handles43168suite,46025reproducción,29194pase44,57294análisis inicial y1923final terminados. Código congelado; no repetir checks sin cambio. Puerto/API simulados con adaptador real; no prueba física ni transacción atómica con WorkManager. Detección de cambios observados durante lectura, sin inventar garantías del sistema operativo.
+- Build único74991 terminó exit0/1001.7s, `../metricol_app/mobile-upload-motor-review-apk.log`. Verificación exit0:29fuentes/config coinciden con inputs anteriores al build, plugin centralizado, logs aprobados, APK posterior a inputs, firma válida/no debuggable y copia idéntica. Inputs/reporte/scripts/firma/metadata en `../metricol_app/build/mobile-upload-motor-review`.
+- APK D41 estable: `../metricol_app/build/mobile-upload-motor-review/app-release.apk`,75,822,720bytes,SHA256 `a05687481cf5162f63d10e24622aabd6ea7687e5fb2126c2cf7bc67115b286a0`. Paquete com.rodtech.picale,1.0.13+14/min24/target36. Sin AAB/publicación; D40/D39 y anteriores históricos, no incluyen esta revisión. Handles46025reproducción/29194pase44/43168suite133/57294análisis inicial/1923análisis final/74991build terminados, verificación terminó directamente. Ningún comando propio pendiente; no repetir lo aprobado sin cambio.
+- Sin nuevos Java/producción/R2/credenciales/publicación/AAB/commit/push/delegación/emulador ni validación Android física/iOS. Cambios ajenos preservados. Después de cerrar revisión, siguiente unidad D42: auditar/cerrar contrato multipart/coordinación API y después partes móviles, con autorización específica antes de otro despliegue. Objetivo global pendiente.
+
+### Continuación de D41
+
+```text
+Retoma D41 cerrado en primer checkpoint de docs/subidas-moviles-avance.md.
+Lee decisiones/goal y AGENTS/git status API/Flutter; conserva cambios ajenos.
+Revisión D40 cerrada:10fallos reproducidos/corregidos y12casos nuevos,
+133tests/66s,análisis22limpio/16.4s,APKrelease1001.7s/firma válida.
+Inputs29 coinciden con fuentes finales en build/mobile-upload-motor-review/report.json.
+APK SHAa0568748... local,1.0.13+14 no publicado. Todos los handles terminaron;
+no esperar/reiniciar74991 ni repetir lo aprobado. APKD40 es histórico.
+Conservar v3/propietarios/lotes/consentimiento/tombstones y PUT simple; no avanzar
+multipart/iOS ni alterar API/producción. Sin commit/push/delegación/emulador.
+La consulta nativa inestable nunca es ausencia; solicitud incompatible no se
+coalesce; llamada nueva después de cerrar no comparte una operación anterior.
+Siguiente D42: auditar/cerrar contrato y coordinación multipart existentes,
+sesiones/partes/finalización/cancelación idempotentes; luego conectar partes
+móviles con migración explícita del manifiesto, por unidades verificables.
+API cb483b7 ya desplegada; no reutilizar autorización. Físicos/iOS14/Mac y
+autenticación mantienen dependencias anteriores. No objetivo global completo.
+```
+
+## Checkpoint anterior: D40, adaptador del motor (11 nov 2026)
+
+- Usuario autoriza el punto1 «adaptador del motor de subidas» con «Okis va». D40 cerrado localmente:121tests, análisis21limpio, APKrelease y firma verificados. Centralizados arranque, consultas, entrega, cancelación e historial; PUT simple/registro v3 y guardas anteriores conservados. Multipart/API/iOS y objetivo global siguen pendientes.
+- Nuevo `lib/services/motor_de_subidas.dart`: contrato MotorDeSubidas, estados/resultado de entrega explícitos, MotorNativoDeSubidas y frontera PuertoDeSubidas con implementación background_downloader9.5.9. Sólo esa implementación crea/usa FileDownloader, de forma perezosa. SubidasEnFondo ya no accede al singleton/DB nativo ni interpreta taskForId como prueba de ausencia.
+- Arranque único/coalescido; suscripción antes de configurar/recuperar eventos. Eventos de arranque se almacenan hasta terminar configuración y se despachan en orden por ID. Fallo de arranque quita listener/buffer y permite retry sin duplicados. Fallo de consumidor se registra por tipo y no rompe eventos siguientes. Cerrar sólo desvincula; no cancela transferencias ni limpia datos activos.
+- Plugin real: notificaciones previas conservadas, foreground Android, tracking sólo del grupo picale-subidas, markDownloadedComplete=false, start sin autoClean ni rescheduleKilledTasks. La recuperación del registro de dominio decide consulta API/firma nueva, evitando competir con el timer tardío de5s del paquete. Versiones/dependencias/nativo Android/iOS sin cambios.
+- Consultas: allTasks incluye tareas nativas, pausadas y waitingToRetry; DB aporta estado/progreso. Una tarea presente gana sobre un registro terminal viejo; historial running sin tarea real se considera ausente. Error de consulta se propaga, nunca se convierte en ausencia. IDs de otro grupo/tipo o reutilizados para otro archivo se rechazan sin tocar esos datos.
+- Operaciones por ID serializadas y entregas/cancelaciones coalescidas. Entrega distingue aceptada/existente/completa/rechazada. Completa implica confirmar API, no READY local. Cancelación requiere que ya no aparezca activa después de llamar al plugin; ACK por sí solo no libera la copia. Historial de tarea activa no se borra. El SDK conserva sus tareas a través de cerrar/reabrir el adaptador.
+- Recuperación conserva usuario/negocio/lote/índice/ID: tarea presente no pide otro permiso ni reenfile; tarea ausente se recupera con firma nueva; completa se confirma incluso si falta copia; cancelación local persistida jamás se reenfila. Fallo/cancelación nativos sin decisión local de detener conservan recuperación anterior. Pausas/fallos explícitos del dominio siguen sus reglas de consentimiento/READY.
+- Consulta/suscripción recuperan porcentaje del historial/evento reciente; seguir reproduce último avance válido al crear tarjeta. Reintento nuevo limpia porcentaje anterior; cola notifica al terminar entrega. Caché de progreso sólo en memoria; no cambia JSON v3 ni persiste firmas/tokens. Logs nativos sólo tipos/códigos, sin excepciones completas con URL firmada.
+- Pruebas nuevas: `test/motor_de_subidas_test.dart`21casos y `test/motor_subidas_recuperacion_test.dart`13casos. Helpers puerto_de_subidas_falso y motor_de_subidas_falso; los tests anteriores migran a MotorDeSubidas inyectado sin relajar aserciones. Puerto/API simulados, IO/registro/gestor reales: no prueba física ni de proceso Android muerto. Nuevo constructor de pruebas puede iniciar el adaptador real con puerto simulado; producción conserva su inicialización propia.
+- Evidencia final de código:121/121 exit0/133s (87anteriores+34nuevas), análisis21limpio exit0/9.9s. Logs `../metricol_app/mobile-upload-motor-tests.log` y *-analyze.log. Pases64/64 y118/118 preservados como *-tests-initial/*-tests-pass1. Una comprobación de porcentaje leía antes del callback; se sustituyó por avance observable con límite5s, manteniendo expectativa0 para otro intento;13/13pasaron antes de suite definitiva. Estilos de llaves corregidos sin cambiar lógica/aserciones; logs iniciales preservados. Handles37169/9376 terminados; no repetir checks sin cambio.
+- Build único42054 terminó exit0/647.0s, `../metricol_app/mobile-upload-motor-apk.log`. Verificador exit0:28fuentes/config coinciden con inputs anteriores al build, FileDownloader sólo referenciado en el adaptador, APK posterior a inputs, firma válida/no debuggable y copia idéntica. Reporte/inputs/scripts/firma/metadata en `../metricol_app/build/mobile-upload-motor`.
+- APK D40 estable: `../metricol_app/build/mobile-upload-motor/app-release.apk`,75,822,720bytes,SHA256 `da00d290b3ff5931babceb58885d7f10d4247d421d16ca393fa244414ac0ae77`. Paquete com.rodtech.picale,1.0.13+14/min24/target36. Sin AAB/publicación. APK D39/D38/D37/D36/D31 conservados como históricos y no acreditan este adaptador.
+- Todos los handles de D40 terminados:19520/6211análisis iniciales de estilo,74033pase64,64696pase118,26585pase con comprobación prematura de progreso,1820análisis intermedio limpio,47633regresión13,37169suite121,9376análisis final y42054build. Verificación terminó directamente exit0. Ningún comando propio pendiente; no repetir suites/builds aprobados sin nuevo cambio.
+- Cambios ajenos conservados. API sólo continuidad/decisiones/validación; sin nuevo Java/producción/R2/credenciales/publicación/commit/push/delegación/emulador. Físicos/iOS14/Mac y prueba autenticada con dependencias registradas, sin repetir reconexiones ni deploy cb483b7. Después de cerrar D40, D41 auditar/cerrar contrato multipart y coordinación API, luego conectar partes móviles por unidades.
+
+### Continuación D40
+
+```text
+Retoma D40 cerrado en primer checkpoint de docs/subidas-moviles-avance.md.
+Lee decisiones/goal, AGENTS/git status API/Flutter y conserva cambios ajenos.
+Adaptador completo implementado:121tests/133s, análisis21limpio/9.9s,
+APKrelease647.0s/firma válida. Inputs28 coinciden con fuentes finales en
+build/mobile-upload-motor/report.json. APK SHAda00d290... local,1.0.13+14
+no publicado. Todos los handles terminaron: no esperar/reiniciar42054 ni repetir
+lo aprobado. APK D39 y anteriores son históricos.
+Motor real sólo en motor_de_subidas.dart; tareas esperando no son ausentes,
+historial running no prueba actividad, consulta fallida no permite reenvío.
+SDK sin timer rescheduleKilledTasks/autoClean; recuperación por dominio/API.
+No perder dueños/lotes/v3/tombstones/consentimiento ni reactivar cancelaciones.
+Siguiente D41: auditar contrato multipart/coordinación API existente y cerrar
+sesiones/partes/finalización/cancelación idempotentes por una unidad verificable;
+después conectar partes móviles con migración explícita de manifiesto. No asumir
+que PUT simple soporta resume por bytes ni cambiar iOS sin su validación.
+Sin deploy/publicación/commit/push/delegación/emulador, iOS14/Mac y físicos
+pendientes. API cb483b7 ya desplegada; permiso no reutilizable para otro commit.
+Guardar checkpoint/prompt por unidad; no declarar objetivo global completo.
+```
+
+## Checkpoint anterior: D39, segunda revisión de D38 (11 nov 2026)
+
+- Usuario: «dale una segunda revisada», referido a la etapa Android recién entregada. Revisión D39 cerrada localmente con correcciones,87/87pruebas exit0/86s, análisis16archivos limpio exit0/12.6s, APKrelease640.5s y firma verificada. No se adelantó multipart ni despliegue. Objetivo global aún pendiente.
+- Reproducción: ocho casos fallaban antes de los arreglos, `../metricol_app/mobile-upload-d38-review-before.log`. Primer pase corregido39/39 en *-tests-pass1. Suite definitiva añade12casos a los75anteriores:87únicos en *-tests.log. No son sólo cambios de etiquetas: ejercitan archivos privados reales, registro atómico, compuertas de persistencia, eventos y cola; motor/API están simulados, no Android físico.
+- Corregido1: tarjeta restaurada se empezaba a escuchar antes de añadirla a la cola; la guarda de vigencia la descartaba y no recibía progreso/READY. Ahora se añade primero y todas las restauraciones comparten la traducción de fases. Una restauración antigua se descarta si cambian sesión, usuario, negocio o servicio durante sus esperas.
+- Corregido2: quitar un objeto antiguo tras reemplazo por vencimiento podía cancelar el ID viejo y borrar el archivo compartido con el nuevo. Se exige objeto registrado/vigente y se protege una tarjeta ya lista. La UI ignora respuestas de quitar de una tarjeta sustituida y conserva READY si ganó la carrera. Cancelación cierra canales de progreso y no elimina copia referenciada por otro trabajo activo.
+- Corregido3: reintento exigía archivo local antes de preguntar si API ya lo rescató; además restauración omitía fallos/requiere_archivo. Ahora se reconcilia READY primero para trabajos preparados/con reserva, sin otro permiso/envío. Las tarjetas detenidas no se reenvían automáticamente sólo por consultar. Reintentar verificación sólo confirma; se conserva dueño/token/ID después de consultar y se recalcula la posición tras la espera.
+- Corregido4: cancelación entre guardado de permiso READY y confirmación podía resucitar el estado, confirmar y perder el tombstone. Guardas después de persistir y antes de confirmar, validando propietario/token y registro vigente. Confirmaciones simultáneas coalescidas; eventos tardíos no retroceden verificación/READY/cancelación. La coordinación con reserva/finalización remota sigue pendiente.
+- Pruebas nuevas también cubren cambio de sesión durante GET, cancelación durante GET, confirmaciones concurrentes y restauración antigua que vuelve después de cambiar de cuenta. Nuevas costuras de prueba inyectan registro/historial y el gestor en cola; NO equivalen a extraer el adaptador nativo completo. Constructor de pruebas representa motor simulado iniciado; producción conserva inicialización real/listener antes de start.
+- Fuentes Flutter de esta revisión: subidas_en_fondo, cola_de_subidas, celda de contenido; test/subidas_segunda_revision_test.dart y fake de subidas_en_fondo_test. Registro/modelo v3 y preparador conservados. API sólo documentación, cambios ajenos preservados. Sin producción, R2, credenciales, commit/push, publicación, delegación, emulador o pruebas físicas/iOS.
+- Evidencia final en `../metricol_app/mobile-upload-d38-review-tests.log`, `*-analyze.log`, `*-apk.log`. Análisis inicial sólo observó llaves faltantes en auxiliar nuevo, corregido sin cambiar aserciones; log *-analyze-initial conservado. Build único2812 terminó exit0/640.5s; verificación exit0. Inputs23fuentes/config capturados antes del build y hashes posteriores idénticos, `build/mobile-upload-d38-review/inputs.json` y `report.json`; scripts capture-inputs/verify conservados. Firma válida/no debuggable, APK posterior a inputs y copia idéntica verificados. No nueva suite/build sin cambios que lo justifiquen.
+- APK revisado estable: `../metricol_app/build/mobile-upload-d38-review/app-release.apk`,75,822,720bytes,SHA256 `5696654671e282aff2dda0489bbe7eaf1b4e75f985cb4916cd806e523e63a3a6`. Paquete com.rodtech.picale,1.0.13+14/min24/target36; sin AAB/publicación. D38/D37/D36/D31 se conservan como históricos y no incluyen esta revisión. Handles58908reproducción/63294pase39/55553suite87/56966análisisestilo/74259análisisfinal/2812build todos terminados; verificación terminó directamente. No comando propio pendiente.
+- Siguiente código después de cerrar revisión: D40, adaptador completo del motor, antes de multipart/coordinación API. No marcar terminado el objetivo global. Persisten acceso autenticado, Android físico e iOS14/Mac pendientes según decisiones anteriores; no repetir reconexiones ni despliegue cb483b7.
+
+### Continuación tras D39 cerrado
+
+```text
+Retoma D39 cerrado en primer checkpoint de docs/subidas-moviles-avance.md.
+Lee decisiones/goal, AGENTS y git status API/Flutter; conserva cambios ajenos.
+Segunda revisión de D38 cerrada:8fallos reproducidos/corregidos,12casos nuevos,
+87tests,análisis16limpio,APKrelease640.5s/firma válida;23fuentes sin cambios
+entre inputs y verificación en build/mobile-upload-d38-review/report.json.
+Todos los handles terminaron; no esperar/reiniciar2812 ni repetir lo aprobado.
+APK SHA56966546... es local,1.0.13+14 no publicado. D38 anterior es histórico.
+Siguiente D40: adaptador nativo completo sustituible; encapsular inicio/listeners
+antes de start, entrega, consulta de estados/tareas, cancelación e historial.
+Probar espera del sistema frente a tarea ausente y evitar entrega duplicada.
+La inyección de pruebas de D39 no constituye ese adaptador completo.
+Conservar dueño/token/lote/ID/v3, copia íntegra, consentimiento y tombstones;
+READY remoto gana sin requerir copia; tarjetas antiguas no borran otra generación.
+Luego multipart/coordinación API por unidades. Cancelación actual local, no
+liberar reservas ni borrar READY. Sin deploy/publicar/commit/push/delegar/emulador.
+API cb483b7 ya desplegada, aprobación no reutilizable para otro commit.
+iOS14 pendiente de Mac, físicos/autenticación con dependencias registradas.
+Guardar checkpoint y prompt por unidad; no declarar objetivo global completo.
+```
+
+## Checkpoint anterior: D38, preparación y estados recuperables (11 nov 2026)
+
+- Usuario: «okis hazlo», referido a continuar la siguiente unidad de código. Unidad D38 cerrada localmente: pruebas, análisis, APK y firma verificados. El objetivo global sigue pendiente; no publicar/desplegar.
+- Registro v3, migración explícita de v1/v2: propietario, lote e índice conservados; v1 sigue sin dueño. Toda selección Android se registra en un snapshot antes de copiar o calcular huellas, incluso sin respuesta de red. No persistir tokens ni URLs firmadas.
+- Preparador nuevo: streaming a `.part`, espacio libre mediante canal Android limitado al directorio privado, tamaño/mtime del origen, validación de tipo existente y SHA256 completo de integridad separado de la huella de duplicados. Guarda digest antes del rename y copia preparada después. Archivo privado final con ruta relativa. La referencia absoluta al origen es temporal y exclusiva del camino Android; no trasladarla al futuro contenedor iOS.
+- Recuperación: copia parcial sin digest se rehace desde el origen; temporal validado o final renombrado se recupera verificando tamaño/digest aunque falte el original. Original ausente/cambiado o copia alterada conserva tarjeta y pide revisión; no reserva ni entrega bytes incompletos. Sin compresión ni carga completa del video en memoria.
+- Fases durables: preparando, en cola, subiendo, esperando conexión/sistema, verificando, requiere sesión/archivo, fallo/vencida, cancelando/cancelada. Espera del planificador sigue activa; no se presenta como transferencia fallida. `lista` exige respuesta de API con medio. Duplicados conservan explicación/asset anterior y la autorización explícita para repetir.
+- Cancelación local: intención antes de llamar al motor, espera al pipeline de preparación/permiso, elimina copias después de respuesta positiva del motor; conserva tombstone y reintenta una cancelación no confirmada al volver. Tarjeta permanece si falla. Carrera con READY/reserva remota aún requiere la futura coordinación API; esta unidad no libera reservas remotas ni borra medios publicados.
+- Límites: el registro sobrevive una preparación interrumpida; no afirma que Dart termine de copiar con el proceso muerto. Si el selector pierde el original antes de terminar, se requiere elegirlo de nuevo. Falta demostrar comportamiento físico/bloqueo de pantalla. Motor Android continúa PUT simple; multipart, adaptador completo, coordinación API e iOS14 nativo son unidades posteriores.
+- Evidencia final:75/75 exit0/89s, regresión del cierre31/31 exit0/83s y análisis15archivos limpio exit0/211.9s. La regresión repite casos de la suite; no son106casos únicos. Incluye recuperación de duplicados sin perder una autorización durable, que la tarjeta ahora conserva con OR. Logs `../metricol_app/mobile-upload-preparation-tests.log`, `*-recovery-tests.log`, `*-analyze.log`. Pases fallidos/intermedios preservados como *-before/*-pass1..4. Se corrigieron autoespera de Future, errores de compilación del caso nuevo y timeouts/IO de Windows; ejecución final secuencial con límite2m, sin rebajar aserciones.
+- APK definitivo: build71796 exit0/574.2s, `mobile-upload-preparation-apk.log`. Firma válida/no debuggable; copia estable `../metricol_app/build/mobile-upload-preparation/app-release.apk`,75,822,720bytes,SHA256 `571354541284a598cce84380fd82f311f7ec3da071a1e4e2928fcd84c5dbef3e`. Paquete com.rodtech.picale, versión1.0.13+14, min24/target36. `build/mobile-upload-preparation/report.json` registra firma/tests/hashes22fuentes y configuración, con verifier específico. Sin AAB nuevo ni publicación. APK D37/D36/D31 conservados como históricos.
+- Build inicial75259 exit0/1270.2s es intermedio previo al último OR; log *-apk-initial preservado, no entregarlo como final. Handles de diagnóstico18163, análisis49976, regresión83515, build71796 y verificación71176 todos terminados. No proceso propio pendiente ni motivo para repetir lo aprobado. Limpieza de dos directorios temporales propios de pases fallidos completada por rutas literales tras inspección, sin borrado recursivo.
+- Cambios ajenos conservados. Ningún nuevo cambio Java, API producción, R2, credenciales, publicación, commit/push, delegación, emulador o prueba física/iOS.
+- Siguiente unidad de código D39: encapsular el motor nativo en un adaptador sustituible con inicio/listeners, entrega, consulta de tareas/estados, cancelación e historial. Probar recuperación real de fases nativas y deduplicación de entrega, distinguiendo una tarea que espera del sistema de una ausente. Preservar preparación v3, tombstones, dueño/lote y consentimiento de repetidos. Después implementar multipart y coordinación API por unidades. No purgar tombstones ni liberar reservas remotas como efecto colateral de extraer el adaptador.
+
+### Continuación D38
+
+```text
+Retoma D38 cerrado en docs/subidas-moviles-avance.md; lee decisiones y goal,
+AGENTS y git status API/Flutter, conserva cambios ajenos.75tests+31regresiones,
+análisis15 limpio, APKrelease574.2s/firma válida;
+evidencia en build/mobile-upload-preparation/report.json.
+Todos los handles terminaron, no reiniciar71796 ni
+repetir suites/builds aprobados sin cambios. APKD38 SHA57135454... es local,
+1.0.13+14 no publicado. Preparación v3 y estados listos; PUT simple vigente.
+Siguiente D39: adaptador sustituible del motor (inicio/listeners antes de start,
+enqueue/consulta/cancelación/historial), pruebas de recuperación/deduplicación
+y tareas esperando al sistema. Conservar identidad/lote/v1 sin dueño, copia
+validada/digest, consentimiento de repetidos y tombstones. No confundir tests
+de archivos con muerte real de Android. Después multipart/coordinación API
+por unidades; cancelación actual sólo local, sin liberar reservas ni borrar READY.
+Sin deploy/publicación/commit/push/delegación/emulador. API cb483b7 ya desplegada,
+no reutilizar esa autorización para otro commit. iOS14 pendiente de Mac.
+Guardar checkpoint/prompt al terminar unidad; objetivo global no completado.
+```
+
+## Checkpoint anterior: D37, segunda revisión cerrada (11 nov 2026)
+
+- Petición actual: «Dale una segunda revisada por favor», seguida de «termina por favor». Se cierra la revisión de D36; no se adelanta implementación de multipart/iOS durante esta revisión. Estado: verificada localmente. Objetivo completo todavía pendiente.
+- Hallazgo corregido1: cambio de sesión durante huella/preparación podía reservar/subir con otra cuenta en fallback. Guardas en MediaService antes/después de huella y permiso; en cola, identidad/token/tarjeta vigente antes y después de esperas en ambos caminos. Cada selección usa el MediaService actual, no una referencia anterior al cambio de cuenta. Eventos de una tarjeta/trabajo sustituido no actualizan otra tarjeta.
+- Hallazgo corregido2: timeout durante reintento dejaba estado subiendo sin tarea entregada y el siguiente intento podía esperar indefinidamente. Reintento ahora devuelve trabajo persistido en fallo recuperable, conserva clave/lote y agrupa llamadas simultáneas. Expiración reemplaza viejo/nuevo en un único snapshot, sin hueco vacío ni perder referencia si falla permiso. Historial nativo vencido se deja a retención del motor, sin bloquear la transición con borrado de historia; no se cancela ni borra una transferencia activa por esa limpieza.
+- Endurecimiento3: estados o taskIds desconocidos no se reinterpretan como subida simple ni usan backup viejo; se detienen conservando archivo para revisión. Los nuevos estados de la siguiente unidad deben versionar/migrar explícitamente el formato. No se declara que dichos estados ya estén implementados.
+- Flutter editados: modelo TrabajoDeSubida y servicios media_service/cola_de_subidas/subidas_en_fondo; pruebas registro/subidas/media/cola y formato de session_subidas_identity_test. Nuevo soporte test/support/archivo_pausado.dart usa archivo real y compuerta de IO determinista. API sólo continuidad/decisiones, sin fuentes Java/producción. Cambios ajenos preservados; sin commit/push/delegación/emulador/publicación.
+- Evidencia de reproducción: mobile-upload-review-before.log conserva4fallos nuevos antes de correcciones (contexto, retry y vencida); pasadas intermedias preservadas como *-pass1/*-pass2. Se eliminó espera fija20–100ms de pruebas de cola, sustituyéndola por fin observable con límite5s tras observar un fallo intermitente de timing; no se rebajaron aserciones.
+- Verificación final:55/55 pruebas seleccionadas exit0/7s, `../metricol_app/mobile-upload-review-tests.log`; analyze13archivos limpio exit0/3.7s, mobile-upload-review-analyze.log. BuildAPKrelease15738 exit0/331.4s, mobile-upload-review-apk.log. Firma válida/no debuggable, APK estable `../metricol_app/build/mobile-upload-review/app-release.apk`,75,806,336bytes,SHA256 `5814d2995c6fc4f968ba0539995a49a2557633d172fd50e1616a0a5d2eb3bc42`. Reporte/firma/metadata/verifier con hashes15fuentes/config en build/mobile-upload-review. Mismo paquete/version1.0.13+14, sin AAB nuevo ni publicación. D36/D31 APK conservados como históricos.
+- Handles38179/51021 iniciales fallidos;31397/87467/15738 finales terminales. No proceso propio pendiente. Sin pruebas Android físicas, nuevo R2, acceso autenticado, despliegue API o iOS: éstos no se acreditan por mocks ni por APK. Backend cb483b7 permanece sin cambios de esta revisión.
+- Siguiente acción exacta al continuar código: preparación durable/estados (intención antes de copia, staging temporal/validación/rename, recuperación de cortes/red/auth/cancelación) conservando identidad y lote y versionando formato explícitamente. Después multipart nativo/partes reales y coordinación API. No repetir revisión/tests/builds aprobados sin nuevo cambio. No rehacer despliegue, pedir reconexión idéntica ni asumir Android físico/iOS resueltos.
+
+### Prompt vigente tras segunda revisión
+
+```text
+Retoma desde D37/primer checkpoint de docs/subidas-moviles-avance.md. Lee
+decisiones/especificación; revisa AGENTS y git status API/Flutter y conserva
+cambios ajenos. Segunda revisión cerrada:55tests/analyze13/APKrelease331.4s/firma
+válida, evidencia en build/mobile-upload-review y logs mobile-upload-review-*.
+Todos los handles terminaron, no esperar/reiniciar15738 ni rehacer lo aprobado.
+Ya corregidos cambios de cuenta durante huella/fallback, servicios antiguos,
+reintentos colgados y reemplazo vencido no atómico; no perder guardas ni lote.
+Estados/taskIds desconocidos se conservan sin reinterpretar; la unidad siguiente
+debe versionar/migrar al agregar estados. Ahora preparación durable y estados
+antes de multipart; implementar/verificar unidades coherentes, guardar checkpoint.
+API cb483b7 ya desplegada, sin nuevos cambios Java; no deploy/commit/push,
+delegar/emulador/publicar. APK D37 es local, versión1.0.13+14 no publicada.
+Pruebas autenticadas/físicas/iOS siguen pendientes con dependencias registradas.
+No inventar acceso, resultados ni declarar objetivo completo por esta revisión.
+```
+
+## Checkpoint anterior: D36, registro por usuario y lote (11 nov 2026)
+
+- Nueva instrucción del usuario: «Okis trabajemos con esto por favor», referida al código pendiente (partes, iOS, registro completo, estados y coordinación). Autoriza continuar implementación local por unidades; el bloqueo de autenticación D35 no impide este código. No redeploy/publicación/commit/push/delegación/emulador. iOS nativo sigue pendiente de Mac y mínima14 ya autorizada.
+- Unidad actual: registro durable versionado e identidad/lotes antes de estados/preparación y multipart. Unidad local verificada:48tests,análisis12archivos,APKrelease y firma. No declarar terminado multipart, iOS ni objetivo completo.
+- Flutter nuevos: `lib/models/trabajo_de_subida.dart`, `lib/services/registro_de_subidas.dart`, `lib/utils/lote_de_subida.dart`, `test/registro_de_subidas_test.dart`, `test/session_subidas_identity_test.dart`. Editados: subidas_en_fondo/cola_de_subidas/media_service/session_service y tests correspondientes. Reexport del modelo preserva imports existentes. API: sólo continuidad/decisiones, ninguna fuente Java ni producción modificada; cambios sucios ajenos preservados.
+- Registrov2: userId/workspaceId, UUID de lote e índice original, modalidad simple, taskId asociado, fechas creación/actualización y versión. Permiso nativo envía uploadBatchId/index existentes de API. Mismo trabajo al recuperar/reintentar conserva clave/propietario/lote; sesión sincroniza usuario y negocio y oculta tarjetas anteriores también al cambiar usuario dentro del mismo negocio. Guardas impiden mostrar/reintentar/cancelar/renovar/confirmar trabajo de otra identidad.
+- Compatibilidad: listasv1 se leen con dueño desconocido y quedan preservadas, no se adjudican al usuario que inicia sesión; aviso de revisión en Contenido. No se descartan registros porque falte archivo. Versiones/modalidades futuras se rechazan sin sobrescribir. Rutas fuera del sandbox se rechazan. JSON atómico serializado, snapshot previo válido .bak y recuperación que conserva el archivo ilegible; aviso al recuperar backup. Sin tokens/URLs firmadas persistidos.
+- Pruebas: 48/48 seleccionadas exit0, log `../metricol_app/mobile-upload-d36-tests.log`; análisis12archivos limpio exit0/5.8s, `mobile-upload-d36-analyze.log`. Incluye nueva instancia leyendo disco, v1 sin adopción, futuro/corrupción sin pérdida del original, rutas peligrosas, snapshots concurrentes, cambio de cuenta dentro de mismo negocio y transporte de lote. Son tests locales, no proceso Android muerto ni prueba física/R2. Primer pase falló por auxiliar de test llamado liberar que colisionaba con método heredado; renombrado, logs iniciales preservados *-initial.log, no se rebajaron aserciones.
+- APK release handle86488 terminó exit0/510.1s, `mobile-upload-d36-apk.log`. Firma apksigner válida, no debuggable, paquete com.rodtech.picale, min24/target36, versión1.0.13+14 sin publicar. Copia estable `../metricol_app/build/mobile-upload-d36/app-release.apk`,75,789,952bytes,SHA256 `20aaf326951919fc3d6a88ac51dae084490dffa1f6700ebdd6a0a11b1d3f0628`. Reporte `build/mobile-upload-d36/report.json` con hashes14fuentes/config, tests y firma; logs metadata y verifier específico en esa carpeta. No AAB nuevo.
+- APK D31 anterior archivado/hash verificado en `build/mobile-upload-android-final/app-release-d31.apk`; report.json D31 apunta a esa ruta histórica. Su AAB y fuentes/hashes siguen siendo evidencia histórica, NO de D36. No ejecutar verifier D31 para reetiquetar código nuevo. Handles24219/74690 primeros fallidos por fixture;43897 y86488 finales aprobados/terminados, ningún proceso propio pendiente. git diff --check de cambios de esta unidad aprobado en ambos repositorios.
+- Siguiente acción exacta: implementar unidad de estados/preparación durable: intención PREPARING antes de copiar, archivo temporal y rename validado, recuperación de copia interrumpida y estados de espera/red/autorización/cancelación, conservando dueño/lote/v1 y READY sólo por API. Añadir pruebas de cortes antes/durante/después de copia y reanudación sin otra reserva. Después multipart nativo/partes reales de R2 y coordinación API. No introducir multipart sobre preparación incompleta. No repetir suites/builds aprobados sin cambio. Conector/Android físico/iOS siguen con sus dependencias anteriores; no consumir tokens reintentándolos para trabajar código local.
+
+### Prompt vigente D36
+
+```text
+Continúa código pendiente autorizado en D36 desde primer checkpoint de avance.
+Lee decisiones/especificación; AGENTS/git status API/Flutter, preserva cambios.
+Registrov2 usuario/lote/índice y aislamiento ya verificados:48tests,analyze12
+limpio,APKrelease510.1s/firma válida,report en build/mobile-upload-d36. Todos
+los handles terminaron; no esperar/reiniciar86488. APKD36 SHA20aaf326... listo;
+APK/AAB D31 son históricos, APK D31 archivado; no afirmar que llevan D36.
+Ahora estados/preparación durable (intención antes de copiar, staging temporal,
+validación/rename, recuperación de cortes, red/auth/cancelación y READY por API),
+con pruebas significativas; luego multipart por unidades verificables.
+esta orden del usuario autoriza código local sin depender del conector fallido.
+Conservar v1 sin dueño y archivos, no adoptar trabajos por login ni sobrescribir
+versiones futuras. No repetir tests/builds ya aprobados salvo cambios/fallos.
+API cb483b7 ya desplegada; no redeploy, commit/push/delegar/emulador/publicar.
+iOS sigue pendiente de Mac, mínimo14 autorizado; no inventar pruebas físicas.
+No goal completo al cerrar una unidad. Checkpoint después de cada unidad.
+```
+
+## Checkpoint anterior: reconexión confirmada; herramienta aún rechaza acceso (11 nov 2026)
+
+- Usuario confirmó «Ya reconecté con Juan Rodríguez». La pregunta está respondida; no pedir que identifique la cuenta ni repita la misma reconexión. Scope aprobado permanece Juan Rodriguez/workspace `c0d4be15-542f-4f9e-a2c5-0e0e13f98523`, user `23a2f1a1-4717-403f-8617-97c78eb7e051`.
+- Resultado real después de esa respuesta y revalidado en esta continuación: herramienta conectada Pícale panel devuelve `UNAUTHORIZED`, «This app connection requires reauthentication. Reconnect the app and try again.» Esto describe la conexión herramienta/conversación; NO prueba que la app móvil ni el login de Juan estén vencidos. No atribuir el error al servidor/API sin más evidencia.
+- Diagnóstico ya intentado: búsqueda de plugins PICALE devuelve lista vacía, pese a herramientas existentes; no basta para concluir desinstalación de plugin privado. No se reinstaló, cambiaron permisos ni crearon credenciales. Fallback CUA: inventario reportó browser access host unavailable; al vincular Chrome terminó automáticamente por no poder determinar URL actual en Windows con confianza para aplicar política. Se obedeció stop y completion_summary; no reintentar vía otro driver para sortear ese bloqueo.
+- Estado: smoke autenticado pendiente por acceso efectivo de herramientas. Cuenta/identidad sí verificados, prueba aún no ejecutada; cero archivos/R2/medios/sesiones creados y nada por limpiar. API cb483b7/despliegue y builds anteriores conservados, sin nuevas modificaciones de producto, tests/builds/redeploy ni publicación. No proceso propio vivo que esperar.
+- Auditoría D35 3/3: tercera observación consecutiva tras reconexión confirmada mantiene UNAUTHORIZED. Turno anterior y actual sin progreso funcional ni proceso vivo; git status preservado y sin acceso alternativo permitido nuevo. Se marca goal blocked por acceso efectivo de herramientas, no por falta de permiso del usuario ni por sesión móvil. No completar objetivo, repetir reconexión o tests/builds/redeploy; reanudar con cambio real de acceso y comenzar auditoría nueva si persiste entonces.
+- Clasificación: turno de aclaración anterior sin progreso funcional; esta continuación revalida la misma dependencia externa. Auditoría conservadora 2/3 contando el intento después de la reconexión como primera observación; no reutilizar los conteos D32. Aún no marcar goal completo ni bloqueado anticipadamente. Sólo se actualizan continuidad y evidencia local segura, no funcionalidad.
+- Siguiente acción exacta: continuar sólo con un cambio efectivo de acceso (herramienta Pícale devuelve sesión utilizable y scope esperado, o superficie de navegador permitida/autenticada disponible). No más confirmaciones verbales idénticas ni tokens por chat, ni JWT con secreto, reset de contraseña, cambios de permisos o automatización que eluda el stop. Si una continuación sin cambio confirma tercera observación y no existe otra acción útil dentro de etapa, aplicar blocked del goal. Cuando haya acceso legítimo ejecutar smoke de la matriz y cleanup propio; físicos/iOS siguen pendientes.
+
+### Prompt vigente tras comprobar reconexión
+
+```text
+Retoma D35/primer checkpoint de docs/subidas-moviles-avance.md. Revisa AGENTS,
+git status de ambos repositorios y decisiones; conserva cambios ajenos.
+Juan Rodriguez y su workspace c0d4be15-542f-4f9e-a2c5-0e0e13f98523 ya están
+identificados/autorizados para prueba. Usuario YA confirmó reconexión, no
+preguntar otra vez. Pícale panel sigue UNAUTHORIZED desde esta conversación;
+no implica sesión móvil vencida. CUA detuvo acceso por no verificar URL actual,
+browser host indisponible. No eludirlo con otro driver ni inventar autenticación.
+Incorpora cambio real de acceso si lo hay y verifica identidad/workspace antes
+de subir. Si persiste, seguir auditoría de bloqueo (D35 actual2/3, históricos
+anteriores no aplican). No proceso propio vivo, no espera de job. No repetir
+tests/builds/redeploy: API cb483b7 ya desplegada, APK/AAB D31 verificados.
+No commit/push/delegar/emulador/publicar ni alterar credenciales/permisos.
+Smoke autenticado todavía no ejecutado, cero medios creados. No confundir
+pruebas HTTP/MCP con Android físico/iOS; Mac/USB siguen no disponibles.
+Mantener goal completo pendiente y conservar backups/imagen previa.
+```
+
+## Checkpoint anterior: cuenta Juan identificada; sesión pendiente (11 nov 2026)
+
+- Usuario eligió «la de juan rodriguez» para pruebas autenticadas. Se resolvió la identidad mediante consulta de sólo lectura filtrada en la base efectiva: una cuenta coincidente (nombre contiene Juan/Rodriguez), UUID `23a2f1a1-4717-403f-8617-97c78eb7e051`. Negocio personal/home `Juan Rodriguez`, workspace `c0d4be15-542f-4f9e-a2c5-0e0e13f98523`, rol ADMIN. No usar sus otros negocios para esta prueba. No pedir nuevamente qué cuenta usar.
+- Estado: identificación verificada; autenticación y smoke de uploads pendientes. Conector Pícale panel revalidado con dias1 devuelve requires reauthentication. Se revisó guía plugin-management y capacidades: no hay herramienta de reconexión; no cambiar permisos/instalar duplicados. Login normal/Google existen, no ruta de suplantación de Root encontrada; no crear JWT con secreto productivo, restablecer contraseñas ni enviar mensajes para sortear el login.
+- Pregunta enviada al usuario para reconectar Pícale con Juan y avisar; respuesta pendiente. No repetirla ni interpretar la identificación de la cuenta como una sesión ya autenticada. Al reautenticar, comprobar workspace activo exacto antes de subir; si el plugin apunta a otro negocio, no crear medios allí.
+- Cambios: sólo docs de continuidad y artefactos locales ignorados `target/subidas-entrega/juan-smoke/{identify.sh,account-identification.json,account-candidates.json,checkpoint.json}`. Consulta inicial exacta no encontró por nombre compuesto; búsqueda acotada por ambos nombres/email local identificó una cuenta. No se exportaron correos, contraseñas, hashes de contraseña ni tokens; sólo identidad/membresía necesaria. Cero medios creados, cero sesiones creadas, nada pendiente de limpiar en R2 de esta unidad. No nuevos procesos persistentes.
+- API cb483b7 permanece desplegada; consulta de sólo lectura confirmó SHA. No redeploy, tests/builds repetidos, commit/push, publicación app ni cambios ajenos. Prueba nativa física Android/iOS continúa pendiente; pruebas HTTP/MCP no equivalen a segundo plano físico.
+- Siguiente acción exacta: incorporar respuesta de reconexión, invocar panel sólo lectura y verificar conexión/identidad/workspace esperado; si sigue vencida, conservar dependencia sin reintentar en bucle ni pedir tokens/contraseñas en chat. Con sesión legítima y scope confirmado ejecutar smoke autorizado, registrar claves/IDs propios y cleanup exacto según matriz/propuesta. No inventar verificación por mera identificación SQL.
+
+### Prompt vigente tras identificar cuenta
+
+```text
+Retoma D34 y primer checkpoint de docs/subidas-moviles-avance.md. Lee decisiones,
+especificación y matriz/propuesta; revisa AGENTS/git status de ambos repositorios.
+Usuario autorizó pruebas con Juan Rodríguez. Identidad y negocio personal ya
+resueltos: user23a2f1a1-4717-403f-8617-97c78eb7e051, workspace
+c0d4be15-542f-4f9e-a2c5-0e0e13f98523 (Juan Rodriguez, ADMIN). No preguntar de nuevo
+qué cuenta ni tocar sus otros negocios. Pícale panel sigue requires reauth;
+se pidió reconexión, falta respuesta. Identificar por SQL NO autentica.
+Primero incorpora respuesta y verifica sesión legítima y workspace activo exacto
+con herramientas conectadas antes de subir. No crear JWT usando secreto, resetear
+contraseña ni pedir tokens por chat. No instalar duplicados/cambiar permisos.
+API cb483b7 YA desplegada y verificada, job terminado; no repetir deploy/tests/builds.
+Cuando exista acceso legítimo, ejecutar smoke controlado, conservar evidencia
+y limpiar sólo medios propios. No publicar app/commit/push/delegar/emulador.
+Android físico/iOS siguen pendientes; usuario sin USB/Mac, no insistir.
+Preservar cambios ajenos, backup/imagen previa y objetivo completo pendiente.
+```
+
+## Checkpoint anterior: API desplegada y verificada operativamente (11 nov 2026)
+
+- Usuario respondió explícitamente «Autorizar ese despliegue de API» a la propuesta de cb483b7 en api-videos-prod con respaldo y sin publicar app. La dependencia de autorización de D32 queda resuelta; no solicitarla otra vez. Alcance: tres commits de la propuesta, ningún cambio sucio local ni publicación de app.
+- Estado: despliegue API verificado, no objetivo completo. Commit `cb483b7df8179a585432d1db24c65defe9b74fcb` sirve en producción. Git status/AGENTS de ambos repositorios revisados, fuentes ajenas preservadas. Payload autorizado revalidado local y remoto, SHA256 `983daa4b24b6f711174333f9563116af260a3568ab219eab93e7fdd3ee8fffe9`. Sin commits/push/publicación app. No repetir tests/builds Flutter ni tests API aprobados.
+- Preflight SSH real verificado exit0: VM api-videos-prod, SHA e266b2b sin cambios, base efectiva coincide con config, contenedor previo healthy, ninguna otra entrega detectada, ~34GB libres. `target/subidas-entrega/cb483b7/preflight-verified.json` guarda identidad, IDs y hash de .env (sin contenidos/credenciales). SSH nativo Windows rechazó ACL de llave; Git SSH existente funcionó con host conocido estricto, sin cambiar permisos ni copiar llave. Runner Node evita CRLF de stdin PowerShell; intentos previos de sólo lectura preservados.
+- Respaldo real creado en servidor: `/home/contacto_rodtech_cloud/respaldos/picale-antes-cb483b7-20261111-170426-1570ce.dump`,1,874,850 bytes, SHA256 `f91c276f974fc3d24a3efb399713f01bb86fff2399096cd039ac3976215abd1b`,223 entradas TOC, pg_dump exit0 y pg_restore completo hacia /dev/null exit0. Base efectiva del contenedor, no nombre fijo. Archivo privado permanece en VM; credenciales sólo stdin/en memoria, nunca logs/conversación. Imagen anterior conservada: `metricol-api:previo-e266b2b-1570ce0986f0`, ID `sha256:ee5d9618a7d6185319eb970a409d4a198584f0b8b80aca5fc72f06872b497eaf`. Evidencia `backup-verified.json`.
+- Job remoto propio terminado: PID672656/startTicks647801284, run `/home/contacto_rodtech_cloud/.cache/picale-upload-deploy/picale-upload-cb483b7-1570ce0986f0`. `status-15.json`: succeeded/complete/exit0, processVerifiedLive=false, terminado 2026-11-11T17:23:21Z. No relanzar ni esperar ese PID. Primeros polls de proceso vivo y últimos terminales conservados.
+- Historial de espera: build se demoró por429 de kaino.dev/Retry-After143s, comprobado desde host y build, con curl existente vivo. No se duplicó/reinició ni cambió el candidato. Finalmente48/48 audios pasaron checksum. Diagnósticos sólo registran host/códigos/tiempos, sin URLs firmadas ni credenciales.
+- Scripts específicos ignorados en target/subidas-entrega/cb483b7: ssh_runner.cjs, preflight.sh, backup.sh, deploy_remote.py, launch.sh, poll.sh. Build aislado desde payload, etiqueta de candidato; sólo después verifica SHA/container/env anterior, conserva src/control anteriores, instala fuente aprobada y recrea sólo servicio API con --no-deps/--no-build. Preserva env/nginx/DNS/proxy/otros servicios. Gates SHA/base/imagen/health/DDL Postgres/errores de arranque; fallo se registra sin rollback destructivo de DB.
+- Verificación real: imagen `sha256:1316fc4a6e7eaaa8ffda2f172e519840199fb23754e135e254ca26991f93b932`; contenedor `ac2822dee0ea9b89a0c9115b2dac382d39100f74521a1d996e58bc4f5556a8aa`, healthy, SHA público completo correcto y base efectiva coincidente; .env SHA inmutable, fuente de servidor BUILD_SHA correcta, backup e imagen anterior revalidados. PostgreSQL confirma columna client_upload_id, unicidad tenant/clientUploadId, objetivos_elegidos y retiro del CHECK viejo. Cero ERROR/APPLICATION FAILED de arranque. Reemplazado sólo servicio API con --no-deps/--no-build. Fuente anterior guardada en run/previous-src y controles en previous-control.tar.gz; no rollback de DB ejecutado.
+- Evidencias finales en `target/subidas-entrega/cb483b7/`: status-15.json, deployment-independent.json (SSH independiente), deployment-public.json (HTTP externo), deployment-summary.json (estado actual), backup-verified.json. GET público de usage sin sesión responde401: acredita protección, no bandera/carga autenticada. verification.json de D32 conserva su snapshot histórico predeploy; el resumen actual de entrega es deployment-summary.json y package.json/deployment-run.json marcan deployed=true.
+- Pendiente concreto: prueba autenticada usage/reserva/consulta/confirmación/cuota y matriz Android física, iOS/Mac. Se consultó conexión Pícale panel de sólo lectura y devolvió requires reauthentication; no se inició login ni modificó negocio. Pregunta enviada al usuario por cuenta/negocio de pruebas (sólo nombre/ID), respuesta pendiente; no volver a preguntar lo mismo ni inventar sesión. No se crearon pruebas R2 de esta unidad ni medios a limpiar.
+- Siguiente acción exacta: incorporar respuesta nueva sobre cuenta/sesión de pruebas; con acceso autenticado autorizado verificar contrato y escenario controlado, registrar/retirar sólo datos propios de prueba. Para Android, APK D31 listo y matriz `subidas-moviles-validacion-android.md`; no emulador ni pedir USB otra vez. Sin sesión/dispositivo nuevo no repetir despliegue/tests/builds ni publicar app. iOS sigue sin Mac confirmado. Objetivo completo pendiente.
+
+### Prompt vigente tras despliegue
+
+```text
+Retoma D33 y primer checkpoint de docs/subidas-moviles-avance.md. Lee decisiones,
+propuesta y matriz Android; revisa AGENTS/git status, conserva cambios ajenos.
+API cb483b7 YA desplegada con autorización; no preguntar ni desplegar otra vez.
+Job PID672656 TERMINÓ succeeded/exit0, no pollearlo como vivo ni reiniciarlo.
+Revisar deployment-summary.json, independent/public/status15 y backup-verified
+bajo target/subidas-entrega/cb483b7. SHA público, imagen/base/schema/health/env y
+backup/imagen previa verificados. No confundir snapshot D32 predeploy con estado
+actual. No repetir tests/builds aprobados, commit/push/delegar/emulador/publicar.
+Pendiente acceso autenticado para usage y prueba controlada de uploads/cuota:
+Pícale panel requiere reauth y se preguntó cuenta/negocio de pruebas, sin respuesta.
+Incorpora respuesta nueva; no repetir pregunta, inventar sesión ni usar negocios
+al azar. Android físico requiere matriz con APK D31, usuario sin USB; no insistir.
+iOS sigue pendiente de Mac confirmado no disponible. No restaurar DB ni borrar
+backup/imagen previa automáticamente. No declarar objetivo completo por deploy.
+```
+
+## Checkpoint anterior: preparación concreta de entrega API (11 nov 2026)
+
+- Etapa: entrega controlada del Android D30/D31, únicamente preparación local y observación pública de sólo lectura. Preparación local verificada; pendiente de autorización concreta de despliegue. Objetivo completo pendiente.
+- Goal bloqueado tras auditoría D32 3/3 por autorización concreta de producción pendiente; paquete/propuesta/pruebas permanecen preparados. Retomar con respuesta a la solicitud ya presentada, sin repetirla ni ejecutar producción por una continuación automática. Android físico e iOS aún pendientes. Una nueva reanudación reinicia el conteo de auditoría si persiste la misma dependencia.
+- El goal se reactivó después del bloqueo histórico. El turno previo fue sin progreso funcional. Se identificó una acción local útil antes de pedir autorización: comprobar versión real, congelar el candidato y verificar la suite completa de su árbol exacto. No se reutiliza el conteo anterior para bloquear esta reanudación.
+- Nuevo dato: GET público `/api/v1/ops/version` reportó producción `e266b2bac10c7dc11e28137e7c0f0f9247690ce8`, candidato local `cb483b7df8179a585432d1db24c65defe9b74fcb`. Evidencia `target/subidas-entrega/version-readonly.json`. No se supone que producción siga igual después de esta observación.
+- El candidato incluye tres commits: uploads, objetivos de redes y corrección del revisor de flyers. No incluye cambios sucios ajenos del árbol local. Snapshot `git archive` sin `.env`/`.env.vps`, bajo `target/subidas-entrega/cb483b7/`. Payload `api-cb483b7.tar.gz`: 2,942,478 bytes, SHA-256 `983daa4b24b6f711174333f9563116af260a3568ab219eab93e7fdd3ee8fffe9`; metadata en `package.json`. Empaquetado handle86175 terminó exit0. No copiado a servidor.
+- Propuesta nueva: `docs/subidas-moviles-entrega-api.md`, destino/commits/schema/comprobaciones/recuperación y alcance exacto a autorizar. `deploy-ssh.sh` tiene respaldo de base fija y remoto sin pipefail; no usarlo ciegamente. No se modifican scripts existentes ni recursos remotos. Ver D32.
+- Suite API handle63013 terminada exit1/08:05: 183 suites, 1,339 tests, 0 fallos, 1 error por fixture MP3 no versionada ausente, 3 omitidas. Copia aislada `target/subidas-entrega/cb483b7/source`, Java17/H2 en memoria/config import inexistente y sin configuración real. Reporte inicial preservado en `initial-results/`, log `api-candidate-tests.log`. Se repuso sólo fixture local cuyo SHA coincide con catálogo del commit, original conservado. Reintento de la única suite afectada handle51917 exit0/36.409s, 1/1, log `api-candidate-fixture-retry.log`; no repetición total.
+- Resultado consolidado verificado: 1,336 aprobadas, 3 omitidas por VisualIdentityEvaluationTest optativo sin PICALE_VISUAL_EVAL, 0 fallos/errores; `verification.json` explica corrida/reintento. No se atribuye una única corrida completa verde, CI remoto ni PostgreSQL real. Payload comprobado sin cambios, 751 archivos esperados, BUILD_SHA exacto y cero diferencias/excluidos (`package-validation.json`). Handles63013/51917/86175/41862 terminados; no proceso propio pendiente.
+- Siguiente acción exacta: solicitar/recibir autorización concreta para API commit cb483b7 y sus tres cambios en la VM indicada, según propuesta y punto9 del objetivo. No ejecutar SSH/despliegue/publicación antes de esa respuesta. Después de autorización, revalidar SHA productivo, destino/base/backup/imagen anterior y seguir gates de la propuesta; si falta o cambió algo, conservar evidencia y resolver antes de mutar. GitHub CLI no autenticado; no iniciar login ni declarar CI remoto verde.
+- Android local permanece verificado abajo; no repetir sus tests/builds. Pruebas físicas e iOS siguen pendientes. Esta unidad sólo modifica documentación de API y artefactos locales ignorados; ningún fuente de producción/API/app modificado.
+
+### Prompt vigente tras preparar entrega
+
+Auditoría tras D32 (1/3): el turno anterior fue progreso (candidato congelado, suite completa/reintento y propuesta concreta verificados). Esta continuación no aporta progreso funcional: no llegó respuesta a la autorización solicitada para cb483b7; el registro de entrega permanece deploymentAuthorized=false/deployed=false. No es espera de proceso vivo; los handles propios terminaron. No ejecutar producción, repetir pregunta, tests/builds ni ampliar alcance. El goal permanece pendiente sin aplicar bloqueo antes del umbral; las auditorías previas a D32 son históricas.
+
+Auditoría tras D32 (2/3): turno previo sin progreso funcional. Se revalidan checkpoint y git status de ambos repositorios; sigue sin respuesta la autorización concreta, y metadata de entrega permanece sin autorización/despliegue. No hay proceso propio pendiente ni acción local restante que sustituya esa decisión. Sin fuentes modificadas, tests/builds repetidos ni acciones remotas. Segunda observación consecutiva de la misma dependencia después de D32; goal pendiente, sin bloqueo anticipado.
+
+Auditoría tras D32 (3/3): tercera continuación consecutiva sin la respuesta requerida para modificar producción. Turno previo y actual sin progreso funcional ni espera de proceso vivo; fuentes/metadata preservadas y entrega sin desplegar. Sin otra acción local necesaria pendiente dentro de esta etapa, se aplica blocked al goal por dependencia de autorización, sin completar el objetivo. No volver a preguntar lo mismo ni generar nuevas pruebas/builds/paquetes para evitar el bloqueo. La propuesta concreta y el prompt vigentes quedan listos para la respuesta.
+
+```text
+Retoma D32 desde el primer checkpoint de docs/subidas-moviles-avance.md.
+Lee decisiones y docs/subidas-moviles-entrega-api.md. Revisa AGENTS/git status
+en API y Flutter; conserva cambios ajenos. Preparación local verificada:
+payload exacto cb483b7, 751 archivos/hash registrado, suite consolidada 1336
+aprobadas/3 omitidas tras corregir sólo fixture local y reintentar una suite.
+No repetir pruebas/builds aprobados. Ver verification.json y reportes originales.
+Primero incorpora la respuesta a la autorización de despliegue; sin un sí
+concreto no ejecutar producción. La propuesta incluye tres commits y DDL,
+no sólo uploads. Sólo si está autorizado: revalidar SHA productivo, backup de
+base efectiva e imagen anterior; seguir gates de la propuesta, sin publicar app.
+No usar ciegamente respaldo fijo de deploy-ssh.sh ni declarar rollback de imagen
+seguro con enums nuevos. No delegar/commit/push/emulador. Android físico e iOS
+siguen pendientes; usuario sin Mac por ahora. Goal completo no logrado.
+```
+
+## Checkpoint anterior: cierre local de Android (11 nov 2026)
+
+- Etapa vigente: integración Android de D30. La decisión del 10 nov sustituye el bloqueo anterior como siguiente acción; las restricciones del probe/Fase1 que siguen abajo son históricas. iOS continúa pendiente de Mac. No usar emulador, delegar, hacer commits/push ni desplegar.
+- Estado: unidad local Android verificada; implementación auditada/corregida, tests y paquetes release listos. Etapa de validación física/entrega pendiente. No equivale a objetivo completo, publicación o prueba física.
+- Goal bloqueado por dependencia externa tras auditoría posterior 3/3: entrega/despliegue autorizado y validación física pendientes, sin acceso nuevo. El cierre local sigue verificado. Reanudar con autorización concreta de entrega o evidencia/acceso de pruebas reales; una reanudación sin cambio externo inicia un conteo de bloqueo nuevo.
+- Revisión real: git status de ambos repositorios y búsqueda de AGENTS sin instrucciones adicionales. API ya contiene commit preexistente `cb483b7`; esta unidad no lo creó ni modificó sus fuentes de producción. Cambios ajenos preservados.
+- Móvil: `lib/services/subidas_en_fondo.dart` serializa escrituras/snapshots del registro atómico, conserva copia y clave tras timeout/5xx/408/429 de apertura y verifica negocio/token antes de reservar, renovar o entregar. Reconciliación interrumpida por cambio de sesión no altera trabajos anteriores.
+- Móvil: `media_service.dart` corta reintentos de confirmación al cambiar el token. `cola_de_subidas.dart` mantiene estado confirmando cuando no hay resultado de API y reconcilia las tarjetas cuando el servidor confirma después. PUT terminado no es medio READY.
+- Pruebas: `subidas_en_fondo_test.dart` añade escenarios de respuesta perdida/misma clave, negocio diferente, cambio de token durante permiso y doce trabajos concurrentes sobre disco real temporal. `media_upload_test.dart` cubre cambio de sesión entre intentos de confirmación. Sin SDK nativo ni R2 en estos tests.
+- Resultado final: 35/35 pruebas Flutter seleccionadas, exit 0, `../metricol_app/mobile-upload-android-final-tests.log`. Análisis de nueve archivos sin incidencias, exit 0/23.1s, `mobile-upload-android-final-analyze.log`. API conserva evidencia 52/52 en `target/subidas-fondo-test.log`; no se repitieron porque no hubo cambios Java.
+- Build final AAB release exit 0/260.8s (`mobile-upload-android-final-bundle.log`) y APK release exit 0/31.7s (`mobile-upload-android-final-apk.log`), bajo raíz Flutter. APK 75,708,032 bytes SHA-256 `d2ff88c9bc3d74f6fddc2d9896bd194ec3d4305df4ee6b8d5930435673cc5678`; AAB 63,877,894 bytes SHA-256 `c497ea4cbd599b5d221820228593f4cfe039985722df18a6060e0faafe780bc7`. Rutas: `build/app/outputs/flutter-apk/app-release.apk` y `build/app/outputs/bundle/release/app-release.aab`.
+- Verificación de artefactos exit 0: apksigner acepta APK, jarsigner acepta AAB, APK sin debuggable, paquete `com.rodtech.picale`, versión `1.0.13+14`, minSDK24/target36. `../metricol_app/build/mobile-upload-android-final/report.json` guarda hashes de ambos paquetes y doce fuentes/configuraciones; logs de firmas/metadata y script reproducible junto al reporte. Firma válida no acredita aceptación/publicación en Play.
+- Siguiente acción: entrega controlada según `subidas-moviles-validacion-android.md`, con despliegue API autorizado antes de app y pruebas físicas reales. No hay teléfono conectado ni acceso Mac; sin emulador por D30. No hay proceso/build pendiente de esta unidad ni recursos remotos creados. No desplegar/publicar automáticamente ni repetir builds/tests aprobados salvo cambio o inconsistencia.
+- Límites vigentes: PUT completo reinicia el archivo si se interrumpe; no reanudación por bytes/partes en esta integración. No hay nueva prueba física ni validación iOS. Desplegar API antes de distribuir app; despliegue/publicación fuera de esta unidad.
+- Se añadió `docs/subidas-moviles-validacion-android.md` con orden de entrega y matriz física pendiente. La revisión de la cola también conserva el token previo a comprobar capacidad/calcular huella: un cambio durante la preparación impide entregar el archivo al negocio nuevo. Primer APK intermedio pasó (395.8s); fue sustituido por el build final anterior tras ese ajuste. Todos los handles propios 1525/56968/53437/54033/61795/6527 terminaron; el primer análisis detectó tres lints y el final está limpio. No se hicieron commits/push, despliegues ni publicaciones.
+
+### Prompt vigente para continuar
+
+Auditoría posterior al cierre local (1/3): el turno anterior fue progreso (correcciones, pruebas y paquetes finales). Esta continuación sólo revalidó los hashes de doce fuentes/configuraciones y dos artefactos: 14 coincidencias, ninguna diferencia. Sin nuevas pruebas/builds ni cambios de producto. La siguiente acción sigue dependiendo de despliegue autorizado y prueba física externa; no hay acceso Android/Mac nuevo ni proceso propio pendiente que esperar. Esta observación no completa el objetivo ni alcanza por sí sola el umbral de bloqueo del goal.
+
+Auditoría posterior al cierre local (2/3): el turno anterior fue sin progreso funcional, no una espera de proceso vivo. Persiste la misma dependencia de entrega autorizada y validación física externa: no llegó acceso/reporte de dispositivo ni autorización de despliegue; sólo existen los gates Windows del preflight iOS y no hay herramientas Apple locales. No se cambió producto ni se repitieron tests/builds. Goal pendiente; todavía no se aplica bloqueo antes del umbral.
+
+Auditoría posterior al cierre local (3/3): tercera continuación consecutiva con la misma dependencia externa y sin progreso funcional. Git status conserva cambios; la evidencia final sólo contiene firmas/metadatos/hashes locales y el preflight iOS sólo gates Windows. Sin nuevo acceso/reporte físico, autorización de despliegue o handle propio vivo. No queda acción ejecutable dentro de la etapa que pruebe la entrega física; no se amplía alcance ni se simula validación. Se aplica estado blocked del goal, sin declararlo completo. El prompt siguiente se usa cuando cambie esa dependencia.
+
+```text
+Continúa la integración Android de Pícale según D30/D31 y el primer checkpoint
+de docs/subidas-moviles-avance.md. Lee especificación, decisiones y
+docs/subidas-moviles-validacion-android.md; revisa AGENTS y git status de API y
+Flutter. Preserva cambios ajenos y el commit API preexistente cb483b7. Sin
+delegar, emulador, commit/push, despliegue ni publicación automáticos.
+Primero verifica el resultado final APK/AAB/análisis y su evidencia del
+checkpoint; no repitas pruebas aprobadas sin cambio. Android usa PUT completo
+y background_downloader 9.5.9, no reanudación por bytes. La entrega requiere
+API compatible antes de app y pruebas físicas de la matriz, todavía pendientes.
+No confundir tests locales/compilación con cambio de app o bloqueo real.
+iOS permanece pendiente de Mac, ya confirmado no disponible; no preguntar de
+nuevo ni declararlo validado. Mantén el objetivo completo pendiente y registra
+por separado el cierre local Android, despliegue y pruebas del producto.
+```
+
+## Checkpoint anterior (10 nov 2026): Android integrado, sin emulador
 
 - Decisión D30: Android primero en la app real; iPhone sin cambios hasta tener Mac. Sin emulador por pedido del usuario.
 - Servidor: clave de subida idempotente, firma de 12 h, `GET /media/subidas/{clave}`, limpieza a 24 h para subidas con clave, rescate que también une partes, `subidaEnFondo: 1` en `/media/usage`. Pruebas: `SubidaEnFondoTest` (8) + subidas existentes, 52/52.
@@ -653,7 +1259,7 @@ Gradle daemon observado: PID `23616`, con tareas Kotlin en ejecución al inspecc
 
 No hay mutaciones remotas pendientes: la cadena R2 `56913` terminó con exit 0 y cleanup verificado. Receptor local detenido (`13928`), AVD detenido con `adb emu kill`; ADB volvió a mostrar lista vacía. No dejar ni reabrir emuladores sin necesidad de la prueba nativa.
 
-### Prompt exacto para siguiente conversación
+### Prompt histórico para siguiente conversación (sustituido por D30)
 
 ```text
 Reanuda Parte2/Fase1 del goal Pícale tras bloqueo por entornoMac. Primero incorpora acceso/reporteMac nuevo; sin él la ejecución Apple sigue pendiente. El conteo de bloqueo anterior es histórico: reinicia auditoría al reanudar, no bloqueo inmediato. Lee especificación, avance, decisionesD28/D29,
